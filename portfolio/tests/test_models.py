@@ -2,7 +2,14 @@ from decimal import Decimal
 
 from django.test import TestCase
 
-from portfolio.models import Account, AssetClass, Holding, Security, TargetAllocation
+from portfolio.models import (
+    Account,
+    AssetClass,
+    Holding,
+    RebalancingRecommendation,
+    Security,
+    TargetAllocation,
+)
 
 
 class AssetClassTests(TestCase):
@@ -87,3 +94,33 @@ class TargetAllocationTests(TestCase):
         )
         self.assertEqual(target.target_pct, Decimal("40.00"))
         self.assertEqual(str(target), "Roth IRA - US Stocks: 40.00%")
+
+class RebalancingRecommendationTests(TestCase):
+    def setUp(self) -> None:
+        self.asset_class = AssetClass.objects.create(
+            name="US Stocks"
+        )
+        self.account = Account.objects.create(
+            name="Roth IRA",
+            account_type="ROTH_IRA",
+            institution="Vanguard",
+            tax_treatment="TAX_FREE"
+        )
+        self.security = Security.objects.create(
+            ticker="VTI",
+            name="Vanguard Total Stock Market ETF",
+            asset_class=self.asset_class
+        )
+
+    def test_create_recommendation(self) -> None:
+        """Test creating a rebalancing recommendation."""
+        rec = RebalancingRecommendation.objects.create(
+            account=self.account,
+            security=self.security,
+            action="BUY",
+            shares=Decimal("10.00"),
+            estimated_amount=Decimal("1600.00"),
+            reason="Underweight"
+        )
+        self.assertEqual(rec.action, "BUY")
+        self.assertEqual(str(rec), "BUY 10.00 VTI in Roth IRA")
