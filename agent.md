@@ -14,6 +14,7 @@ You are helping build a Django-based portfolio management platform for tax-optim
 
 ## Project Philosophy
 - **Start Simple:** MVP with minimal dependencies
+- **Incremental Development:** Build, test, and verify one component at a time
 - **Django Admin First:** Leverage built-in admin for data entry
 - **Tables Before Charts:** Validate logic before adding visualization
 - **Defer Premature Optimization:** Add complexity only when needed

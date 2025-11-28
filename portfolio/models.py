@@ -12,12 +12,6 @@ class AssetClass(models.Model):
         unique=True,
         help_text="Asset class name (e.g., 'US Large Cap Stocks')"
     )
-    target_allocation_pct = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('100'))],
-        help_text="Target allocation percentage (0-100)"
-    )
     expected_return = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -31,7 +25,7 @@ class AssetClass(models.Model):
         verbose_name_plural = "Asset Classes"
 
     def __str__(self) -> str:
-        return f"{self.name} ({self.target_allocation_pct}%)"
+        return self.name
 
 class Account(models.Model):
     """Investment account (e.g., Roth IRA, 401k)."""
@@ -56,3 +50,72 @@ class Account(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.get_account_type_display()})"
+
+class TargetAllocation(models.Model):
+    """Target allocation for an asset class within a specific account type."""
+
+    account_type = models.CharField(
+        max_length=20,
+        choices=Account.ACCOUNT_TYPES,
+        help_text="Account type this allocation applies to"
+    )
+    asset_class = models.ForeignKey(AssetClass, on_delete=models.CASCADE)
+    target_pct = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('100'))],
+        help_text="Target allocation percentage (0-100)"
+    )
+
+    class Meta:
+        ordering = ['account_type', 'asset_class']
+        unique_together = ['account_type', 'asset_class']
+        verbose_name_plural = "Target Allocations"
+
+    def __str__(self) -> str:
+        return f"{self.get_account_type_display()} - {self.asset_class.name}: {self.target_pct}%"
+
+class Security(models.Model):
+    """Individual investment security (e.g., VTI, BND)."""
+
+    ticker = models.CharField(max_length=10, unique=True)
+    name = models.CharField(max_length=100)
+    asset_class = models.ForeignKey(AssetClass, on_delete=models.PROTECT, related_name='securities')
+
+    class Meta:
+        ordering = ['ticker']
+        verbose_name_plural = "Securities"
+
+    def __str__(self) -> str:
+        return f"{self.ticker} - {self.name}"
+
+class Holding(models.Model):
+    """Current investment holding in an account."""
+
+    account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name='holdings')
+    security = models.ForeignKey(Security, on_delete=models.PROTECT, related_name='holdings')
+    shares = models.DecimalField(
+        max_digits=15,
+        decimal_places=4,
+        validators=[MinValueValidator(Decimal('0'))]
+    )
+    cost_basis = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0'))]
+    )
+    as_of_date = models.DateField(auto_now=True)
+    current_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0'))],
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        ordering = ['account', 'security']
+        unique_together = ['account', 'security']
+
+    def __str__(self) -> str:
+        return f"{self.security.ticker} in {self.account.name} ({self.shares} shares)"

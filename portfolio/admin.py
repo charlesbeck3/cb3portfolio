@@ -1,2 +1,9 @@
+from django.contrib import admin
 
-# Register your models here.
+from .models import Account, AssetClass, Holding, Security, TargetAllocation
+
+admin.site.register(AssetClass)
+admin.site.register(Account)
+admin.site.register(Security)
+admin.site.register(Holding)
+admin.site.register(TargetAllocation)
