@@ -1,11 +1,12 @@
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
 class AssetClass(models.Model):
-    """Investment asset class (e.g., US Stocks, Bonds)."""
+    """Broad category of investments (e.g., US Stocks, Bonds)."""
 
     name = models.CharField(
         max_length=100,
@@ -21,14 +22,14 @@ class AssetClass(models.Model):
     )
 
     class Meta:
-        ordering = ['name']
         verbose_name_plural = "Asset Classes"
+        ordering = ['name']
 
     def __str__(self) -> str:
         return self.name
 
 class Account(models.Model):
-    """Investment account (e.g., Roth IRA, 401k)."""
+    """Investment account (e.g., Roth IRA, Taxable)."""
 
     ACCOUNT_TYPES = [
         ('ROTH_IRA', 'Roth IRA'),
@@ -43,37 +44,35 @@ class Account(models.Model):
         ('TAXABLE', 'Taxable'),
     ]
 
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='accounts')
     name = models.CharField(max_length=100)
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPES)
     institution = models.CharField(max_length=100)
     tax_treatment = models.CharField(max_length=20, choices=TAX_TREATMENTS)
 
     def __str__(self) -> str:
-        return f"{self.name} ({self.get_account_type_display()})"
+        return f"{self.name} ({self.user.username})"
 
 class TargetAllocation(models.Model):
-    """Target allocation for an asset class within a specific account type."""
+    """Target allocation for a specific account type and asset class."""
 
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='target_allocations')
     account_type = models.CharField(
         max_length=20,
         choices=Account.ACCOUNT_TYPES,
-        help_text="Account type this allocation applies to"
     )
     asset_class = models.ForeignKey(AssetClass, on_delete=models.CASCADE)
     target_pct = models.DecimalField(
         max_digits=5,
         decimal_places=2,
         validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('100'))],
-        help_text="Target allocation percentage (0-100)"
     )
 
     class Meta:
-        ordering = ['account_type', 'asset_class']
-        unique_together = ['account_type', 'asset_class']
-        verbose_name_plural = "Target Allocations"
+        unique_together = ['user', 'account_type', 'asset_class']
 
     def __str__(self) -> str:
-        return f"{self.get_account_type_display()} - {self.asset_class.name}: {self.target_pct}%"
+        return f"{self.get_account_type_display()} - {self.asset_class.name}: {self.target_pct}% ({self.user.username})"
 
 class Security(models.Model):
     """Individual investment security (e.g., VTI, BND)."""

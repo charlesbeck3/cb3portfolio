@@ -1,38 +1,42 @@
 from decimal import Decimal
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 
 from portfolio.models import (
-    Account,
-    AssetClass,
-    Holding,
-    RebalancingRecommendation,
-    Security,
-    TargetAllocation,
+    Account, AssetClass, Security, Holding, 
+    TargetAllocation, RebalancingRecommendation
 )
 
 
 class AssetClassTests(TestCase):
     def test_create_asset_class(self) -> None:
-        """Test creating an asset class with valid data."""
-        asset_class = AssetClass.objects.create(
+        """Test creating an asset class."""
+        ac = AssetClass.objects.create(
             name="US Stocks",
             expected_return=Decimal("0.08")
         )
-        self.assertEqual(asset_class.name, "US Stocks")
-        self.assertEqual(str(asset_class), "US Stocks")
+        self.assertEqual(ac.name, "US Stocks")
+        self.assertEqual(ac.expected_return, Decimal("0.08"))
+        self.assertEqual(str(ac), "US Stocks")
+
 
 class AccountTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(username="testuser", password="password")
+
     def test_create_account(self) -> None:
-        """Test creating an account with valid data."""
+        """Test creating an account."""
         account = Account.objects.create(
-            name="My Roth IRA",
+            user=self.user,
+            name="Roth IRA",
             account_type="ROTH_IRA",
             institution="Vanguard",
             tax_treatment="TAX_FREE"
         )
-        self.assertEqual(account.name, "My Roth IRA")
-        self.assertEqual(account.account_type, "ROTH_IRA")
+        self.assertEqual(account.name, "Roth IRA")
+        self.assertEqual(str(account), "Roth IRA (testuser)")
+
 
 class SecurityTests(TestCase):
     def setUp(self) -> None:
@@ -41,7 +45,7 @@ class SecurityTests(TestCase):
         )
 
     def test_create_security(self) -> None:
-        """Test creating a security with valid data."""
+        """Test creating a security."""
         security = Security.objects.create(
             ticker="VTI",
             name="Vanguard Total Stock Market ETF",
@@ -50,12 +54,15 @@ class SecurityTests(TestCase):
         self.assertEqual(security.ticker, "VTI")
         self.assertEqual(str(security), "VTI - Vanguard Total Stock Market ETF")
 
+
 class HoldingTests(TestCase):
     def setUp(self) -> None:
+        self.user = User.objects.create_user(username="testuser", password="password")
         self.asset_class = AssetClass.objects.create(
             name="US Stocks"
         )
         self.account = Account.objects.create(
+            user=self.user,
             name="Roth IRA",
             account_type="ROTH_IRA",
             institution="Vanguard",
@@ -68,19 +75,21 @@ class HoldingTests(TestCase):
         )
 
     def test_create_holding(self) -> None:
-        """Test creating a holding with valid data."""
+        """Test creating a holding."""
         holding = Holding.objects.create(
             account=self.account,
             security=self.security,
-            shares=Decimal("100.50"),
-            cost_basis=Decimal("15000.00"),
-            current_price=Decimal("160.00")
+            shares=Decimal("10.5000"),
+            cost_basis=Decimal("2000.00"),
+            current_price=Decimal("210.00")
         )
-        self.assertEqual(holding.shares, Decimal("100.50"))
-        self.assertEqual(str(holding), "VTI in Roth IRA (100.50 shares)")
+        self.assertEqual(holding.shares, Decimal("10.5000"))
+        self.assertEqual(str(holding), "VTI in Roth IRA (10.5000 shares)")
+
 
 class TargetAllocationTests(TestCase):
     def setUp(self) -> None:
+        self.user = User.objects.create_user(username="testuser", password="password")
         self.asset_class = AssetClass.objects.create(
             name="US Stocks"
         )
@@ -88,19 +97,46 @@ class TargetAllocationTests(TestCase):
     def test_create_target_allocation(self) -> None:
         """Test creating a target allocation."""
         target = TargetAllocation.objects.create(
+            user=self.user,
             account_type="ROTH_IRA",
             asset_class=self.asset_class,
             target_pct=Decimal("40.00")
         )
         self.assertEqual(target.target_pct, Decimal("40.00"))
-        self.assertEqual(str(target), "Roth IRA - US Stocks: 40.00%")
+        self.assertEqual(str(target), "Roth IRA - US Stocks: 40.00% (testuser)")
+
+    def test_target_allocation_isolation(self) -> None:
+        """Test that different users can have their own allocations."""
+        # User 1 allocation
+        TargetAllocation.objects.create(
+            user=self.user,
+            account_type="ROTH_IRA",
+            asset_class=self.asset_class,
+            target_pct=Decimal("40.00")
+        )
+        
+        # User 2 allocation (same account type/asset class, different user)
+        user2 = User.objects.create_user(username="otheruser", password="password")
+        target2 = TargetAllocation.objects.create(
+            user=user2,
+            account_type="ROTH_IRA",
+            asset_class=self.asset_class,
+            target_pct=Decimal("60.00")
+        )
+        
+        self.assertEqual(TargetAllocation.objects.count(), 2)
+        self.assertEqual(target2.user.username, "otheruser")
+        self.assertEqual(target2.target_pct, Decimal("60.00"))
+
 
 class RebalancingRecommendationTests(TestCase):
     def setUp(self) -> None:
+        self.user = User.objects.create_user(username="testuser", password="password")
         self.asset_class = AssetClass.objects.create(
             name="US Stocks"
         )
         self.account = Account.objects.create(
+            user=self.user,
             name="Roth IRA",
             account_type="ROTH_IRA",
             institution="Vanguard",
