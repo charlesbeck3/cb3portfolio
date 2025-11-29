@@ -2,7 +2,9 @@ from decimal import Decimal
 from typing import Any
 
 from django.core.management.base import BaseCommand
+
 from portfolio.models import AssetClass, Security
+
 
 class Command(BaseCommand):
     help = 'Seeds the database with standard Asset Classes and Securities'

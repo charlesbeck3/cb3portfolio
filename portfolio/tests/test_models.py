@@ -4,8 +4,12 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 
 from portfolio.models import (
-    Account, AssetClass, Security, Holding, 
-    TargetAllocation, RebalancingRecommendation
+    Account,
+    AssetClass,
+    Holding,
+    RebalancingRecommendation,
+    Security,
+    TargetAllocation,
 )
 
 
@@ -114,7 +118,7 @@ class TargetAllocationTests(TestCase):
             asset_class=self.asset_class,
             target_pct=Decimal("40.00")
         )
-        
+
         # User 2 allocation (same account type/asset class, different user)
         user2 = User.objects.create_user(username="otheruser", password="password")
         target2 = TargetAllocation.objects.create(
@@ -123,7 +127,7 @@ class TargetAllocationTests(TestCase):
             asset_class=self.asset_class,
             target_pct=Decimal("60.00")
         )
-        
+
         self.assertEqual(TargetAllocation.objects.count(), 2)
         self.assertEqual(target2.user.username, "otheruser")
         self.assertEqual(target2.target_pct, Decimal("60.00"))
