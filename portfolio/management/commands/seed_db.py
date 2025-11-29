@@ -25,14 +25,14 @@ class Command(BaseCommand):
         ]
 
         for ac_data in asset_classes:
-            obj, created = AssetClass.objects.get_or_create(
+            ac_obj, created = AssetClass.objects.get_or_create(
                 name=ac_data['name'],
                 defaults={'expected_return': ac_data['expected_return']}
             )
             if created:
-                self.stdout.write(self.style.SUCCESS(f'Created Asset Class: {obj.name}'))
+                self.stdout.write(self.style.SUCCESS(f'Created Asset Class: {ac_obj.name}'))
             else:
-                self.stdout.write(f'Asset Class already exists: {obj.name}')
+                self.stdout.write(f'Asset Class already exists: {ac_obj.name}')
 
         # Securities
         securities = [
@@ -51,7 +51,7 @@ class Command(BaseCommand):
 
         for sec_data in securities:
             asset_class = AssetClass.objects.get(name=sec_data['asset_class'])
-            obj, created = Security.objects.update_or_create(
+            sec_obj, created = Security.objects.update_or_create(
                 ticker=sec_data['ticker'],
                 defaults={
                     'name': sec_data['name'],
@@ -59,8 +59,8 @@ class Command(BaseCommand):
                 }
             )
             if created:
-                self.stdout.write(self.style.SUCCESS(f'Created Security: {obj.ticker}'))
+                self.stdout.write(self.style.SUCCESS(f'Created Security: {sec_obj.ticker}'))
             else:
-                self.stdout.write(f'Updated Security: {obj.ticker}')
+                self.stdout.write(f'Updated Security: {sec_obj.ticker}')
 
         self.stdout.write(self.style.SUCCESS('Database seeded successfully!'))
