@@ -1,6 +1,8 @@
+import os
 from decimal import Decimal
 from typing import Any
 
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 
 from portfolio.models import AssetClass, Security
@@ -11,6 +13,17 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         self.stdout.write('Seeding database...')
+
+        # Create Superuser
+        username = os.environ.get('DJANGO_SUPERUSER_USERNAME', 'admin')
+        email = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@example.com')
+        password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', 'admin')
+
+        if not User.objects.filter(username=username).exists():
+            User.objects.create_superuser(username, email, password)
+            self.stdout.write(self.style.SUCCESS(f'Created superuser: {username}'))
+        else:
+            self.stdout.write(f'Superuser already exists: {username}')
 
         # Asset Classes
         asset_classes = [
