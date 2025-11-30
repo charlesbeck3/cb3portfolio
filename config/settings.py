@@ -38,7 +38,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'portfolio',
+    'users',
+    # Removed crispy forms dependencies
 ]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
