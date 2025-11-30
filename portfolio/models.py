@@ -8,10 +8,23 @@ from django.db import models
 class AssetClass(models.Model):
     """Broad category of investments (e.g., US Stocks, Bonds)."""
 
+    CATEGORY_CHOICES = [
+        ('EQUITIES', 'Equities'),
+        ('FIXED_INCOME', 'Fixed Income'),
+        ('REAL_ESTATE', 'Real Estate'),
+        ('CASH', 'Cash'),
+    ]
+
     name = models.CharField(
         max_length=100,
         unique=True,
         help_text="Asset class name (e.g., 'US Large Cap Stocks')"
+    )
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES,
+        default='EQUITIES',
+        help_text="Broad asset category"
     )
     expected_return = models.DecimalField(
         max_digits=5,
