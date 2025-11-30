@@ -1,6 +1,6 @@
-from django.shortcuts import render
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import TemplateView
 
-@login_required
-def index(request):
-    return render(request, 'portfolio/index.html')
+
+class DashboardView(LoginRequiredMixin, TemplateView):
+    template_name = 'portfolio/index.html'
