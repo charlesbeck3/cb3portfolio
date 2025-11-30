@@ -11,7 +11,7 @@ class AssetClass(models.Model):
     CATEGORY_CHOICES = [
         ('EQUITIES', 'Equities'),
         ('FIXED_INCOME', 'Fixed Income'),
-        ('REAL_ESTATE', 'Real Estate'),
+        ('REAL_ASSETS', 'Real Assets'),
         ('CASH', 'Cash'),
     ]
 
