@@ -84,7 +84,6 @@ class HoldingTests(TestCase):
             account=self.account,
             security=self.security,
             shares=Decimal("10.5000"),
-            cost_basis=Decimal("2000.00"),
             current_price=Decimal("210.00")
         )
         self.assertEqual(holding.shares, Decimal("10.5000"))

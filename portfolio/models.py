@@ -98,11 +98,6 @@ class Holding(models.Model):
         decimal_places=4,
         validators=[MinValueValidator(Decimal('0'))]
     )
-    cost_basis = models.DecimalField(
-        max_digits=15,
-        decimal_places=2,
-        validators=[MinValueValidator(Decimal('0'))]
-    )
     as_of_date = models.DateField(auto_now=True)
     current_price = models.DecimalField(
         max_digits=10,
