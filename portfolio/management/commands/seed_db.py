@@ -2,10 +2,12 @@ import os
 from decimal import Decimal
 from typing import Any
 
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
 from portfolio.models import Account, AssetClass, Holding, Security
+
+User = get_user_model()
 
 
 class Command(BaseCommand):
@@ -85,7 +87,7 @@ class Command(BaseCommand):
 
         admin_user = User.objects.get(username=username)
 
-        account_rows = [
+        account_rows: list[dict[str, Any]] = [
             {
                 'name': 'Treasury Direct',
                 'account_subtype': 'Taxable',

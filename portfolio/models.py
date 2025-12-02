@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.contrib.auth.models import User
+from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -57,7 +57,7 @@ class Account(models.Model):
         ('TAXABLE', 'Taxable'),
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='accounts')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='accounts')
     name = models.CharField(max_length=100)
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPES)
     institution = models.CharField(max_length=100)
@@ -69,7 +69,7 @@ class Account(models.Model):
 class TargetAllocation(models.Model):
     """Target allocation for a specific account type and asset class."""
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='target_allocations')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='target_allocations')
     account_type = models.CharField(
         max_length=20,
         choices=Account.ACCOUNT_TYPES,
