@@ -5,25 +5,43 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
+class AssetCategory(models.Model):
+    """Hierarchical asset category that can be grouped under a parent category."""
+
+    code = models.CharField(max_length=50, primary_key=True)
+    label = models.CharField(max_length=100)
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.PROTECT,
+        related_name='children',
+        null=True,
+        blank=True,
+    )
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order', 'label']
+        verbose_name = "Asset Category"
+        verbose_name_plural = "Asset Categories"
+
+    def __str__(self) -> str:
+        return self.label
+
+
 class AssetClass(models.Model):
     """Broad category of investments (e.g., US Stocks, Bonds)."""
-
-    CATEGORY_CHOICES = [
-        ('EQUITIES', 'Equities'),
-        ('FIXED_INCOME', 'Fixed Income'),
-        ('REAL_ASSETS', 'Real Assets'),
-        ('CASH', 'Cash'),
-    ]
 
     name = models.CharField(
         max_length=100,
         unique=True,
         help_text="Asset class name (e.g., 'US Large Cap Stocks')"
     )
-    category = models.CharField(
-        max_length=20,
-        choices=CATEGORY_CHOICES,
-        default='EQUITIES',
+    category = models.ForeignKey(
+        AssetCategory,
+        on_delete=models.PROTECT,
+        related_name='asset_classes',
+        to_field='code',
+        db_column='category',
         help_text="Broad asset category"
     )
     expected_return = models.DecimalField(

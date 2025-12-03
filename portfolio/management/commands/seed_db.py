@@ -1,11 +1,30 @@
 import os
 from decimal import Decimal
-from typing import Any
+from typing import Any, Dict, List, TypedDict
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from portfolio.models import Account, AssetClass, Holding, Security
+from portfolio.models import Account, AssetCategory, AssetClass, Holding, Security
+
+
+class CategorySeed(TypedDict):
+    code: str
+    label: str
+    parent: str | None
+    sort_order: int
+
+
+class AssetClassSeed(TypedDict):
+    name: str
+    category: str
+    expected_return: Decimal
+
+
+class SecuritySeed(TypedDict):
+    ticker: str
+    name: str
+    asset_class: str
 
 User = get_user_model()
 
@@ -27,14 +46,42 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f'Superuser already exists: {username}')
 
+        # Asset Categories (hierarchical)
+        categories: List[CategorySeed] = [
+            {'code': 'EQUITIES', 'label': 'Equities', 'parent': None, 'sort_order': 1},
+            {'code': 'US_EQUITIES', 'label': 'US Equities', 'parent': 'EQUITIES', 'sort_order': 2},
+            {'code': 'INTERNATIONAL_EQUITIES', 'label': 'International Equities', 'parent': 'EQUITIES', 'sort_order': 3},
+            {'code': 'FIXED_INCOME', 'label': 'Fixed Income', 'parent': None, 'sort_order': 4},
+            {'code': 'REAL_ASSETS', 'label': 'Real Assets', 'parent': None, 'sort_order': 5},
+            {'code': 'CASH', 'label': 'Cash', 'parent': None, 'sort_order': 6},
+        ]
+
+        category_objects: Dict[str, AssetCategory] = {}
+        for cat_data in categories:
+            parent_code = cat_data['parent']
+            parent_obj = category_objects.get(parent_code) if parent_code else None
+            cat_obj, created = AssetCategory.objects.update_or_create(
+                code=cat_data['code'],
+                defaults={
+                    'label': cat_data['label'],
+                    'parent': parent_obj,
+                    'sort_order': cat_data['sort_order'],
+                }
+            )
+            category_objects[cat_obj.code] = cat_obj
+            if created:
+                self.stdout.write(self.style.SUCCESS(f'Created Category: {cat_obj.label}'))
+            else:
+                self.stdout.write(f'Category up to date: {cat_obj.label}')
+
         # Asset Classes
-        asset_classes = [
-            {'name': 'US Equities', 'category': 'EQUITIES', 'expected_return': Decimal('0.08')},
+        asset_classes: List[AssetClassSeed] = [
+            {'name': 'US Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.08')},
             {'name': 'US Real Estate', 'category': 'REAL_ASSETS', 'expected_return': Decimal('0.06')},
-            {'name': 'US Dividend Equities', 'category': 'EQUITIES', 'expected_return': Decimal('0.07')},
-            {'name': 'US Value Equities', 'category': 'EQUITIES', 'expected_return': Decimal('0.075')},
-            {'name': 'International Developed Equities', 'category': 'EQUITIES', 'expected_return': Decimal('0.07')},
-            {'name': 'International Emerging Equities', 'category': 'EQUITIES', 'expected_return': Decimal('0.09')},
+            {'name': 'US Dividend Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.07')},
+            {'name': 'US Value Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.075')},
+            {'name': 'International Developed Equities', 'category': 'INTERNATIONAL_EQUITIES', 'expected_return': Decimal('0.07')},
+            {'name': 'International Emerging Equities', 'category': 'INTERNATIONAL_EQUITIES', 'expected_return': Decimal('0.09')},
             {'name': 'US Short-term Treasuries', 'category': 'FIXED_INCOME', 'expected_return': Decimal('0.03')},
             {'name': 'US Intermediate-term Treasuries', 'category': 'FIXED_INCOME', 'expected_return': Decimal('0.04')},
             {'name': 'Inflation Adjusted Bond', 'category': 'FIXED_INCOME', 'expected_return': Decimal('0.05')},
@@ -42,20 +89,35 @@ class Command(BaseCommand):
         ]
 
         for ac_data in asset_classes:
+            category_obj = category_objects[ac_data['category']]
             ac_obj, created = AssetClass.objects.get_or_create(
                 name=ac_data['name'],
                 defaults={
                     'expected_return': ac_data['expected_return'],
-                    'category': ac_data['category'],
+                    'category': category_obj,
                 }
             )
             if created:
                 self.stdout.write(self.style.SUCCESS(f'Created Asset Class: {ac_obj.name}'))
             else:
-                self.stdout.write(f'Asset Class already exists: {ac_obj.name}')
+                updated_fields = []
+                if ac_obj.category_id != category_obj.code:
+                    ac_obj.category = category_obj
+                    updated_fields.append('category')
+                if ac_obj.expected_return != ac_data['expected_return']:
+                    ac_obj.expected_return = ac_data['expected_return']
+                    updated_fields.append('expected_return')
+
+                if updated_fields:
+                    ac_obj.save(update_fields=updated_fields)
+                    self.stdout.write(
+                        self.style.SUCCESS(f'Updated Asset Class: {ac_obj.name} ({', '.join(updated_fields)})')
+                    )
+                else:
+                    self.stdout.write(f'Asset Class already up to date: {ac_obj.name}')
 
         # Securities
-        securities = [
+        securities: List[SecuritySeed] = [
             {'ticker': 'VTI', 'name': 'Vanguard Total Stock Market ETF', 'asset_class': 'US Equities'},
             {'ticker': 'VOO', 'name': 'Vanguard S&P 500 ETF', 'asset_class': 'US Equities'},
             {'ticker': 'VTV', 'name': 'Vanguard Value ETF', 'asset_class': 'US Value Equities'},

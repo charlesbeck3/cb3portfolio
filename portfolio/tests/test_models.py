@@ -5,6 +5,7 @@ from django.test import TestCase
 
 from portfolio.models import (
     Account,
+    AssetCategory,
     AssetClass,
     Holding,
     RebalancingRecommendation,
@@ -18,8 +19,10 @@ User = get_user_model()
 class AssetClassTests(TestCase):
     def test_create_asset_class(self) -> None:
         """Test creating an asset class."""
+        us_equities = AssetCategory.objects.get(code="US_EQUITIES")
         ac = AssetClass.objects.create(
             name="US Stocks",
+            category=us_equities,
             expected_return=Decimal("0.08")
         )
         self.assertEqual(ac.name, "US Stocks")
@@ -46,8 +49,10 @@ class AccountTests(TestCase):
 
 class SecurityTests(TestCase):
     def setUp(self) -> None:
+        self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
-            name="US Stocks"
+            name="US Stocks",
+            category=self.category,
         )
 
     def test_create_security(self) -> None:
@@ -64,8 +69,10 @@ class SecurityTests(TestCase):
 class HoldingTests(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
-            name="US Stocks"
+            name="US Stocks",
+            category=self.category,
         )
         self.account = Account.objects.create(
             user=self.user,
@@ -95,8 +102,10 @@ class HoldingTests(TestCase):
 class TargetAllocationTests(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
-            name="US Stocks"
+            name="US Stocks",
+            category=self.category,
         )
 
     def test_create_target_allocation(self) -> None:
@@ -137,8 +146,10 @@ class TargetAllocationTests(TestCase):
 class RebalancingRecommendationTests(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
-            name="US Stocks"
+            name="US Stocks",
+            category=self.category,
         )
         self.account = Account.objects.create(
             user=self.user,

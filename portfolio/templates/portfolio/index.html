@@ -1,4 +1,6 @@
 {% extends "portfolio/base.html" %}
+{% load portfolio_extras %}
+{% load humanize %}
 
 {% block title %}Dashboard - Portfolio Manager{% endblock %}
 
@@ -12,8 +14,79 @@
             <div class="card-body">
                 <h5 class="card-title">Quick Actions</h5>
                 <p class="card-text">Manage your assets and view reports.</p>
-                <a href="#" class="btn btn-primary">View Holdings</a>
+                <a href="{% url 'portfolio:holdings' %}" class="btn btn-primary">View Holdings</a>
                 <a href="#" class="btn btn-secondary">Rebalance</a>
+            </div>
+        </div>
+
+        <div class="card mt-4">
+            <div class="card-header">
+                Holdings Summary
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-bordered">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">Asset Class</th>
+                                {% for code, label in account_types %}
+                                <th class="text-end" style="width: 15%;">{{ label }}</th>
+                                {% endfor %}
+                                <th class="text-end" style="width: 15%;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for group_code, group_data in summary.groups.items %}
+                            {% for category_code, category_data in group_data.categories.items %}
+                            {% for asset_class_name, asset_class_data in category_data.asset_classes.items %}
+                            <tr class="group-{{ forloop.parentloop.parentloop.counter }}-rows collapse show">
+                                <td class="ps-4">{{ asset_class_name }}</td>
+                                {% for code, label in account_types %}
+                                {% with value=asset_class_data.account_types|get_item:code %}
+                                <td class="text-end">${{ value|floatformat:0|default:"0"|intcomma }}</td>
+                                {% endwith %}
+                                {% endfor %}
+                                <td class="text-end fw-bold">${{ asset_class_data.total|floatformat:0|default:"0"|intcomma }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if group_data.categories|length > 1 %}
+                            <tr class="table-secondary fw-bold group-{{ forloop.parentloop.counter }}-rows collapse show">
+                                {% with category_label=summary.category_labels|get_item:category_code %}
+                                <td class="ps-4">{{ category_label|default:category_code }} Total</td>
+                                {% endwith %}
+                                {% for code, label in account_types %}
+                                {% with value=category_data.account_type_totals|get_item:code %}
+                                <td class="text-end">${{ value|floatformat:0|default:"0"|intcomma }}</td>
+                                {% endwith %}
+                                {% endfor %}
+                                <td class="text-end">${{ category_data.total|floatformat:0|default:"0"|intcomma }}</td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                            <tr class="table-primary fw-bold border-top group-toggle mt-3" data-bs-toggle="collapse" data-bs-target=".group-{{ forloop.counter }}-rows" aria-expanded="true" role="button">
+                                <td>{{ group_data.label|default:group_code }} Total</td>
+                                {% for code, label in account_types %}
+                                {% with value=group_data.account_type_totals|get_item:code %}
+                                <td class="text-end">${{ value|floatformat:0|default:"0"|intcomma }}</td>
+                                {% endwith %}
+                                {% endfor %}
+                                <td class="text-end">${{ group_data.total|floatformat:0|default:"0"|intcomma }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="table-dark fw-bold">
+                                <td>Grand Total</td>
+                                {% for code, label in account_types %}
+                                {% with value=summary.account_type_grand_totals|get_item:code %}
+                                <td class="text-end">${{ value|floatformat:0|default:"0"|intcomma }}</td>
+                                {% endwith %}
+                                {% endfor %}
+                                <td class="text-end">${{ summary.grand_total|floatformat:0|default:"0"|intcomma }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Account,
+    AssetCategory,
     AssetClass,
     Holding,
     RebalancingRecommendation,
@@ -9,6 +10,7 @@ from .models import (
     TargetAllocation,
 )
 
+admin.site.register(AssetCategory)
 admin.site.register(AssetClass)
 admin.site.register(Account)
 admin.site.register(Security)
