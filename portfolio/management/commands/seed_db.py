@@ -1,6 +1,6 @@
 import os
 from decimal import Decimal
-from typing import Any, Dict, List, TypedDict
+from typing import Any, TypedDict
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
@@ -47,7 +47,7 @@ class Command(BaseCommand):
             self.stdout.write(f'Superuser already exists: {username}')
 
         # Asset Categories (hierarchical)
-        categories: List[CategorySeed] = [
+        categories: list[CategorySeed] = [
             {'code': 'EQUITIES', 'label': 'Equities', 'parent': None, 'sort_order': 1},
             {'code': 'US_EQUITIES', 'label': 'US Equities', 'parent': 'EQUITIES', 'sort_order': 2},
             {'code': 'INTERNATIONAL_EQUITIES', 'label': 'International Equities', 'parent': 'EQUITIES', 'sort_order': 3},
@@ -56,7 +56,7 @@ class Command(BaseCommand):
             {'code': 'CASH', 'label': 'Cash', 'parent': None, 'sort_order': 6},
         ]
 
-        category_objects: Dict[str, AssetCategory] = {}
+        category_objects: dict[str, AssetCategory] = {}
         for cat_data in categories:
             parent_code = cat_data['parent']
             parent_obj = category_objects.get(parent_code) if parent_code else None
@@ -75,7 +75,7 @@ class Command(BaseCommand):
                 self.stdout.write(f'Category up to date: {cat_obj.label}')
 
         # Asset Classes
-        asset_classes: List[AssetClassSeed] = [
+        asset_classes: list[AssetClassSeed] = [
             {'name': 'US Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.08')},
             {'name': 'US Real Estate', 'category': 'REAL_ASSETS', 'expected_return': Decimal('0.06')},
             {'name': 'US Dividend Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.07')},
@@ -117,7 +117,7 @@ class Command(BaseCommand):
                     self.stdout.write(f'Asset Class already up to date: {ac_obj.name}')
 
         # Securities
-        securities: List[SecuritySeed] = [
+        securities: list[SecuritySeed] = [
             {'ticker': 'VTI', 'name': 'Vanguard Total Stock Market ETF', 'asset_class': 'US Equities'},
             {'ticker': 'VOO', 'name': 'Vanguard S&P 500 ETF', 'asset_class': 'US Equities'},
             {'ticker': 'VTV', 'name': 'Vanguard Value ETF', 'asset_class': 'US Value Equities'},

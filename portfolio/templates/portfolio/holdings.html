@@ -29,27 +29,37 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for category_name, category_data in categories.items %}
+                            {% if holding_groups %}
+                            {% for group_code, group_data in holding_groups.items %}
+                            {% for category_code, category_data in group_data.categories.items %}
                             {% for holding in category_data.holdings %}
-                            <tr>
+                            <tr class="group-{{ forloop.parentloop.parentloop.counter }}-rows collapse show">
                                 <td><strong>{{ holding.ticker }}</strong></td>
                                 <td>{{ holding.name }}</td>
                                 <td>{{ holding.asset_class }}</td>
                                 <td class="text-end">{{ holding.shares|floatformat:4 }}</td>
-                                <td class="text-end">${{ holding.current_price|floatformat:0|default:"--"|intcomma }}
-                                </td>
+                                <td class="text-end">${{ holding.current_price|default:"0"|floatformat:2|intcomma }}</td>
                                 <td class="text-end">${{ holding.value|floatformat:0|intcomma }}</td>
                             </tr>
                             {% endfor %}
-                            <tr class="table-secondary fw-bold">
-                                <td colspan="5">{{ category_name }} Total</td>
+                            {% if group_data.categories|length > 1 %}
+                            <tr class="table-secondary fw-bold group-{{ forloop.parentloop.counter }}-rows collapse show">
+                                <td colspan="5">{{ category_data.label }} Total</td>
                                 <td class="text-end">${{ category_data.total|floatformat:0|intcomma }}</td>
                             </tr>
-                            {% empty %}
+                            {% endif %}
+                            {% endfor %}
+                            <tr class="table-primary fw-bold border-top group-toggle mt-3" data-bs-toggle="collapse"
+                                data-bs-target=".group-{{ forloop.counter }}-rows" aria-expanded="true" role="button">
+                                <td colspan="5">{{ group_data.label|default:group_code }} Total</td>
+                                <td class="text-end">${{ group_data.total|floatformat:0|intcomma }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
                             <tr>
                                 <td colspan="6" class="text-center">No holdings found.</td>
                             </tr>
-                            {% endfor %}
+                            {% endif %}
                         </tbody>
                         <tfoot>
                             <tr class="table-dark fw-bold">

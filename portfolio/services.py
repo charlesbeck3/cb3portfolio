@@ -1,7 +1,7 @@
 import logging
 from collections import OrderedDict, defaultdict
 from decimal import Decimal
-from typing import Any, DefaultDict, Dict
+from typing import Any
 
 import yfinance as yf
 
@@ -9,12 +9,12 @@ from portfolio.models import AssetCategory, Holding
 
 logger = logging.getLogger(__name__)
 
-CategoryEntry = Dict[str, Any]
-GroupEntry = Dict[str, Any]
-SummaryDict = Dict[str, Any]
+CategoryEntry = dict[str, Any]
+GroupEntry = dict[str, Any]
+SummaryDict = dict[str, Any]
 
 
-def _asset_class_entry_factory() -> Dict[str, Any]:
+def _asset_class_entry_factory() -> dict[str, Any]:
     return {
         'account_types': defaultdict(Decimal),
         'total': Decimal('0.00'),
@@ -121,7 +121,7 @@ class PortfolioSummaryService:
             logger.error(f"Error updating prices: {e}")
 
     @staticmethod
-    def get_holdings_summary(user: Any) -> Dict[str, Any]:
+    def get_holdings_summary(user: Any) -> dict[str, Any]:
         """
         Aggregate holdings by Asset Class (Category) and Account Type.
         Returns a structure suitable for rendering the summary table.
@@ -157,21 +157,22 @@ class PortfolioSummaryService:
 
         categories = AssetCategory.objects.select_related('parent').all()
         category_labels = {category.code: category.label for category in categories}
-        category_group_map: Dict[str, str] = {}
-        group_labels: Dict[str, str] = {}
+        category_group_map: dict[str, str] = {}
+        group_labels: dict[str, str] = {}
         for category in categories:
             group = category.parent or category
             category_group_map[category.code] = group.code
             group_labels.setdefault(group.code, group.label)
 
-        categories_summary: DefaultDict[str, CategoryEntry] = defaultdict(_category_entry_factory)
-        groups_summary: DefaultDict[str, GroupEntry] = defaultdict(_group_entry_factory)
+        categories_summary: defaultdict[str, CategoryEntry] = defaultdict(_category_entry_factory)
+        groups_summary: defaultdict[str, GroupEntry] = defaultdict(_group_entry_factory)
 
         summary: SummaryDict = {
             'categories': categories_summary,
             'groups': groups_summary,
             'grand_total': Decimal('0.00'),
             'account_type_grand_totals': defaultdict(Decimal),
+            'account_type_percentages': {},
             'category_labels': category_labels,
             'group_labels': group_labels,
         }
@@ -236,9 +237,20 @@ class PortfolioSummaryService:
             group_entry['categories'][category_code] = category_data
 
         sorted_groups = sorted(
-            groups_summary.items(), key=lambda item: item[1]['total'], reverse=False
+            groups_summary.items(), key=lambda item: item[1]['total'], reverse=True
         )
         summary['groups'] = OrderedDict(sorted_groups)
+
+        grand_total = summary['grand_total']
+        account_type_percentages: dict[str, Decimal] = {}
+        if grand_total > 0:
+            for code, value in summary['account_type_grand_totals'].items():
+                account_type_percentages[code] = (value / grand_total) * Decimal('100')
+        else:
+            for code in summary['account_type_grand_totals']:
+                account_type_percentages[code] = Decimal('0.00')
+
+        summary['account_type_percentages'] = account_type_percentages
 
         # Deep convert function
         def default_to_regular(d: Any) -> Any:
