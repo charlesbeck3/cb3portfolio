@@ -70,6 +70,18 @@ class Institution(models.Model):
         return self.name
 
 
+class AccountGroup(models.Model):
+    """Group of accounts (e.g., Retirement, Investments, Deposit Accounts)."""
+    name = models.CharField(max_length=100, unique=True)
+    sort_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['sort_order']
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Account(models.Model):
     """Investment account (e.g., Roth IRA, Taxable)."""
 
@@ -84,6 +96,7 @@ class Account(models.Model):
     name = models.CharField(max_length=100)
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPES)
     institution = models.ForeignKey(Institution, on_delete=models.PROTECT, related_name='accounts')
+    group = models.ForeignKey(AccountGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name='accounts')
 
     def __str__(self) -> str:
         return f"{self.name} ({self.user.username})"

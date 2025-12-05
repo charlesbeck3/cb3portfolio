@@ -341,13 +341,14 @@ class PortfolioSummaryService:
     @staticmethod
     def get_account_summary(user: Any) -> dict[str, Any]:
         """
-        Get summary of accounts grouped by type (Retirement vs Investments).
+        Get summary of accounts grouped by AccountGroup.
         Includes aggregate absolute deviation from target allocation for each account.
         """
         # Ensure prices are up to date
         PortfolioSummaryService.update_prices(user)
 
-        accounts = Account.objects.filter(user=user).select_related('institution').prefetch_related('holdings__security__asset_class')
+        # Prefetch the 'group' field as well
+        accounts = Account.objects.filter(user=user).select_related('institution', 'group').prefetch_related('holdings__security__asset_class')
 
         # 1. Fetch all targets for this user and map by account_type -> asset_class_name
         targets = TargetAllocation.objects.filter(user=user).select_related('asset_class')
@@ -356,20 +357,30 @@ class PortfolioSummaryService:
         for t in targets:
             target_map[t.account_type][t.asset_class.name] = t.target_pct
 
-        # Define groups
-        groups: dict[str, dict[str, Any]] = {
-            'Retirement': {'label': 'Retirement', 'total': Decimal('0.00'), 'accounts': []},
-            'Investments': {'label': 'Investments', 'total': Decimal('0.00'), 'accounts': []},
-            'Cash': {'label': 'Cash', 'total': Decimal('0.00'), 'accounts': []},
-        }
+        # Initialize groups dynamically from AccountGroup model
+        # We need an OrderedDict to maintain display order
+        # Key: group_name, Value: {label, total, accounts}
 
-        # Mapping account types to groups
-        type_map = {
-            'ROTH_IRA': 'Retirement',
-            'TRADITIONAL_IRA': 'Retirement',
-            '401K': 'Retirement',
-            'TAXABLE': 'Investments',
-        }
+        # Load all groups ordered by sort_order
+        from .models import AccountGroup  # Delayed import to avoid circular dependency if any
+
+        all_groups = AccountGroup.objects.all()
+        groups: OrderedDict[str, dict[str, Any]] = OrderedDict()
+
+        for g in all_groups:
+            groups[g.name] = {
+                'label': g.name,
+                'total': Decimal('0.00'),
+                'accounts': []
+            }
+
+        # Add 'Other' group for unassigned accounts
+        if 'Other' not in groups:
+             groups['Other'] = {
+                'label': 'Other',
+                'total': Decimal('0.00'),
+                'accounts': []
+            }
 
         grand_total = Decimal('0.00')
 
@@ -400,38 +411,49 @@ class PortfolioSummaryService:
                     actual_val = holdings_by_ac.get(ac_name, Decimal('0.00'))
                     target_pct = account_targets.get(ac_name, Decimal('0.00'))
                     target_val = account_total * (target_pct / Decimal('100.00'))
-
-                    diff = abs(actual_val - target_val)
-                    absolute_deviation += diff
+                    absolute_deviation += abs(actual_val - target_val)
 
                 absolute_deviation_pct = (absolute_deviation / account_total) * Decimal('100.00')
 
-            group_name = type_map.get(account.account_type, 'Investments')
+            # Determine group
+            group_name = 'Other'
+            if account.group:
+                group_name = account.group.name
+
+            # If for some reason the group exists on the account but wasn't in our initial fetch (race condition?),
+            # fallback to Other or create it dynamically (safer to use Other for now)
+            if group_name not in groups:
+                 group_name = 'Other'
 
             groups[group_name]['accounts'].append({
                 'id': account.id,
                 'name': account.name,
-                'institution': account.institution.name,
+                'institution': account.institution.name if account.institution else 'N/A',
                 'total': account_total,
-                'account_type': account.account_type,
                 'absolute_deviation': absolute_deviation,
-                'absolute_deviation_pct': absolute_deviation_pct,
+                'absolute_deviation_pct': absolute_deviation_pct
             })
             groups[group_name]['total'] += account_total
             grand_total += account_total
 
-        # Remove empty groups and sort by total value descending
-        active_groups = {k: v for k, v in groups.items() if v['accounts']}
+        # Filter out "Other" if empty
+        if 'Other' in groups and not groups['Other']['accounts']:
+            del groups['Other']
 
-        # Sort accounts within each group by total descending
-        for group in active_groups.values():
-            group['accounts'].sort(key=lambda x: x['total'], reverse=True)
+        # Filter out any other groups that might be empty (e.g., from AccountGroup but no accounts assigned)
+        # This ensures we only show groups that actually contain accounts.
+        groups_with_accounts = {k: v for k, v in groups.items() if v['accounts']}
 
-        sorted_groups = dict(sorted(active_groups.items(), key=lambda item: item[1]['total'], reverse=True))
+        # Sort accounts within each group
+        for group_data in groups_with_accounts.values():
+            group_data['accounts'].sort(key=lambda x: x['total'], reverse=True)
+
+        # Sort the groups themselves by their total value
+        sorted_groups = dict(sorted(groups_with_accounts.items(), key=lambda item: item[1]['total'], reverse=True))
 
         return {
-            'groups': sorted_groups,
             'grand_total': grand_total,
+            'groups': sorted_groups,
         }
 
     @staticmethod
