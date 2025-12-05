@@ -400,6 +400,11 @@ class PortfolioSummaryService:
 
         # Remove empty groups and sort by total value descending
         active_groups = {k: v for k, v in groups.items() if v['accounts']}
+
+        # Sort accounts within each group by total descending
+        for group in active_groups.values():
+            group['accounts'].sort(key=lambda x: x['total'], reverse=True)
+
         sorted_groups = dict(sorted(active_groups.items(), key=lambda item: item[1]['total'], reverse=True))
 
         return {
@@ -408,9 +413,10 @@ class PortfolioSummaryService:
         }
 
     @staticmethod
-    def get_holdings_by_category(user: Any) -> dict[str, Any]:
+    def get_holdings_by_category(user: Any, account_id: int | None = None) -> dict[str, Any]:
         """
         Get all holdings grouped by category and group, sorted by value.
+        Optionally filter by account_id.
         """
         # Ensure prices are up to date
         PortfolioSummaryService.update_prices(user)
@@ -418,6 +424,9 @@ class PortfolioSummaryService:
         holdings = Holding.objects.filter(account__user=user).select_related(
             'account', 'security', 'security__asset_class'
         )
+
+        if account_id:
+            holdings = holdings.filter(account_id=account_id)
 
         # First, aggregate by ticker
         ticker_data: dict[str, AggregatedHolding] = {}

@@ -26,6 +26,7 @@
                 <div class="accordion-body p-0">
                     <ul class="list-group list-group-flush">
                         {% for account in group.accounts %}
+                        <a href="{% url 'portfolio:account_holdings' account.id %}" class="text-decoration-none text-dark">
                         <li class="list-group-item border-0 d-flex justify-content-between align-items-center ps-4">
                             <div>
                                 <div class="fw-bold">{{ account.name }}</div>
@@ -42,6 +43,7 @@
                                 {% endif %}
                             </div>
                         </li>
+                        </a>
                         {% endfor %}
                     </ul>
                 </div>

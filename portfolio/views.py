@@ -1,3 +1,4 @@
+import contextlib
 from typing import Any
 
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -38,6 +39,13 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        context.update(PortfolioSummaryService.get_holdings_by_category(self.request.user))
+        account_id = kwargs.get('account_id')
+
+        context.update(PortfolioSummaryService.get_holdings_by_category(self.request.user, account_id))
         context['sidebar_data'] = PortfolioSummaryService.get_account_summary(self.request.user)
+
+        if account_id and self.request.user.is_authenticated:
+                 with contextlib.suppress(Account.DoesNotExist):
+                     context['account'] = Account.objects.get(id=account_id, user=self.request.user)
+
         return context
