@@ -49,7 +49,7 @@ class HoldingsViewTests(TestCase, PortfolioTestMixin):
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username='testuser', password='password')
         self.client.force_login(self.user)
-        
+
         self.account = Account.objects.create(
             user=self.user,
             name='My Roth',

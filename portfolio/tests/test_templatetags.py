@@ -1,13 +1,16 @@
 from decimal import Decimal
+
 from django.test import TestCase
+
 from portfolio.templatetags.portfolio_extras import (
+    accounting_amount,
+    accounting_number,
+    accounting_percent,
     get_item,
     percentage_of,
     subtract,
-    accounting_amount,
-    accounting_percent,
-    accounting_number,
 )
+
 
 class PortfolioExtrasTests(TestCase):
     def test_get_item(self) -> None:
