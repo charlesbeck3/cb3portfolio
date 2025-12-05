@@ -4,6 +4,8 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
+from portfolio.managers import AccountManager, HoldingManager, TargetAllocationManager
+
 
 class AssetCategory(models.Model):
     """Hierarchical asset category that can be grouped under a parent category."""
@@ -108,6 +110,8 @@ class Account(models.Model):
     account_type = models.ForeignKey(AccountType, on_delete=models.PROTECT, related_name='accounts')
     institution = models.ForeignKey(Institution, on_delete=models.PROTECT, related_name='accounts')
 
+    objects = AccountManager()
+
     def __str__(self) -> str:
         return f"{self.name} ({self.user.username})"
 
@@ -125,6 +129,8 @@ class TargetAllocation(models.Model):
         decimal_places=2,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
     )
+
+    objects = TargetAllocationManager()
 
     class Meta:
         unique_together = ('user', 'account_type', 'asset_class')
@@ -164,6 +170,8 @@ class Holding(models.Model):
         null=True,
         blank=True
     )
+
+    objects = HoldingManager()
 
     class Meta:
         ordering = ['account', 'security']

@@ -21,7 +21,7 @@ class PortfolioSummaryService:
         """
         Fetch current prices for all securities held by the user and update Holding.current_price.
         """
-        holdings = Holding.objects.filter(account__user=user).select_related('security')
+        holdings = Holding.objects.get_for_pricing(user)
         tickers = list({h.security.ticker for h in holdings})
 
         if not tickers:
@@ -44,16 +44,32 @@ class PortfolioSummaryService:
         # Ensure prices are up to date
         PortfolioSummaryService.update_prices(user)
 
-        holdings = Holding.objects.filter(account__user=user).select_related(
-            'account',
-            'account__account_type',
-            'security',
-            'security__asset_class',
-            'security__asset_class__category',
-            'security__asset_class__category__parent',
+        # 1. Fetch Data & Initialize Structure
+        holdings = Holding.objects.get_for_summary(user)
+        categories = AssetCategory.objects.select_related('parent').all()
+
+        category_labels, category_group_map, group_labels = PortfolioSummaryService._build_category_maps(categories)
+
+        summary = PortfolioSummary(
+            category_labels=category_labels,
+            group_labels=group_labels,
         )
 
-        categories = AssetCategory.objects.select_related('parent').all()
+        # 2. Aggregate Holdings into Summary
+        PortfolioSummaryService._aggregate_holdings(summary, holdings, category_group_map, group_labels)
+
+        # 3. Calculate Targets and Variances
+        PortfolioSummaryService._calculate_targets_and_variances(
+            user, summary, category_group_map
+        )
+
+        # 4. Sort and Organize
+        PortfolioSummaryService._sort_and_organize_summary(summary, category_group_map)
+
+        return summary
+
+    @staticmethod
+    def _build_category_maps(categories: Any) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
         category_labels = {category.code: category.label for category in categories}
         category_group_map: dict[str, str] = {}
         group_labels: dict[str, str] = {}
@@ -61,12 +77,15 @@ class PortfolioSummaryService:
             group = category.parent or category
             category_group_map[category.code] = group.code
             group_labels.setdefault(group.code, group.label)
+        return category_labels, category_group_map, group_labels
 
-        summary = PortfolioSummary(
-            category_labels=category_labels,
-            group_labels=group_labels,
-        )
-
+    @staticmethod
+    def _aggregate_holdings(
+        summary: PortfolioSummary,
+        holdings: Any,
+        category_group_map: dict[str, str],
+        group_labels: dict[str, str]
+    ) -> None:
         for holding in holdings:
             if holding.current_price is None:
                 continue
@@ -94,7 +113,9 @@ class PortfolioSummaryService:
             group_code = category_group_map.get(category_code, category_code)
             group_entry = summary.groups[group_code]
             if not group_entry.label:
-                group_entry.label = group_labels.get(group_code, category.label if category.parent else category.label)
+                # Fallback label logic if not set
+                group_entry.label = group_labels.get(group_code, group_code)
+
             group_entry.total += value
             group_entry.account_type_totals[account_type_code] += value
 
@@ -102,14 +123,18 @@ class PortfolioSummaryService:
             summary.grand_total += value
             summary.account_type_grand_totals[account_type_code] += value
 
-        # Fetch target allocations and calculate target/variance values
-        target_allocations = TargetAllocation.objects.filter(user=user).select_related('asset_class', 'account_type')
+    @staticmethod
+    def _calculate_targets_and_variances(
+        user: Any,
+        summary: PortfolioSummary,
+        category_group_map: dict[str, str],
+    ) -> None:
+        target_allocations = TargetAllocation.objects.get_for_user(user)
         target_lookup: dict[tuple[str, str], Decimal] = {}
         for target in target_allocations:
             key = (target.account_type.code, target.asset_class.name)
             target_lookup[key] = target.target_pct
 
-        # Calculate target dollar amounts and variances
         for category_code, category_data in summary.categories.items():
             for asset_class_name, asset_class_data in category_data.asset_classes.items():
                 for account_type_code, account_data in asset_class_data.account_types.items():
@@ -152,6 +177,8 @@ class PortfolioSummaryService:
                     summary.grand_target_total += target_dollars
                     summary.grand_variance_total += variance_dollars
 
+    @staticmethod
+    def _sort_and_organize_summary(summary: PortfolioSummary, category_group_map: dict[str, str]) -> None:
         # Sort asset classes within each category and categories by total value (descending)
         for _category_code, category_data in summary.categories.items():
             asset_classes = category_data.asset_classes
@@ -187,8 +214,6 @@ class PortfolioSummaryService:
 
         summary.account_type_percentages = account_type_percentages
 
-        return summary
-
     @staticmethod
     def get_account_summary(user: Any) -> dict[str, Any]:
         """
@@ -198,11 +223,11 @@ class PortfolioSummaryService:
         # Ensure prices are up to date
         PortfolioSummaryService.update_prices(user)
 
-        # Prefetch the 'account_type' and its 'group' field
-        accounts = Account.objects.filter(user=user).select_related('institution', 'account_type__group').prefetch_related('holdings__security__asset_class')
+        # Prefetch data using Manager
+        accounts = Account.objects.get_summary_data(user)
 
         # 1. Fetch all targets for this user and map by account_type_code -> asset_class_name
-        targets = TargetAllocation.objects.filter(user=user).select_related('asset_class', 'account_type')
+        targets = TargetAllocation.objects.get_for_user(user)
         # Map: account_type_code -> asset_class_name -> target_pct
         target_map: dict[str, dict[str, Decimal]] = defaultdict(dict)
         for t in targets:
@@ -321,13 +346,11 @@ class PortfolioSummaryService:
         PortfolioSummaryService.update_prices(user)
 
         # Fetch base data
-        holdings = Holding.objects.filter(account__user=user).select_related(
-            'account', 'security', 'security__asset_class'
-        )
+        holdings_qs = Holding.objects.get_for_category_view(user)
         if account_id:
-            holdings = holdings.filter(account_id=account_id)
+            holdings_qs = holdings_qs.filter(account_id=account_id)
 
-        target_allocations = TargetAllocation.objects.filter(user=user).select_related('asset_class', 'account_type')
+        target_allocations = TargetAllocation.objects.get_for_user(user)
 
         # --- PRE-CALCULATION PHASE ---
 
@@ -346,7 +369,7 @@ class PortfolioSummaryService:
         # We need to iterate ALL holdings to build the account stats first, even if we are filtering?
         # No, if we filter by account_id, we only show data for that account.
 
-        for holding in holdings:
+        for holding in holdings_qs:
             val = Decimal('0.00')
             if holding.current_price:
                  val = holding.shares * holding.current_price
@@ -360,7 +383,7 @@ class PortfolioSummaryService:
         ticker_data: dict[str, AggregatedHolding] = {}
         grand_total_value = Decimal('0.00')
 
-        for holding in holdings:
+        for holding in holdings_qs:
             ticker = holding.security.ticker
             current_val = Decimal('0.00')
             if holding.current_price:
