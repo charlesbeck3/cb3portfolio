@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from portfolio.models import Account, AssetCategory, AssetClass, Holding, Security
+from portfolio.models import Account, AssetCategory, AssetClass, Holding, Security, TargetAllocation
 from portfolio.services import PortfolioSummaryService
 
 User = get_user_model()
@@ -59,18 +59,82 @@ class PortfolioSummaryServiceTests(TestCase):
         # Check Categories
         equities = summary['categories']['US_EQUITIES']
         self.assertEqual(equities['total'], Decimal('2000.00'))
-        self.assertEqual(equities['asset_classes']['US Stocks']['total'], Decimal('2000.00'))
-        self.assertEqual(equities['asset_classes']['US Stocks']['account_types']['ROTH_IRA'], Decimal('2000.00'))
+        equities_us = equities['asset_classes']['US Stocks']
+        self.assertEqual(equities_us['total'], Decimal('2000.00'))
+        self.assertEqual(equities_us['account_types']['ROTH_IRA']['current'], Decimal('2000.00'))
         fixed_income = summary['categories']['FIXED_INCOME']
         self.assertEqual(fixed_income['total'], Decimal('1600.00'))
-        self.assertEqual(fixed_income['asset_classes']['Bonds']['total'], Decimal('1600.00'))
-        self.assertEqual(fixed_income['asset_classes']['Bonds']['account_types']['TAXABLE'], Decimal('1600.00'))
+        fixed_income_bonds = fixed_income['asset_classes']['Bonds']
+        self.assertEqual(fixed_income_bonds['total'], Decimal('1600.00'))
+        self.assertEqual(fixed_income_bonds['account_types']['TAXABLE']['current'], Decimal('1600.00'))
         equities_group = summary['groups']['EQUITIES']
         self.assertEqual(equities_group['label'], 'Equities')
         self.assertEqual(equities_group['total'], Decimal('2000.00'))
         self.assertIn('US_EQUITIES', equities_group['categories'])
         self.assertEqual(equities_group['total'], Decimal('2000.00'))
         self.assertIn('US_EQUITIES', equities_group['categories'])
+
+        # Check account type percentage share of grand total (rounded to 2 decimal places)
+        percentages = summary['account_type_percentages']
+        self.assertEqual(percentages['ROTH_IRA'].quantize(Decimal('0.01')), Decimal('55.56'))
+        self.assertEqual(percentages['TAXABLE'].quantize(Decimal('0.01')), Decimal('44.44'))
+
+    @patch('portfolio.services.PortfolioSummaryService.update_prices')
+    def test_get_holdings_summary_with_targets_and_variance(self, mock_update_prices: MagicMock) -> None:
+        """Target allocations should produce target dollar amounts and zero variance when aligned."""
+
+        # Set simple 100% targets for each account type and asset class
+        TargetAllocation.objects.create(
+            user=self.user,
+            account_type='ROTH_IRA',
+            asset_class=self.asset_class_us,
+            target_pct=Decimal('100.0'),
+        )
+        TargetAllocation.objects.create(
+            user=self.user,
+            account_type='TAXABLE',
+            asset_class=self.asset_class_bonds,
+            target_pct=Decimal('100.0'),
+        )
+
+        summary = PortfolioSummaryService.get_holdings_summary(self.user)
+
+        # Grand totals
+        self.assertEqual(summary['grand_total'], Decimal('3600.00'))
+        self.assertEqual(summary['grand_target_total'], Decimal('3600.00'))
+        self.assertEqual(summary['grand_variance_total'], Decimal('0.00'))
+
+        # Account-type level target and variance totals
+        self.assertEqual(summary['account_type_grand_target_totals']['ROTH_IRA'], Decimal('2000.00'))
+        self.assertEqual(summary['account_type_grand_target_totals']['TAXABLE'], Decimal('1600.00'))
+        self.assertEqual(summary['account_type_grand_variance_totals']['ROTH_IRA'], Decimal('0.00'))
+        self.assertEqual(summary['account_type_grand_variance_totals']['TAXABLE'], Decimal('0.00'))
+
+        # Category-level rollups
+        equities = summary['categories']['US_EQUITIES']
+        equities_targets = equities['account_type_target_totals']
+        equities_variances = equities['account_type_variance_totals']
+        self.assertEqual(equities_targets['ROTH_IRA'], Decimal('2000.00'))
+        self.assertEqual(equities_variances['ROTH_IRA'], Decimal('0.00'))
+
+        fixed_income = summary['categories']['FIXED_INCOME']
+        fixed_income_targets = fixed_income['account_type_target_totals']
+        fixed_income_variances = fixed_income['account_type_variance_totals']
+        self.assertEqual(fixed_income_targets['TAXABLE'], Decimal('1600.00'))
+        self.assertEqual(fixed_income_variances['TAXABLE'], Decimal('0.00'))
+
+        # Asset-class level target and variance
+        equities_us = equities['asset_classes']['US Stocks']
+        roth_data = equities_us['account_types']['ROTH_IRA']
+        self.assertEqual(roth_data['current'], Decimal('2000.00'))
+        self.assertEqual(roth_data['target'], Decimal('2000.00'))
+        self.assertEqual(roth_data['variance'], Decimal('0.00'))
+
+        fixed_income_bonds = fixed_income['asset_classes']['Bonds']
+        taxable_data = fixed_income_bonds['account_types']['TAXABLE']
+        self.assertEqual(taxable_data['current'], Decimal('1600.00'))
+        self.assertEqual(taxable_data['target'], Decimal('1600.00'))
+        self.assertEqual(taxable_data['variance'], Decimal('0.00'))
 
     @patch('portfolio.services.PortfolioSummaryService.update_prices')
     def test_get_account_summary(self, mock_update_prices: MagicMock) -> None:
