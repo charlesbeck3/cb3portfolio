@@ -58,6 +58,37 @@ class PortfolioSummary:
     group_labels: dict[str, str] = field(default_factory=dict)
 
 
+@dataclass
+class AggregatedHolding:
+    ticker: str
+    name: str
+    asset_class: str
+    category_code: str
+    shares: Decimal = Decimal('0.00')
+    current_price: Decimal | None = None
+    value: Decimal = Decimal('0.00')
+
+
+@dataclass
+class HoldingsCategory:
+    label: str
+    total: Decimal = Decimal('0.00')
+    holdings: list[AggregatedHolding] = field(default_factory=list)
+
+
+@dataclass
+class HoldingsGroup:
+    label: str
+    total: Decimal = Decimal('0.00')
+    categories: OrderedDict[str, HoldingsCategory] = field(default_factory=OrderedDict)
+
+
+@dataclass
+class HoldingsSummary:
+    grand_total: Decimal = Decimal('0.00')
+    holding_groups: OrderedDict[str, HoldingsGroup] = field(default_factory=OrderedDict)
+
+
 class PortfolioSummaryService:
     @staticmethod
     def update_prices(user: Any) -> None:
@@ -340,5 +371,108 @@ class PortfolioSummaryService:
         
         return {
             'groups': sorted_groups,
+            'grand_total': grand_total,
+        }
+
+    @staticmethod
+    def get_holdings_by_category(user: Any) -> dict[str, Any]:
+        """
+        Get all holdings grouped by category and group, sorted by value.
+        """
+        # Ensure prices are up to date
+        PortfolioSummaryService.update_prices(user)
+
+        holdings = Holding.objects.filter(account__user=user).select_related(
+            'account', 'security', 'security__asset_class'
+        )
+
+        # First, aggregate by ticker
+        ticker_data: dict[str, AggregatedHolding] = {}
+        for holding in holdings:
+            ticker = holding.security.ticker
+            if ticker not in ticker_data:
+                ticker_data[ticker] = AggregatedHolding(
+                    ticker=ticker,
+                    name=holding.security.name,
+                    asset_class=holding.security.asset_class.name,
+                    category_code=holding.security.asset_class.category_id,
+                    current_price=holding.current_price,
+                )
+
+            ticker_data[ticker].shares += holding.shares
+            if holding.current_price:
+                ticker_data[ticker].value += holding.shares * holding.current_price
+
+        # Now group by category
+        categories: defaultdict[str, HoldingsCategory] = defaultdict(
+            lambda: HoldingsCategory(label='', holdings=[])
+        )
+        category_qs = AssetCategory.objects.select_related('parent').order_by('sort_order', 'label')
+        category_map: dict[str, AssetCategory] = {category.code: category for category in category_qs}
+        group_order: list[str] = []
+        grouped_category_codes: dict[str, list[str]] = {}
+        
+        for category in category_qs:
+            group_code = category.parent_id or category.code
+            if group_code not in group_order:
+                group_order.append(group_code)
+            if group_code not in grouped_category_codes:
+                grouped_category_codes[group_code] = []
+            grouped_category_codes[group_code].append(category.code)
+
+        for _ticker, data in sorted(ticker_data.items()):
+            category_code = data.category_code
+            if not categories[category_code].label:
+                 cat_obj = category_map.get(category_code)
+                 categories[category_code].label = cat_obj.label if cat_obj else category_code
+            
+            categories[category_code].holdings.append(data)
+            categories[category_code].total += data.value
+
+        # Sort holdings within each category by current value (desc) then ticker for stability
+        for category_holdings in categories.values():
+            category_holdings.holdings.sort(
+                key=lambda holding: (holding.value, holding.ticker),
+                reverse=True,
+            )
+
+        holding_groups: OrderedDict[str, HoldingsGroup] = OrderedDict()
+        grand_total = Decimal('0.00')
+
+        for group_code in group_order:
+            category_codes = grouped_category_codes.get(group_code, [])
+            group_categories: OrderedDict[str, HoldingsCategory] = OrderedDict()
+            group_total = Decimal('0.00')
+
+            for category_code in category_codes:
+                category_holdings_optional = categories.get(category_code)
+                if category_holdings_optional is None or not category_holdings_optional.holdings:
+                    continue
+
+                category_holdings = category_holdings_optional
+                
+                # Ensure label is set (might not be if no holdings populated it yet, but we skip empty ones)
+                if not category_holdings.label:
+                     cat_obj = category_map.get(category_code)
+                     category_holdings.label = cat_obj.label if cat_obj else category_code
+
+                group_categories[category_code] = category_holdings
+                group_total += category_holdings.total
+
+            if not group_categories:
+                continue
+
+            group_obj = category_map.get(group_code)
+            group_label = group_obj.label if group_obj else group_code
+
+            holding_groups[group_code] = HoldingsGroup(
+                label=group_label,
+                total=group_total,
+                categories=group_categories,
+            )
+            grand_total += group_total
+
+        return {
+            'holding_groups': holding_groups,
             'grand_total': grand_total,
         }
