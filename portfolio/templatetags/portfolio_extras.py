@@ -23,3 +23,14 @@ def percentage_of(value: Any, total: Any) -> Decimal:
     if dec_total == 0:
         return Decimal('0')
     return (dec_value / dec_total) * Decimal('100')
+
+
+@register.filter
+def subtract(value: Any, arg: Any) -> Decimal:
+    """Subtract arg from value."""
+    try:
+        dec_value = Decimal(str(value))
+        dec_arg = Decimal(str(arg))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal('0')
+    return dec_value - dec_arg

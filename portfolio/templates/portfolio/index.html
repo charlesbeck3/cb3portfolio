@@ -2,25 +2,34 @@
 {% load portfolio_extras %}
 {% load humanize %}
 
-{% block title %}Dashboard - Portfolio Manager{% endblock %}
+{% block title %}Dashboard - Portfol{% endblock %}
 
 {% block content %}
+{% with account_count=account_types|length %}
+{% widthratio account_count 1 3 as account_value_columns %}
 <style>
-    .holdings-table {
+    .dashboard-content .holdings-table {
         table-layout: fixed;
-        width: 100%;
     }
-    .holdings-table th:first-child,
-    .holdings-table td:first-child {
-        width: 20%;
+
+    .dashboard-content .holdings-table col.col-asset {
+        width: var(--asset-col-width, 18%);
+    }
+
+    .dashboard-content .holdings-table col.col-account {
+        width: calc(
+            (100% - var(--asset-col-width, 18%) - var(--total-col-width, 12%))
+            / var(--account-columns, 12)
+        );
+    }
+
+    .dashboard-content .holdings-table col.col-total {
+        width: var(--total-col-width, 12%);
         white-space: nowrap;
-    }
-    .holdings-table th:not(:first-child),
-    .holdings-table td:not(:first-child) {
-        width: 15%;
     }
 </style>
 
+<div class="dashboard-content" style="--account-columns: {{ account_value_columns }};">
 <div class="row">
     <!-- Sidebar Column -->
     <div class="col-md-2 d-none d-md-block px-0">
@@ -50,13 +59,29 @@
                     <div class="card-body">
                         <div class="table-responsive">
                             <table class="table table-striped table-bordered holdings-table">
+                                <colgroup>
+                                    <col class="col-asset">
+                                    {% for code, label in account_types %}
+                                    <col class="col-account">
+                                    <col class="col-account">
+                                    <col class="col-account">
+                                    {% endfor %}
+                                    <col class="col-total">
+                                </colgroup>
                                 <thead>
                                     <tr>
-                                        <th>Asset Class</th>
+                                        <th rowspan="2">Asset Class</th>
                                         {% for code, label in account_types %}
-                                        <th class="text-end">{{ label }}</th>
+                                        <th colspan="3" class="text-center">{{ label }}</th>
                                         {% endfor %}
-                                        <th class="text-end">Total</th>
+                                        <th rowspan="2" class="text-end">Total</th>
+                                    </tr>
+                                    <tr>
+                                        {% for code, label in account_types %}
+                                        <th class="text-end">Current</th>
+                                        <th class="text-end">Target</th>
+                                        <th class="text-end">vTarget</th>
+                                        {% endfor %}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -66,8 +91,12 @@
                                     <tr class="group-{{ forloop.parentloop.parentloop.counter }}-rows collapse show">
                                         <td class="ps-4">{{ asset_class_name }}</td>
                                         {% for code, label in account_types %}
-                                        {% with value=asset_class_data.account_types|get_item:code %}
-                                        <td class="text-end">${{ value|floatformat:0|default:"0"|intcomma }}</td>
+                                        {% with data=asset_class_data.account_types|get_item:code %}
+                                        <td class="text-end">${{ data.current|floatformat:0|default:"0"|intcomma }}</td>
+                                        <td class="text-end">${{ data.target|floatformat:0|default:"0"|intcomma }}</td>
+                                        <td class="text-end {% if data.variance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            ${{ data.variance|floatformat:0|default:"0"|intcomma }}
+                                        </td>
                                         {% endwith %}
                                         {% endfor %}
                                         <td class="text-end fw-bold">${{ asset_class_data.total|floatformat:0|default:"0"|intcomma }}</td>
@@ -80,8 +109,12 @@
                                         <td class="ps-4">{{ category_label|default:category_code }} Total</td>
                                         {% endwith %}
                                         {% for code, label in account_types %}
-                                        {% with value=category_data.account_type_totals|get_item:code %}
-                                        <td class="text-end">${{ value|floatformat:0|default:"0"|intcomma }}</td>
+                                        {% with current=category_data.account_type_totals|get_item:code target=category_data.account_type_target_totals|get_item:code variance=category_data.account_type_variance_totals|get_item:code %}
+                                        <td class="text-end">${{ current|floatformat:0|default:"0"|intcomma }}</td>
+                                        <td class="text-end">${{ target|floatformat:0|default:"0"|intcomma }}</td>
+                                        <td class="text-end {% if variance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            ${{ variance|floatformat:0|default:"0"|intcomma }}
+                                        </td>
                                         {% endwith %}
                                         {% endfor %}
                                         <td class="text-end">${{ category_data.total|floatformat:0|default:"0"|intcomma }}</td>
@@ -93,8 +126,12 @@
                                         aria-expanded="true" role="button">
                                         <td>{{ group_data.label|default:group_code }} Total</td>
                                         {% for code, label in account_types %}
-                                        {% with value=group_data.account_type_totals|get_item:code %}
-                                        <td class="text-end">${{ value|floatformat:0|default:"0"|intcomma }}</td>
+                                        {% with current=group_data.account_type_totals|get_item:code target=group_data.account_type_target_totals|get_item:code variance=group_data.account_type_variance_totals|get_item:code %}
+                                        <td class="text-end">${{ current|floatformat:0|default:"0"|intcomma }}</td>
+                                        <td class="text-end">${{ target|floatformat:0|default:"0"|intcomma }}</td>
+                                        <td class="text-end {% if variance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            ${{ variance|floatformat:0|default:"0"|intcomma }}
+                                        </td>
                                         {% endwith %}
                                         {% endfor %}
                                         <td class="text-end">${{ group_data.total|floatformat:0|default:"0"|intcomma }}
@@ -106,11 +143,17 @@
                                     <tr class="table-dark fw-bold">
                                         <td>Grand Total</td>
                                         {% for code, label in account_types %}
-                                        {% with value=summary.account_type_grand_totals|get_item:code %}
-                                        <td class="text-end">${{ value|floatformat:0|default:"0"|intcomma }}</td>
+                                        {% with current=summary.account_type_grand_totals|get_item:code target=summary.account_type_grand_target_totals|get_item:code variance=summary.account_type_grand_variance_totals|get_item:code %}
+                                        <td class="text-end">${{ current|floatformat:0|default:"0"|intcomma }}</td>
+                                        <td class="text-end">${{ target|floatformat:0|default:"0"|intcomma }}</td>
+                                        <td class="text-end {% if variance >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            ${{ variance|floatformat:0|default:"0"|intcomma }}
+                                        </td>
                                         {% endwith %}
                                         {% endfor %}
-                                        <td class="text-end">${{ summary.grand_total|floatformat:0|default:"0"|intcomma }}</td>
+                                        <td class="text-end">
+                                            ${{ summary.grand_total|floatformat:0|default:"0"|intcomma }}
+                                        </td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -125,13 +168,29 @@
                     <div class="card-body">
                         <div class="table-responsive">
                             <table class="table table-striped table-bordered mb-0 holdings-table">
+                                <colgroup>
+                                    <col class="col-asset">
+                                    {% for code, label in account_types %}
+                                    <col class="col-account">
+                                    <col class="col-account">
+                                    <col class="col-account">
+                                    {% endfor %}
+                                    <col class="col-total">
+                                </colgroup>
                                 <thead>
                                     <tr>
-                                        <th>Asset Class</th>
+                                        <th rowspan="2">Asset Class</th>
                                         {% for code, label in account_types %}
-                                        <th class="text-end">{{ label }}</th>
+                                        <th colspan="3" class="text-center">{{ label }}</th>
                                         {% endfor %}
-                                        <th class="text-end">Total</th>
+                                        <th rowspan="2" class="text-end">Total</th>
+                                    </tr>
+                                    <tr>
+                                        {% for code, label in account_types %}
+                                        <th class="text-end">Current</th>
+                                        <th class="text-end">Target</th>
+                                        <th class="text-end">vTarget</th>
+                                        {% endfor %}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -141,8 +200,16 @@
                                     <tr>
                                         <td class="ps-4">{{ asset_class_name }}</td>
                                         {% for code, label in account_types %}
-                                        {% with value=asset_class_data.account_types|get_item:code column_total=summary.account_type_grand_totals|get_item:code %}
-                                        <td class="text-end">{{ value|percentage_of:column_total|floatformat:1 }}%</td>
+                                        {% with data=asset_class_data.account_types|get_item:code column_total=summary.account_type_grand_totals|get_item:code %}
+                                        {% with current_pct=data.current|percentage_of:column_total target_pct=data.target|percentage_of:column_total %}
+                                        <td class="text-end">{{ current_pct|floatformat:1 }}%</td>
+                                        <td class="text-end">{{ target_pct|floatformat:1 }}%</td>
+                                        {% with variance_pct=current_pct|subtract:target_pct %}
+                                        <td class="text-end {% if variance_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            {{ variance_pct|floatformat:1 }}%
+                                        </td>
+                                        {% endwith %}
+                                        {% endwith %}
                                         {% endwith %}
                                         {% endfor %}
                                         <td class="text-end fw-bold">{{ asset_class_data.total|percentage_of:summary.grand_total|floatformat:1 }}%</td>
@@ -154,8 +221,18 @@
                                         <td class="ps-4">{{ category_label|default:category_code }} Total</td>
                                         {% endwith %}
                                         {% for code, label in account_types %}
-                                        {% with value=category_data.account_type_totals|get_item:code column_total=summary.account_type_grand_totals|get_item:code %}
-                                        <td class="text-end">{{ value|percentage_of:column_total|floatformat:1 }}%</td>
+                                        {% with current=category_data.account_type_totals|get_item:code target=category_data.account_type_target_totals|get_item:code variance=category_data.account_type_variance_totals|get_item:code %}
+                                        {% with current_total=summary.account_type_grand_totals|get_item:code target_total=summary.account_type_grand_target_totals|get_item:code %}
+                                        {% with current_pct=current|percentage_of:current_total target_pct=target|percentage_of:target_total %}
+                                        <td class="text-end">{{ current_pct|floatformat:1 }}%</td>
+                                        <td class="text-end">{{ target_pct|floatformat:1 }}%</td>
+                                        {% with variance_pct=current_pct|subtract:target_pct %}
+                                        <td class="text-end {% if variance_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            {{ variance_pct|floatformat:1 }}%
+                                        </td>
+                                        {% endwith %}
+                                        {% endwith %}
+                                        {% endwith %}
                                         {% endwith %}
                                         {% endfor %}
                                         <td class="text-end">{{ category_data.total|percentage_of:summary.grand_total|floatformat:1 }}%</td>
@@ -165,8 +242,18 @@
                                     <tr class="table-primary fw-bold border-top">
                                         <td>{{ group_data.label|default:group_code }} Total</td>
                                         {% for code, label in account_types %}
-                                        {% with value=group_data.account_type_totals|get_item:code column_total=summary.account_type_grand_totals|get_item:code %}
-                                        <td class="text-end">{{ value|percentage_of:column_total|floatformat:1 }}%</td>
+                                        {% with current=group_data.account_type_totals|get_item:code target=group_data.account_type_target_totals|get_item:code %}
+                                        {% with current_total=summary.account_type_grand_totals|get_item:code target_total=summary.account_type_grand_target_totals|get_item:code %}
+                                        {% with current_pct=current|percentage_of:current_total target_pct=target|percentage_of:target_total %}
+                                        <td class="text-end">{{ current_pct|floatformat:1 }}%</td>
+                                        <td class="text-end">{{ target_pct|floatformat:1 }}%</td>
+                                        {% with variance_pct=current_pct|subtract:target_pct %}
+                                        <td class="text-end {% if variance_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            {{ variance_pct|floatformat:1 }}%
+                                        </td>
+                                        {% endwith %}
+                                        {% endwith %}
+                                        {% endwith %}
                                         {% endwith %}
                                         {% endfor %}
                                         <td class="text-end">{{ group_data.total|percentage_of:summary.grand_total|floatformat:1 }}%</td>
@@ -177,11 +264,25 @@
                                     <tr class="table-dark fw-bold">
                                         <td>Grand Total</td>
                                         {% for code, label in account_types %}
-                                        {% with value=summary.account_type_grand_totals|get_item:code column_total=summary.account_type_grand_totals|get_item:code %}
-                                        <td class="text-end">{{ value|percentage_of:column_total|default:"0"|floatformat:1 }}%</td>
+                                        {% with current=summary.account_type_grand_totals|get_item:code target=summary.account_type_grand_target_totals|get_item:code %}
+                                        {% with current_total=summary.account_type_grand_totals|get_item:code target_total=summary.account_type_grand_target_totals|get_item:code %}
+                                        {% with current_pct=current|percentage_of:current_total target_pct=target|percentage_of:target_total %}
+                                        <td class="text-end">{{ current_pct|default:"0"|floatformat:1 }}%</td>
+                                        <td class="text-end">{{ target_pct|default:"0"|floatformat:1 }}%</td>
+                                        {% with variance_pct=current_pct|subtract:target_pct %}
+                                        <td class="text-end {% if variance_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            {{ variance_pct|default:"0"|floatformat:1 }}%
+                                        </td>
+                                        {% endwith %}
+                                        {% endwith %}
+                                        {% endwith %}
                                         {% endwith %}
                                         {% endfor %}
+                                        {% with target_total=summary.grand_target_total current_total=summary.grand_total %}
+                                        {% with current_pct=current_total|percentage_of:current_total target_pct=target_total|percentage_of:target_total %}
                                         <td class="text-end">100%</td>
+                                        {% endwith %}
+                                        {% endwith %}
                                     </tr>
                                 </tfoot>
                             </table>
@@ -192,4 +293,5 @@
         </div>
     </div>
 </div>
+{% endwith %}
 {% endblock %}

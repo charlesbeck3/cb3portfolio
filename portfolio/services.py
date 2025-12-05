@@ -5,7 +5,7 @@ from typing import Any
 
 import yfinance as yf
 
-from portfolio.models import Account, AssetCategory, Holding
+from portfolio.models import Account, AssetCategory, Holding, TargetAllocation
 
 logger = logging.getLogger(__name__)
 
@@ -14,9 +14,17 @@ GroupEntry = dict[str, Any]
 SummaryDict = dict[str, Any]
 
 
+def _account_type_data_factory() -> dict[str, Decimal]:
+    return {
+        'current': Decimal('0.00'),
+        'target': Decimal('0.00'),
+        'variance': Decimal('0.00'),
+    }
+
+
 def _asset_class_entry_factory() -> dict[str, Any]:
     return {
-        'account_types': defaultdict(Decimal),
+        'account_types': defaultdict(_account_type_data_factory),
         'total': Decimal('0.00'),
     }
 
@@ -26,6 +34,8 @@ def _category_entry_factory() -> CategoryEntry:
         'asset_classes': defaultdict(_asset_class_entry_factory),
         'total': Decimal('0.00'),
         'account_type_totals': defaultdict(Decimal),
+        'account_type_target_totals': defaultdict(Decimal),
+        'account_type_variance_totals': defaultdict(Decimal),
     }
 
 
@@ -35,6 +45,8 @@ def _group_entry_factory() -> GroupEntry:
         'categories': OrderedDict(),
         'total': Decimal('0.00'),
         'account_type_totals': defaultdict(Decimal),
+        'account_type_target_totals': defaultdict(Decimal),
+        'account_type_variance_totals': defaultdict(Decimal),
     }
 
 
@@ -171,7 +183,11 @@ class PortfolioSummaryService:
             'categories': categories_summary,
             'groups': groups_summary,
             'grand_total': Decimal('0.00'),
+            'grand_target_total': Decimal('0.00'),
+            'grand_variance_total': Decimal('0.00'),
             'account_type_grand_totals': defaultdict(Decimal),
+            'account_type_grand_target_totals': defaultdict(Decimal),
+            'account_type_grand_variance_totals': defaultdict(Decimal),
             'account_type_percentages': {},
             'category_labels': category_labels,
             'group_labels': group_labels,
@@ -195,7 +211,7 @@ class PortfolioSummaryService:
 
             # Update specific asset class entry
             ac_entry = categories_summary[category_code]['asset_classes'][asset_class_name]
-            ac_entry['account_types'][account_type_code] += value
+            ac_entry['account_types'][account_type_code]['current'] += value
             ac_entry['total'] += value
 
             # Update category totals
@@ -213,6 +229,48 @@ class PortfolioSummaryService:
             # Update grand totals
             summary['grand_total'] += value
             summary['account_type_grand_totals'][account_type_code] += value
+
+        # Fetch target allocations and calculate target/variance values
+        target_allocations = TargetAllocation.objects.filter(user=user).select_related('asset_class')
+        target_lookup: dict[tuple[str, str], Decimal] = {}
+        for target in target_allocations:
+            key = (target.account_type, target.asset_class.name)
+            target_lookup[key] = target.target_pct
+
+        # Calculate target dollar amounts and variances
+        for category_code, category_data in categories_summary.items():
+            for asset_class_name, asset_class_data in category_data['asset_classes'].items():
+                for account_type_code, account_data in asset_class_data['account_types'].items():
+                    # Get target percentage (default to 0 if not found)
+                    target_pct = target_lookup.get((account_type_code, asset_class_name), Decimal('0.00'))
+
+                    # Calculate target dollar amount
+                    account_type_total = summary['account_type_grand_totals'].get(account_type_code, Decimal('0.00'))
+                    target_dollars = account_type_total * (target_pct / Decimal('100'))
+
+                    # Calculate variance
+                    current_dollars = account_data['current']
+                    variance_dollars = current_dollars - target_dollars
+
+                    # Update the account data
+                    account_data['target'] = target_dollars
+                    account_data['variance'] = variance_dollars
+
+                    # Update category totals
+                    category_data['account_type_target_totals'][account_type_code] += target_dollars
+                    category_data['account_type_variance_totals'][account_type_code] += variance_dollars
+
+                    # Update group totals
+                    group_code = category_group_map.get(category_code, category_code)
+                    group_entry = groups_summary[group_code]
+                    group_entry['account_type_target_totals'][account_type_code] += target_dollars
+                    group_entry['account_type_variance_totals'][account_type_code] += variance_dollars
+
+                    # Update grand totals
+                    summary['account_type_grand_target_totals'][account_type_code] += target_dollars
+                    summary['account_type_grand_variance_totals'][account_type_code] += variance_dollars
+                    summary['grand_target_total'] += target_dollars
+                    summary['grand_variance_total'] += variance_dollars
 
         # Convert defaultdicts to dicts for template iteration
         # Django templates can have issues with defaultdicts (accessing .items lookup)
