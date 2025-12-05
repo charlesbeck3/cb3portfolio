@@ -4,7 +4,7 @@ from typing import Any
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import TemplateView
 
-from portfolio.models import Account
+from portfolio.models import Account, AccountType
 from portfolio.services import PortfolioSummaryService
 
 
@@ -18,18 +18,12 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         context['summary'] = PortfolioSummaryService.get_holdings_summary(self.request.user)
         context['sidebar_data'] = PortfolioSummaryService.get_account_summary(self.request.user)
 
-        # Pass account types for column headers
-        # Only include account types that have at least one account
+        # Add account types for the "Add Account" modal/form if needed,
+        # or just passing them for display.
+        # Previously: (code, label) for code, label in Account.ACCOUNT_TYPES
+        # Now: Use AccountType model
         assert self.request.user.is_authenticated
-        existing_types = set(
-            Account.objects.filter(user=self.request.user)
-            .values_list('account_type', flat=True)
-            .distinct()
-        )
-        context['account_types'] = [
-            (code, label) for code, label in Account.ACCOUNT_TYPES
-            if code in existing_types
-        ]
+        context['account_types'] = AccountType.objects.filter(accounts__user=self.request.user).distinct().values_list('code', 'label').order_by('label')
 
         return context
 

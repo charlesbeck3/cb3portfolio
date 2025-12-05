@@ -8,11 +8,12 @@ from portfolio.models import (
     AssetCategory,
     AssetClass,
     Holding,
-    Institution,
     RebalancingRecommendation,
     Security,
     TargetAllocation,
 )
+
+from .base import PortfolioTestMixin
 
 User = get_user_model()
 
@@ -31,17 +32,18 @@ class AssetClassTests(TestCase):
         self.assertEqual(str(ac), "US Stocks")
 
 
-class AccountTests(TestCase):
+class AccountTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
+        self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
-        self.institution = Institution.objects.create(name="Vanguard")
+        # self.institution = Institution.objects.create(name="Vanguard")
 
     def test_create_account(self) -> None:
         """Test creating an account."""
         account = Account.objects.create(
             user=self.user,
             name="Roth IRA",
-            account_type="ROTH_IRA",
+            account_type=self.type_roth,
             institution=self.institution,
         )
         self.assertEqual(account.name, "Roth IRA")
@@ -56,20 +58,20 @@ class AccountTests(TestCase):
         # The original test instantiated without saving: roth = Account(account_type='ROTH_IRA')
         # This is fine as long as we don't save.
 
-        roth = Account(account_type='ROTH_IRA')
+        roth = Account(account_type=self.type_roth)
         self.assertEqual(roth.tax_treatment, 'TAX_FREE')
 
-        trad = Account(account_type='TRADITIONAL_IRA')
+        trad = Account(account_type=self.type_trad)
         self.assertEqual(trad.tax_treatment, 'TAX_DEFERRED')
 
-        k401 = Account(account_type='401K')
+        k401 = Account(account_type=self.type_401k)
         self.assertEqual(k401.tax_treatment, 'TAX_DEFERRED')
 
-        taxable = Account(account_type='TAXABLE')
+        taxable = Account(account_type=self.type_taxable)
         self.assertEqual(taxable.tax_treatment, 'TAXABLE')
 
 
-class SecurityTests(TestCase):
+class SecurityTests(TestCase, PortfolioTestMixin): # Added mixin just in case, though not strictly needed if not using AccountType
     def setUp(self) -> None:
         self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
@@ -88,10 +90,11 @@ class SecurityTests(TestCase):
         self.assertEqual(str(security), "VTI - Vanguard Total Stock Market ETF")
 
 
-class HoldingTests(TestCase):
+class HoldingTests(TestCase, PortfolioTestMixin): # Inherit from PortfolioTestMixin
     def setUp(self) -> None:
+        self.setup_portfolio_data() # Call setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
-        self.institution = Institution.objects.create(name="Vanguard")
+        # self.institution = Institution.objects.create(name="Vanguard") # Removed, as it's in mixin
         self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
             name="US Stocks",
@@ -100,7 +103,7 @@ class HoldingTests(TestCase):
         self.account = Account.objects.create(
             user=self.user,
             name="Roth IRA",
-            account_type="ROTH_IRA",
+            account_type=self.type_roth, # Replaced string with model instance
             institution=self.institution,
         )
         self.security = Security.objects.create(
@@ -121,8 +124,9 @@ class HoldingTests(TestCase):
         self.assertEqual(str(holding), "VTI in Roth IRA (10.5000 shares)")
 
 
-class TargetAllocationTests(TestCase):
+class TargetAllocationTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
+        self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
@@ -134,19 +138,20 @@ class TargetAllocationTests(TestCase):
         """Test creating a target allocation."""
         target = TargetAllocation.objects.create(
             user=self.user,
-            account_type="ROTH_IRA",
+            account_type=self.type_roth,
             asset_class=self.asset_class,
             target_pct=Decimal("40.00")
         )
         self.assertEqual(target.target_pct, Decimal("40.00"))
-        self.assertEqual(str(target), "Roth IRA - US Stocks: 40.00% (testuser)")
+        # Using f-string to match new str logic if needed, but simple string also works provided type label is correct
+        self.assertEqual(str(target), f"{self.user.username} - {self.type_roth.label} - {self.asset_class.name}: 40.00%")
 
     def test_target_allocation_isolation(self) -> None:
         """Test that different users can have their own allocations."""
         # User 1 allocation
         TargetAllocation.objects.create(
             user=self.user,
-            account_type="ROTH_IRA",
+            account_type=self.type_roth,
             asset_class=self.asset_class,
             target_pct=Decimal("40.00")
         )
@@ -155,7 +160,7 @@ class TargetAllocationTests(TestCase):
         user2 = User.objects.create_user(username="otheruser", password="password")
         target2 = TargetAllocation.objects.create(
             user=user2,
-            account_type="ROTH_IRA",
+            account_type=self.type_roth,
             asset_class=self.asset_class,
             target_pct=Decimal("60.00")
         )
@@ -165,10 +170,10 @@ class TargetAllocationTests(TestCase):
         self.assertEqual(target2.target_pct, Decimal("60.00"))
 
 
-class RebalancingRecommendationTests(TestCase):
+class RebalancingRecommendationTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
+        self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
-        self.institution = Institution.objects.create(name="Vanguard")
         self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
             name="US Stocks",
@@ -177,7 +182,7 @@ class RebalancingRecommendationTests(TestCase):
         self.account = Account.objects.create(
             user=self.user,
             name="Roth IRA",
-            account_type="ROTH_IRA",
+            account_type=self.type_roth,
             institution=self.institution,
         )
         self.security = Security.objects.create(

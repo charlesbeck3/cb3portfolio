@@ -82,53 +82,55 @@ class AccountGroup(models.Model):
         return self.name
 
 
-class Account(models.Model):
-    """Investment account (e.g., Roth IRA, Taxable)."""
+class AccountType(models.Model):
+    """Specific type of account (e.g., Roth IRA, Taxable)."""
 
-    ACCOUNT_TYPES = [
-        ('ROTH_IRA', 'Roth IRA'),
-        ('TRADITIONAL_IRA', 'Traditional IRA'),
-        ('401K', '401(k)'),
+    TAX_TREATMENT_CHOICES = [
+        ('TAX_FREE', 'Tax Free'),
+        ('TAX_DEFERRED', 'Tax Deferred'),
         ('TAXABLE', 'Taxable'),
     ]
 
+    code = models.CharField(max_length=50, unique=True)
+    label = models.CharField(max_length=100)
+    group = models.ForeignKey(AccountGroup, on_delete=models.PROTECT, related_name='account_types')
+    tax_treatment = models.CharField(max_length=20, choices=TAX_TREATMENT_CHOICES)
+
+    def __str__(self) -> str:
+        return self.label
+
+
+class Account(models.Model):
+    """Investment account (e.g., Roth IRA, Taxable)."""
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='accounts')
     name = models.CharField(max_length=100)
-    account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPES)
+    account_type = models.ForeignKey(AccountType, on_delete=models.PROTECT, related_name='accounts')
     institution = models.ForeignKey(Institution, on_delete=models.PROTECT, related_name='accounts')
-    group = models.ForeignKey(AccountGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name='accounts')
 
     def __str__(self) -> str:
         return f"{self.name} ({self.user.username})"
 
     @property
     def tax_treatment(self) -> str:
-        if self.account_type == 'ROTH_IRA':
-            return 'TAX_FREE'
-        elif self.account_type in ('TRADITIONAL_IRA', '401K'):
-            return 'TAX_DEFERRED'
-        return 'TAXABLE'
+        return self.account_type.tax_treatment
 
 class TargetAllocation(models.Model):
     """Target allocation for a specific account type and asset class."""
-
+    account_type = models.ForeignKey(AccountType, on_delete=models.PROTECT, related_name='target_allocations')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='target_allocations')
-    account_type = models.CharField(
-        max_length=20,
-        choices=Account.ACCOUNT_TYPES,
-    )
-    asset_class = models.ForeignKey(AssetClass, on_delete=models.CASCADE)
+    asset_class = models.ForeignKey(AssetClass, on_delete=models.PROTECT, related_name='target_allocations')
     target_pct = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        validators=[MinValueValidator(Decimal('0')), MaxValueValidator(Decimal('100'))],
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
     )
 
     class Meta:
-        unique_together = ['user', 'account_type', 'asset_class']
+        unique_together = ('user', 'account_type', 'asset_class')
 
     def __str__(self) -> str:
-        return f"{self.get_account_type_display()} - {self.asset_class.name}: {self.target_pct}% ({self.user.username})"
+        return f"{self.user.username} - {self.account_type} - {self.asset_class.name}: {self.target_pct}%"
 
 class Security(models.Model):
     """Individual investment security (e.g., VTI, BND)."""

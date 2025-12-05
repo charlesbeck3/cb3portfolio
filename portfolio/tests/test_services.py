@@ -15,25 +15,36 @@ from portfolio.models import (
 )
 from portfolio.services import PortfolioSummaryService
 
+from .base import PortfolioTestMixin
+
 User = get_user_model()
 
-class PortfolioSummaryServiceTests(TestCase):
+class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
+        self.setup_portfolio_data()
         self.user = User.objects.create_user(username='testuser', password='password')
-        self.institution = Institution.objects.create(name="Vanguard")
-        self.category_equities = AssetCategory.objects.get(code='EQUITIES')
-        self.category_us_equities = AssetCategory.objects.get(code='US_EQUITIES')
-        self.category_fixed_income = AssetCategory.objects.get(code='FIXED_INCOME')
-        self.asset_class_us = AssetClass.objects.create(name='US Stocks', category=self.category_us_equities)
-        self.asset_class_bonds = AssetClass.objects.create(name='Bonds', category=self.category_fixed_income)
+        self.institution = Institution.objects.create(name="Vanguard") # Keep this for existing tests
+
+        # Create Assets
+        self.category_equities = AssetCategory.objects.get(code='EQUITIES') # Keep for existing tests
+        self.category_us_equities = AssetCategory.objects.get(code='US_EQUITIES') # Keep for existing tests
+        self.category_fixed_income = AssetCategory.objects.get(code='FIXED_INCOME') # Keep for existing tests
+        self.asset_class_us = AssetClass.objects.create(name='US Stocks', category=self.category_us_equities) # Keep for existing tests
+        self.asset_class_bonds = AssetClass.objects.create(name='Bonds', category=self.category_fixed_income) # Keep for existing tests
+
+        # Create Account using AccountType object
         self.account_roth = Account.objects.create(
-            user=self.user, name='Roth IRA', account_type='ROTH_IRA', institution=self.institution
+            user=self.user, name='Roth IRA', account_type=self.type_roth, institution=self.institution
         )
         self.account_taxable = Account.objects.create(
-            user=self.user, name='Taxable', account_type='TAXABLE', institution=self.institution
+            user=self.user, name='Taxable', account_type=self.type_taxable, institution=self.institution
         )
+
+        # Create Securities
         self.sec_vti = Security.objects.create(ticker='VTI', name='Vanguard Total Stock Market', asset_class=self.asset_class_us)
         self.sec_bnd = Security.objects.create(ticker='BND', name='Vanguard Total Bond Market', asset_class=self.asset_class_bonds)
+
+        # Create Holdings
         self.holding_vti_roth = Holding.objects.create(
             account=self.account_roth, security=self.sec_vti, shares=Decimal('10.0'), current_price=Decimal('200.00')
         )
@@ -95,13 +106,13 @@ class PortfolioSummaryServiceTests(TestCase):
         # Set simple 100% targets for each account type and asset class
         TargetAllocation.objects.create(
             user=self.user,
-            account_type='ROTH_IRA',
+            account_type=self.type_roth,
             asset_class=self.asset_class_us,
             target_pct=Decimal('100.0'),
         )
         TargetAllocation.objects.create(
             user=self.user,
-            account_type='TAXABLE',
+            account_type=self.type_taxable,
             asset_class=self.asset_class_bonds,
             target_pct=Decimal('100.0'),
         )
@@ -270,13 +281,13 @@ class PortfolioSummaryServiceTests(TestCase):
         # Create Targets
         TargetAllocation.objects.create(
             user=self.user,
-            account_type='ROTH_IRA',
+            account_type=self.type_roth,
             asset_class=self.asset_class_us,
             target_pct=Decimal('50.0')
         )
         TargetAllocation.objects.create(
             user=self.user,
-            account_type='ROTH_IRA',
+            account_type=self.type_roth,
             asset_class=self.asset_class_bonds,
             target_pct=Decimal('50.0')
         )

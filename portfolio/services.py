@@ -204,6 +204,7 @@ class PortfolioSummaryService:
 
         holdings = Holding.objects.filter(account__user=user).select_related(
             'account',
+            'account__account_type',
             'security',
             'security__asset_class',
             'security__asset_class__category',
@@ -236,7 +237,7 @@ class PortfolioSummaryService:
                 continue
             category_code = category.code
             asset_class_name = asset_class.name
-            account_type_code = holding.account.account_type
+            account_type_code = holding.account.account_type.code
 
             # Update specific asset class entry
             ac_entry = summary.categories[category_code].asset_classes[asset_class_name]
@@ -260,10 +261,10 @@ class PortfolioSummaryService:
             summary.account_type_grand_totals[account_type_code] += value
 
         # Fetch target allocations and calculate target/variance values
-        target_allocations = TargetAllocation.objects.filter(user=user).select_related('asset_class')
+        target_allocations = TargetAllocation.objects.filter(user=user).select_related('asset_class', 'account_type')
         target_lookup: dict[tuple[str, str], Decimal] = {}
         for target in target_allocations:
-            key = (target.account_type, target.asset_class.name)
+            key = (target.account_type.code, target.asset_class.name)
             target_lookup[key] = target.target_pct
 
         # Calculate target dollar amounts and variances
@@ -347,15 +348,16 @@ class PortfolioSummaryService:
         # Ensure prices are up to date
         PortfolioSummaryService.update_prices(user)
 
-        # Prefetch the 'group' field as well
-        accounts = Account.objects.filter(user=user).select_related('institution', 'group').prefetch_related('holdings__security__asset_class')
+        # Prefetch the 'account_type' and its 'group' field
+        accounts = Account.objects.filter(user=user).select_related('institution', 'account_type__group').prefetch_related('holdings__security__asset_class')
 
-        # 1. Fetch all targets for this user and map by account_type -> asset_class_name
-        targets = TargetAllocation.objects.filter(user=user).select_related('asset_class')
-        # Map: account_type -> asset_class_name -> target_pct
+        # 1. Fetch all targets for this user and map by account_type_code -> asset_class_name
+        targets = TargetAllocation.objects.filter(user=user).select_related('asset_class', 'account_type')
+        # Map: account_type_code -> asset_class_name -> target_pct
         target_map: dict[str, dict[str, Decimal]] = defaultdict(dict)
         for t in targets:
-            target_map[t.account_type][t.asset_class.name] = t.target_pct
+            # t.account_type is now a foreign key object
+            target_map[t.account_type.code][t.asset_class.name] = t.target_pct
 
         # Initialize groups dynamically from AccountGroup model
         # We need an OrderedDict to maintain display order
@@ -400,7 +402,8 @@ class PortfolioSummaryService:
             # Deviation = Sum(Abs(Actual_Value - Target_Value)) for each asset class
             # We need to consider all asset classes that have EITHER a holding OR a target.
 
-            account_targets = target_map.get(account.account_type, {})
+            # account.account_type is the object, get 'code' for lookup
+            account_targets = target_map.get(account.account_type.code, {})
             all_asset_classes = set(holdings_by_ac.keys()) | set(account_targets.keys())
 
             absolute_deviation = Decimal('0.00')
@@ -416,9 +419,10 @@ class PortfolioSummaryService:
                 absolute_deviation_pct = (absolute_deviation / account_total) * Decimal('100.00')
 
             # Determine group
+            # Use account.account_type.group
             group_name = 'Other'
-            if account.group:
-                group_name = account.group.name
+            if account.account_type.group:
+                group_name = account.account_type.group.name
 
             # If for some reason the group exists on the account but wasn't in our initial fetch (race condition?),
             # fallback to Other or create it dynamically (safer to use Other for now)
@@ -473,14 +477,14 @@ class PortfolioSummaryService:
         if account_id:
             holdings = holdings.filter(account_id=account_id)
 
-        target_allocations = TargetAllocation.objects.filter(user=user).select_related('asset_class')
+        target_allocations = TargetAllocation.objects.filter(user=user).select_related('asset_class', 'account_type')
 
         # --- PRE-CALCULATION PHASE ---
 
-        # Map targets: (account_type, asset_class_id) -> target_pct
+        # Map targets: (account_type_code, asset_class_id) -> target_pct
         target_map: dict[tuple[str, int], Decimal] = {}
         for ta in target_allocations:
-            target_map[(ta.account_type, ta.asset_class_id)] = ta.target_pct
+            target_map[(ta.account_type.code, ta.asset_class_id)] = ta.target_pct
 
         # Calculate Account Totals and Security Counts per Asset Class per Account
         account_totals: dict[int, Decimal] = defaultdict(Decimal)
@@ -516,7 +520,8 @@ class PortfolioSummaryService:
 
             # Determine Target Value for this specific holding instance
             # Target for Asset Class in this Account
-            ac_target_pct = target_map.get((holding.account.account_type, holding.security.asset_class_id), Decimal('0.00'))
+            # holding.account.account_type is the model instance, use .code
+            ac_target_pct = target_map.get((holding.account.account_type.code, holding.security.asset_class_id), Decimal('0.00'))
 
             # Number of securities in this asset class held in this account
             num_securities = len(account_ac_security_counts[holding.account_id][holding.security.asset_class_id])
