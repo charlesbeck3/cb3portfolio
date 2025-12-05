@@ -22,12 +22,16 @@ class AccountTypeData:
 class AssetClassEntry:
     account_types: dict[str, AccountTypeData] = field(default_factory=lambda: defaultdict(AccountTypeData))
     total: Decimal = Decimal('0.00')
+    target_total: Decimal = Decimal('0.00')
+    variance_total: Decimal = Decimal('0.00')
 
 
 @dataclass
 class CategoryEntry:
     asset_classes: dict[str, AssetClassEntry] = field(default_factory=lambda: defaultdict(AssetClassEntry))
     total: Decimal = Decimal('0.00')
+    target_total: Decimal = Decimal('0.00')
+    variance_total: Decimal = Decimal('0.00')
     account_type_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
@@ -38,6 +42,8 @@ class GroupEntry:
     label: str = ''
     categories: OrderedDict[str, CategoryEntry] = field(default_factory=OrderedDict)
     total: Decimal = Decimal('0.00')
+    target_total: Decimal = Decimal('0.00')
+    variance_total: Decimal = Decimal('0.00')
     account_type_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
@@ -286,15 +292,23 @@ class PortfolioSummaryService:
                     account_data.target = target_dollars
                     account_data.variance = variance_dollars
 
+                    # Update asset class totals
+                    asset_class_data.target_total += target_dollars
+                    asset_class_data.variance_total += variance_dollars
+
                     # Update category totals
                     category_data.account_type_target_totals[account_type_code] += target_dollars
                     category_data.account_type_variance_totals[account_type_code] += variance_dollars
+                    category_data.target_total += target_dollars
+                    category_data.variance_total += variance_dollars
 
                     # Update group totals
                     group_code = category_group_map.get(category_code, category_code)
                     group_entry = summary.groups[group_code]
                     group_entry.account_type_target_totals[account_type_code] += target_dollars
                     group_entry.account_type_variance_totals[account_type_code] += variance_dollars
+                    group_entry.target_total += target_dollars
+                    group_entry.variance_total += variance_dollars
 
                     # Update grand totals
                     summary.account_type_grand_target_totals[account_type_code] += target_dollars

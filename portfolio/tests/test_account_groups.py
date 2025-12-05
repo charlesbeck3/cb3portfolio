@@ -1,8 +1,9 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from portfolio.models import Account, AccountGroup, AccountType, Institution
+from portfolio.models import Account, AccountGroup, AccountType
 from portfolio.services import PortfolioSummaryService
+
 from .base import PortfolioTestMixin
 
 User = get_user_model()
@@ -16,46 +17,46 @@ class AccountGroupTests(TestCase, PortfolioTestMixin):
         self.client.force_login(self.user)
 
         # Create basic account instances for testing grouping logic
-        # Using types from mixin: 
-        # type_roth (Retirement), type_trad (Retirement), 
+        # Using types from mixin:
+        # type_roth (Retirement), type_trad (Retirement),
         # type_taxable (Investments), type_401k (Retirement)
         # Mixin also creates: group_ret, group_inv, group_dep ('Deposit Accounts')
-        
+
         # We need to manually add a "Cash" / "Deposit" type if we want to test that group fully,
         # but the mixin doesn't create a 'BANK' type by default?
         # Let's check base.py content if needed. Assuming standard mixin usage.
-        
+
         # Create accounts
         Account.objects.create(
-            user=self.user, 
-            name='Roth', 
-            account_type=self.type_roth, 
+            user=self.user,
+            name='Roth',
+            account_type=self.type_roth,
             institution=self.institution
         )
         Account.objects.create(
-            user=self.user, 
-            name='Trad', 
-            account_type=self.type_trad, 
+            user=self.user,
+            name='Trad',
+            account_type=self.type_trad,
             institution=self.institution
         )
         Account.objects.create(
-            user=self.user, 
-            name='Taxable', 
-            account_type=self.type_taxable, 
+            user=self.user,
+            name='Taxable',
+            account_type=self.type_taxable,
             institution=self.institution
         )
 
         # Create a Savings account type and account for Deposit group
         self.type_savings = AccountType.objects.create(
-            code='SAVINGS', 
-            label='Savings', 
-            group=self.group_dep, 
+            code='SAVINGS',
+            label='Savings',
+            group=self.group_dep,
             tax_treatment='TAXABLE'
         )
         Account.objects.create(
-            user=self.user, 
-            name='Savings', 
-            account_type=self.type_savings, 
+            user=self.user,
+            name='Savings',
+            account_type=self.type_savings,
             institution=self.institution
         )
 
