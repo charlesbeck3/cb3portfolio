@@ -1,9 +1,8 @@
 from collections import OrderedDict, defaultdict
 from decimal import Decimal
-from typing import Any, TypedDict, cast
+from typing import Any, TypedDict
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.auth.models import AbstractBaseUser
 from django.views.generic import TemplateView
 
 from portfolio.models import Account, AssetCategory, Holding
@@ -46,12 +45,10 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        user = cast(AbstractBaseUser, self.request.user)
-
+        
         # Get summary data
-        # Get summary data
-        context['summary'] = PortfolioSummaryService.get_holdings_summary(user)
-        context['sidebar_data'] = PortfolioSummaryService.get_account_summary(user)
+        context['summary'] = PortfolioSummaryService.get_holdings_summary(self.request.user)
+        context['sidebar_data'] = PortfolioSummaryService.get_account_summary(self.request.user)
 
         # Pass account types for column headers
         context['account_types'] = Account.ACCOUNT_TYPES
@@ -64,14 +61,13 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        user = cast(AbstractBaseUser, self.request.user)
-        user_pk = cast(int, self.request.user.pk)
+        user = self.request.user
 
         # Update prices first
         PortfolioSummaryService.update_prices(user)
 
         # Get all holdings for the user
-        holdings = Holding.objects.filter(account__user_id=user_pk).select_related(
+        holdings = Holding.objects.filter(account__user_id=user.pk).select_related(
             'account', 'security', 'security__asset_class'
         )
         # Group holdings by ticker and category
