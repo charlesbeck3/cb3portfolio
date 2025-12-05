@@ -1,5 +1,6 @@
 import logging
 from collections import OrderedDict, defaultdict
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
@@ -9,45 +10,52 @@ from portfolio.models import Account, AssetCategory, Holding, TargetAllocation
 
 logger = logging.getLogger(__name__)
 
-CategoryEntry = dict[str, Any]
-GroupEntry = dict[str, Any]
-SummaryDict = dict[str, Any]
+
+@dataclass
+class AccountTypeData:
+    current: Decimal = Decimal('0.00')
+    target: Decimal = Decimal('0.00')
+    variance: Decimal = Decimal('0.00')
 
 
-def _account_type_data_factory() -> dict[str, Decimal]:
-    return {
-        'current': Decimal('0.00'),
-        'target': Decimal('0.00'),
-        'variance': Decimal('0.00'),
-    }
+@dataclass
+class AssetClassEntry:
+    account_types: dict[str, AccountTypeData] = field(default_factory=lambda: defaultdict(AccountTypeData))
+    total: Decimal = Decimal('0.00')
 
 
-def _asset_class_entry_factory() -> dict[str, Any]:
-    return {
-        'account_types': defaultdict(_account_type_data_factory),
-        'total': Decimal('0.00'),
-    }
+@dataclass
+class CategoryEntry:
+    asset_classes: dict[str, AssetClassEntry] = field(default_factory=lambda: defaultdict(AssetClassEntry))
+    total: Decimal = Decimal('0.00')
+    account_type_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
 
 
-def _category_entry_factory() -> CategoryEntry:
-    return {
-        'asset_classes': defaultdict(_asset_class_entry_factory),
-        'total': Decimal('0.00'),
-        'account_type_totals': defaultdict(Decimal),
-        'account_type_target_totals': defaultdict(Decimal),
-        'account_type_variance_totals': defaultdict(Decimal),
-    }
+@dataclass
+class GroupEntry:
+    label: str = ''
+    categories: OrderedDict[str, CategoryEntry] = field(default_factory=OrderedDict)
+    total: Decimal = Decimal('0.00')
+    account_type_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
 
 
-def _group_entry_factory() -> GroupEntry:
-    return {
-        'label': '',
-        'categories': OrderedDict(),
-        'total': Decimal('0.00'),
-        'account_type_totals': defaultdict(Decimal),
-        'account_type_target_totals': defaultdict(Decimal),
-        'account_type_variance_totals': defaultdict(Decimal),
-    }
+@dataclass
+class PortfolioSummary:
+    categories: dict[str, CategoryEntry] = field(default_factory=lambda: defaultdict(CategoryEntry))
+    groups: dict[str, GroupEntry] = field(default_factory=lambda: defaultdict(GroupEntry))
+    grand_total: Decimal = Decimal('0.00')
+    grand_target_total: Decimal = Decimal('0.00')
+    grand_variance_total: Decimal = Decimal('0.00')
+    account_type_grand_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_grand_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_grand_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_percentages: dict[str, Decimal] = field(default_factory=dict)
+    category_labels: dict[str, str] = field(default_factory=dict)
+    group_labels: dict[str, str] = field(default_factory=dict)
 
 
 class PortfolioSummaryService:
@@ -133,7 +141,7 @@ class PortfolioSummaryService:
             logger.error(f"Error updating prices: {e}")
 
     @staticmethod
-    def get_holdings_summary(user: Any) -> dict[str, Any]:
+    def get_holdings_summary(user: Any) -> PortfolioSummary:
         """
         Aggregate holdings by Asset Class (Category) and Account Type.
         Returns a structure suitable for rendering the summary table.
@@ -149,24 +157,6 @@ class PortfolioSummaryService:
             'security__asset_class__category__parent',
         )
 
-        # Structure:
-        # {
-        #   'categories': {
-        #       'Category Name': {
-        #           'asset_classes': {
-        #               'Asset Class Name': {
-        #                   'account_types': { 'ROTH_IRA': value, ... },
-        #                   'total': value
-        #               }
-        #           },
-        #           'total': value,
-        #           'account_type_totals': { 'ROTH_IRA': value, ... }
-        #       }
-        #   },
-        #   'grand_total': value,
-        #   'account_type_grand_totals': { 'ROTH_IRA': value, ... }
-        # }
-
         categories = AssetCategory.objects.select_related('parent').all()
         category_labels = {category.code: category.label for category in categories}
         category_group_map: dict[str, str] = {}
@@ -176,22 +166,10 @@ class PortfolioSummaryService:
             category_group_map[category.code] = group.code
             group_labels.setdefault(group.code, group.label)
 
-        categories_summary: defaultdict[str, CategoryEntry] = defaultdict(_category_entry_factory)
-        groups_summary: defaultdict[str, GroupEntry] = defaultdict(_group_entry_factory)
-
-        summary: SummaryDict = {
-            'categories': categories_summary,
-            'groups': groups_summary,
-            'grand_total': Decimal('0.00'),
-            'grand_target_total': Decimal('0.00'),
-            'grand_variance_total': Decimal('0.00'),
-            'account_type_grand_totals': defaultdict(Decimal),
-            'account_type_grand_target_totals': defaultdict(Decimal),
-            'account_type_grand_variance_totals': defaultdict(Decimal),
-            'account_type_percentages': {},
-            'category_labels': category_labels,
-            'group_labels': group_labels,
-        }
+        summary = PortfolioSummary(
+            category_labels=category_labels,
+            group_labels=group_labels,
+        )
 
         for holding in holdings:
             if holding.current_price is None:
@@ -206,29 +184,27 @@ class PortfolioSummaryService:
             category_code = category.code
             asset_class_name = asset_class.name
             account_type_code = holding.account.account_type
-            # We use the code for keys, can map to labels in template or here.
-            # Let's use codes for keys to be safe and map in template or separate lookup.
 
             # Update specific asset class entry
-            ac_entry = categories_summary[category_code]['asset_classes'][asset_class_name]
-            ac_entry['account_types'][account_type_code]['current'] += value
-            ac_entry['total'] += value
+            ac_entry = summary.categories[category_code].asset_classes[asset_class_name]
+            ac_entry.account_types[account_type_code].current += value
+            ac_entry.total += value
 
             # Update category totals
-            cat_entry = categories_summary[category_code]
-            cat_entry['total'] += value
-            cat_entry['account_type_totals'][account_type_code] += value
+            cat_entry = summary.categories[category_code]
+            cat_entry.total += value
+            cat_entry.account_type_totals[account_type_code] += value
 
             group_code = category_group_map.get(category_code, category_code)
-            group_entry = groups_summary[group_code]
-            if not group_entry['label']:
-                group_entry['label'] = group_labels.get(group_code, category.label if category.parent else category.label)
-            group_entry['total'] += value
-            group_entry['account_type_totals'][account_type_code] += value
+            group_entry = summary.groups[group_code]
+            if not group_entry.label:
+                group_entry.label = group_labels.get(group_code, category.label if category.parent else category.label)
+            group_entry.total += value
+            group_entry.account_type_totals[account_type_code] += value
 
             # Update grand totals
-            summary['grand_total'] += value
-            summary['account_type_grand_totals'][account_type_code] += value
+            summary.grand_total += value
+            summary.account_type_grand_totals[account_type_code] += value
 
         # Fetch target allocations and calculate target/variance values
         target_allocations = TargetAllocation.objects.filter(user=user).select_related('asset_class')
@@ -238,85 +214,76 @@ class PortfolioSummaryService:
             target_lookup[key] = target.target_pct
 
         # Calculate target dollar amounts and variances
-        for category_code, category_data in categories_summary.items():
-            for asset_class_name, asset_class_data in category_data['asset_classes'].items():
-                for account_type_code, account_data in asset_class_data['account_types'].items():
+        for category_code, category_data in summary.categories.items():
+            for asset_class_name, asset_class_data in category_data.asset_classes.items():
+                for account_type_code, account_data in asset_class_data.account_types.items():
                     # Get target percentage (default to 0 if not found)
                     target_pct = target_lookup.get((account_type_code, asset_class_name), Decimal('0.00'))
 
                     # Calculate target dollar amount
-                    account_type_total = summary['account_type_grand_totals'].get(account_type_code, Decimal('0.00'))
+                    account_type_total = summary.account_type_grand_totals.get(account_type_code, Decimal('0.00'))
                     target_dollars = account_type_total * (target_pct / Decimal('100'))
 
                     # Calculate variance
-                    current_dollars = account_data['current']
+                    current_dollars = account_data.current
                     variance_dollars = current_dollars - target_dollars
 
                     # Update the account data
-                    account_data['target'] = target_dollars
-                    account_data['variance'] = variance_dollars
+                    account_data.target = target_dollars
+                    account_data.variance = variance_dollars
 
                     # Update category totals
-                    category_data['account_type_target_totals'][account_type_code] += target_dollars
-                    category_data['account_type_variance_totals'][account_type_code] += variance_dollars
+                    category_data.account_type_target_totals[account_type_code] += target_dollars
+                    category_data.account_type_variance_totals[account_type_code] += variance_dollars
 
                     # Update group totals
                     group_code = category_group_map.get(category_code, category_code)
-                    group_entry = groups_summary[group_code]
-                    group_entry['account_type_target_totals'][account_type_code] += target_dollars
-                    group_entry['account_type_variance_totals'][account_type_code] += variance_dollars
+                    group_entry = summary.groups[group_code]
+                    group_entry.account_type_target_totals[account_type_code] += target_dollars
+                    group_entry.account_type_variance_totals[account_type_code] += variance_dollars
 
                     # Update grand totals
-                    summary['account_type_grand_target_totals'][account_type_code] += target_dollars
-                    summary['account_type_grand_variance_totals'][account_type_code] += variance_dollars
-                    summary['grand_target_total'] += target_dollars
-                    summary['grand_variance_total'] += variance_dollars
-
-        # Convert defaultdicts to dicts for template iteration
-        # Django templates can have issues with defaultdicts (accessing .items lookup)
+                    summary.account_type_grand_target_totals[account_type_code] += target_dollars
+                    summary.account_type_grand_variance_totals[account_type_code] += variance_dollars
+                    summary.grand_target_total += target_dollars
+                    summary.grand_variance_total += variance_dollars
 
         # Sort asset classes within each category and categories by total value (descending)
-        for _category_code, category_data in categories_summary.items():
-            asset_classes = category_data['asset_classes']
+        for _category_code, category_data in summary.categories.items():
+            asset_classes = category_data.asset_classes
             sorted_asset_classes = sorted(
-                asset_classes.items(), key=lambda item: item[1]['total'], reverse=True
+                asset_classes.items(), key=lambda item: item[1].total, reverse=True
             )
-            category_data['asset_classes'] = OrderedDict(sorted_asset_classes)
+            category_data.asset_classes = OrderedDict(sorted_asset_classes)
 
         sorted_categories = sorted(
-            categories_summary.items(), key=lambda item: item[1]['total'], reverse=True
+            summary.categories.items(), key=lambda item: item[1].total, reverse=True
         )
-        summary['categories'] = OrderedDict(sorted_categories)
+        summary.categories = OrderedDict(sorted_categories)
 
         # Assign sorted categories to their groups and sort groups
-        for category_code, category_data in summary['categories'].items():
+        for category_code, category_data in summary.categories.items():
             group_code = category_group_map.get(category_code, category_code)
-            group_entry = groups_summary[group_code]
-            group_entry['categories'][category_code] = category_data
+            group_entry = summary.groups[group_code]
+            group_entry.categories[category_code] = category_data
 
         sorted_groups = sorted(
-            groups_summary.items(), key=lambda item: item[1]['total'], reverse=True
+            summary.groups.items(), key=lambda item: item[1].total, reverse=True
         )
-        summary['groups'] = OrderedDict(sorted_groups)
+        summary.groups = OrderedDict(sorted_groups)
 
-        grand_total = summary['grand_total']
+        grand_total = summary.grand_total
         account_type_percentages: dict[str, Decimal] = {}
         if grand_total > 0:
-            for code, value in summary['account_type_grand_totals'].items():
+            for code, value in summary.account_type_grand_totals.items():
                 account_type_percentages[code] = (value / grand_total) * Decimal('100')
         else:
-            for code in summary['account_type_grand_totals']:
+            for code in summary.account_type_grand_totals:
                 account_type_percentages[code] = Decimal('0.00')
 
-        summary['account_type_percentages'] = account_type_percentages
+        summary.account_type_percentages = account_type_percentages
 
-        # Deep convert function
-        def default_to_regular(d: Any) -> Any:
-            if isinstance(d, dict):
-                d = {k: default_to_regular(v) for k, v in d.items()}
-            return d
-
-        return default_to_regular(summary)
+        return summary
 
     @staticmethod
     def get_account_summary(user: Any) -> dict[str, Any]:
