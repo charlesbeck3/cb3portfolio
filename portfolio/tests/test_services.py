@@ -69,3 +69,61 @@ class PortfolioSummaryServiceTests(TestCase):
         self.assertEqual(equities_group['label'], 'Equities')
         self.assertEqual(equities_group['total'], Decimal('2000.00'))
         self.assertIn('US_EQUITIES', equities_group['categories'])
+        self.assertEqual(equities_group['total'], Decimal('2000.00'))
+        self.assertIn('US_EQUITIES', equities_group['categories'])
+
+    @patch('portfolio.services.PortfolioSummaryService.update_prices')
+    def test_get_account_summary(self, mock_update_prices: MagicMock) -> None:
+        summary = PortfolioSummaryService.get_account_summary(self.user)
+        
+        # Check Grand Total
+        self.assertEqual(summary['grand_total'], Decimal('3600.00'))
+        
+        # Check Groups
+        retirement = summary['groups']['Retirement']
+        self.assertEqual(retirement['total'], Decimal('2000.00'))
+        self.assertEqual(len(retirement['accounts']), 1)
+        self.assertEqual(retirement['accounts'][0]['name'], 'Roth IRA')
+        self.assertEqual(retirement['accounts'][0]['total'], Decimal('2000.00'))
+        
+        investments = summary['groups']['Investments']
+        self.assertEqual(investments['total'], Decimal('1600.00'))
+        self.assertEqual(len(investments['accounts']), 1)
+        self.assertEqual(investments['accounts'][0]['name'], 'Taxable')
+        self.assertEqual(investments['accounts'][0]['total'], Decimal('1600.00'))
+
+    @patch('portfolio.services.PortfolioSummaryService.update_prices')
+    def test_get_account_summary_sorting(self, mock_update_prices: MagicMock) -> None:
+        # Create a third account type with a middle value to verify sorting
+        # Roth: 2000 (Retirement)
+        # Taxable: 1600 (Investments)
+        # Let's add a Cash account with 3000 (Cash) to be the top
+        
+        # Note: The service uses a hardcoded map for account types to groups.
+        # 'ROTH_IRA' -> 'Retirement'
+        # 'TAXABLE' -> 'Investments'
+        # We need to ensure we can map to 'Cash' or just use the existing groups with different totals.
+        # The service defaults to 'Investments' if not found in map, but we want to test sorting of groups.
+        # Let's just manipulate the existing accounts to change totals.
+        
+        # Make Taxable (Investments) the largest
+        self.holding_bnd_taxable.shares = Decimal('100.0') # 100 * 80 = 8000
+        self.holding_bnd_taxable.save()
+        
+        # Roth (Retirement) is 2000
+        
+        summary = PortfolioSummaryService.get_account_summary(self.user)
+        groups = list(summary['groups'].keys())
+        
+        # Expect Investments (8000) then Retirement (2000)
+        self.assertEqual(groups, ['Investments', 'Retirement'])
+        
+        # Now make Roth (Retirement) the largest
+        self.holding_vti_roth.shares = Decimal('100.0') # 100 * 200 = 20000
+        self.holding_vti_roth.save()
+        
+        summary = PortfolioSummaryService.get_account_summary(self.user)
+        groups = list(summary['groups'].keys())
+        
+        # Expect Retirement (20000) then Investments (8000)
+        self.assertEqual(groups, ['Retirement', 'Investments'])

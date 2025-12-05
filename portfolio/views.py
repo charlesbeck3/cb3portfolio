@@ -49,7 +49,9 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         user = cast(AbstractBaseUser, self.request.user)
 
         # Get summary data
+        # Get summary data
         context['summary'] = PortfolioSummaryService.get_holdings_summary(user)
+        context['sidebar_data'] = PortfolioSummaryService.get_account_summary(user)
 
         # Pass account types for column headers
         context['account_types'] = Account.ACCOUNT_TYPES

@@ -5,7 +5,7 @@ from typing import Any
 
 import yfinance as yf
 
-from portfolio.models import AssetCategory, Holding
+from portfolio.models import Account, AssetCategory, Holding
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +226,7 @@ class PortfolioSummaryService:
             category_data['asset_classes'] = OrderedDict(sorted_asset_classes)
 
         sorted_categories = sorted(
-            categories_summary.items(), key=lambda item: item[1]['total'], reverse=False
+            categories_summary.items(), key=lambda item: item[1]['total'], reverse=True
         )
         summary['categories'] = OrderedDict(sorted_categories)
 
@@ -259,3 +259,61 @@ class PortfolioSummaryService:
             return d
 
         return default_to_regular(summary)
+
+    @staticmethod
+    def get_account_summary(user: Any) -> dict[str, Any]:
+        """
+        Get summary of accounts grouped by type (Retirement vs Investments).
+        """
+        # Ensure prices are up to date
+        PortfolioSummaryService.update_prices(user)
+
+        accounts = Account.objects.filter(user=user).prefetch_related('holdings')
+        
+        # Define groups
+        groups = {
+            'Retirement': {'label': 'Retirement', 'total': Decimal('0.00'), 'accounts': []},
+            'Investments': {'label': 'Investments', 'total': Decimal('0.00'), 'accounts': []},
+            'Cash': {'label': 'Cash', 'total': Decimal('0.00'), 'accounts': []},
+        }
+        
+        # Mapping account types to groups
+        type_map = {
+            'ROTH_IRA': 'Retirement',
+            'TRADITIONAL_IRA': 'Retirement',
+            '401K': 'Retirement',
+            'TAXABLE': 'Investments',
+        }
+
+        grand_total = Decimal('0.00')
+
+        for account in accounts:
+            # Calculate account total
+            account_total = Decimal('0.00')
+            for holding in account.holdings.all():
+                if holding.current_price:
+                    account_total += holding.shares * holding.current_price
+            
+            group_name = type_map.get(account.account_type, 'Investments')
+            
+            # Check if it's a cash account (heuristic based on name or holdings?)
+            # For now, rely on type map.
+            
+            groups[group_name]['accounts'].append({
+                'id': account.id,
+                'name': account.name,
+                'institution': account.institution,
+                'total': account_total,
+                'account_type': account.account_type,
+            })
+            groups[group_name]['total'] += account_total
+            grand_total += account_total
+
+        # Remove empty groups and sort by total value descending
+        active_groups = {k: v for k, v in groups.items() if v['accounts']}
+        sorted_groups = dict(sorted(active_groups.items(), key=lambda item: item[1]['total'], reverse=True))
+        
+        return {
+            'groups': sorted_groups,
+            'grand_total': grand_total,
+        }
