@@ -49,22 +49,22 @@ class AccountTests(TestCase):
 
     def test_tax_treatment_property(self) -> None:
         """Test tax_treatment property derivation."""
-        # Note: We need to provide required fields even if testing a property, 
+        # Note: We need to provide required fields even if testing a property,
         # but since we are just instantiating the model (not saving), we can skip institution if not accessed.
-        # However, to be safe and consistent, let's just use simple instantiation if possible, 
+        # However, to be safe and consistent, let's just use simple instantiation if possible,
         # or if we save, we need institution.
         # The original test instantiated without saving: roth = Account(account_type='ROTH_IRA')
         # This is fine as long as we don't save.
-        
+
         roth = Account(account_type='ROTH_IRA')
         self.assertEqual(roth.tax_treatment, 'TAX_FREE')
-        
+
         trad = Account(account_type='TRADITIONAL_IRA')
         self.assertEqual(trad.tax_treatment, 'TAX_DEFERRED')
-        
+
         k401 = Account(account_type='401K')
         self.assertEqual(k401.tax_treatment, 'TAX_DEFERRED')
-        
+
         taxable = Account(account_type='TAXABLE')
         self.assertEqual(taxable.tax_treatment, 'TAXABLE')
 

@@ -325,14 +325,14 @@ class PortfolioSummaryService:
         PortfolioSummaryService.update_prices(user)
 
         accounts = Account.objects.filter(user=user).prefetch_related('holdings')
-        
+
         # Define groups
-        groups = {
+        groups: dict[str, dict[str, Any]] = {
             'Retirement': {'label': 'Retirement', 'total': Decimal('0.00'), 'accounts': []},
             'Investments': {'label': 'Investments', 'total': Decimal('0.00'), 'accounts': []},
             'Cash': {'label': 'Cash', 'total': Decimal('0.00'), 'accounts': []},
         }
-        
+
         # Mapping account types to groups
         type_map = {
             'ROTH_IRA': 'Retirement',
@@ -349,12 +349,12 @@ class PortfolioSummaryService:
             for holding in account.holdings.all():
                 if holding.current_price:
                     account_total += holding.shares * holding.current_price
-            
+
             group_name = type_map.get(account.account_type, 'Investments')
-            
+
             # Check if it's a cash account (heuristic based on name or holdings?)
             # For now, rely on type map.
-            
+
             groups[group_name]['accounts'].append({
                 'id': account.id,
                 'name': account.name,
@@ -368,7 +368,7 @@ class PortfolioSummaryService:
         # Remove empty groups and sort by total value descending
         active_groups = {k: v for k, v in groups.items() if v['accounts']}
         sorted_groups = dict(sorted(active_groups.items(), key=lambda item: item[1]['total'], reverse=True))
-        
+
         return {
             'groups': sorted_groups,
             'grand_total': grand_total,
@@ -411,7 +411,7 @@ class PortfolioSummaryService:
         category_map: dict[str, AssetCategory] = {category.code: category for category in category_qs}
         group_order: list[str] = []
         grouped_category_codes: dict[str, list[str]] = {}
-        
+
         for category in category_qs:
             group_code = category.parent_id or category.code
             if group_code not in group_order:
@@ -425,7 +425,7 @@ class PortfolioSummaryService:
             if not categories[category_code].label:
                  cat_obj = category_map.get(category_code)
                  categories[category_code].label = cat_obj.label if cat_obj else category_code
-            
+
             categories[category_code].holdings.append(data)
             categories[category_code].total += data.value
 
@@ -450,7 +450,7 @@ class PortfolioSummaryService:
                     continue
 
                 category_holdings = category_holdings_optional
-                
+
                 # Ensure label is set (might not be if no holdings populated it yet, but we skip empty ones)
                 if not category_holdings.label:
                      cat_obj = category_map.get(category_code)

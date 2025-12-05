@@ -63,11 +63,11 @@ class Institution(models.Model):
     """Financial institution (e.g., Vanguard, Fidelity)."""
     name = models.CharField(max_length=100, unique=True)
 
-    def __str__(self) -> str:
-        return self.name
-
     class Meta:
         ordering = ['name']
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class Account(models.Model):
@@ -85,6 +85,9 @@ class Account(models.Model):
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPES)
     institution = models.ForeignKey(Institution, on_delete=models.PROTECT, related_name='accounts')
 
+    def __str__(self) -> str:
+        return f"{self.name} ({self.user.username})"
+
     @property
     def tax_treatment(self) -> str:
         if self.account_type == 'ROTH_IRA':
@@ -92,9 +95,6 @@ class Account(models.Model):
         elif self.account_type in ('TRADITIONAL_IRA', '401K'):
             return 'TAX_DEFERRED'
         return 'TAXABLE'
-
-    def __str__(self) -> str:
-        return f"{self.name} ({self.user.username})"
 
 class TargetAllocation(models.Model):
     """Target allocation for a specific account type and asset class."""
