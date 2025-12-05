@@ -35,7 +35,6 @@ def subtract(value: Any, arg: Any) -> Decimal:
     except (InvalidOperation, TypeError, ValueError):
         return Decimal('0')
     return dec_value - dec_arg
-    return dec_value - dec_arg
 
 
 @register.filter
