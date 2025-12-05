@@ -77,3 +77,23 @@ def accounting_percent(value: Any, decimals: int = 1) -> str:
 
     # Add hidden parenthesis for alignment
     return mark_safe(f"{formatted}%<span style='visibility: hidden;'>)</span>")
+
+
+@register.filter
+def accounting_number(value: Any, decimals: int = 2) -> str:
+    """Format value as accounting number: (123.45) for negative, no symbol."""
+    try:
+        d = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return '-'
+
+    is_negative = d < 0
+    abs_val = abs(d)
+
+    formatted = f"{abs_val:,.{decimals}f}"
+
+    if is_negative:
+        return f"({formatted})"
+
+    # Add hidden parenthesis for alignment
+    return mark_safe(f"{formatted}<span style='visibility: hidden;'>)</span>")

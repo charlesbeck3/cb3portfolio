@@ -66,13 +66,25 @@ class AggregatedHolding:
     category_code: str
     shares: Decimal = Decimal('0.00')
     current_price: Decimal | None = None
-    value: Decimal = Decimal('0.00')
+    value: Decimal = Decimal('0.00')  # Current Value
+    current_allocation: Decimal = Decimal('0.00')
+    target_value: Decimal = Decimal('0.00')
+    target_allocation: Decimal = Decimal('0.00')
+    target_shares: Decimal = Decimal('0.00')
+    value_variance: Decimal = Decimal('0.00')
+    allocation_variance: Decimal = Decimal('0.00')
+    shares_variance: Decimal = Decimal('0.00')
 
 
 @dataclass
 class HoldingsCategory:
     label: str
     total: Decimal = Decimal('0.00')
+    total_target_value: Decimal = Decimal('0.00')
+    total_value_variance: Decimal = Decimal('0.00')
+    total_current_allocation: Decimal = Decimal('0.00')
+    total_target_allocation: Decimal = Decimal('0.00')
+    total_allocation_variance: Decimal = Decimal('0.00')
     holdings: list[AggregatedHolding] = field(default_factory=list)
 
 
@@ -80,12 +92,22 @@ class HoldingsCategory:
 class HoldingsGroup:
     label: str
     total: Decimal = Decimal('0.00')
+    total_target_value: Decimal = Decimal('0.00')
+    total_value_variance: Decimal = Decimal('0.00')
+    total_current_allocation: Decimal = Decimal('0.00')
+    total_target_allocation: Decimal = Decimal('0.00')
+    total_allocation_variance: Decimal = Decimal('0.00')
     categories: OrderedDict[str, HoldingsCategory] = field(default_factory=OrderedDict)
 
 
 @dataclass
 class HoldingsSummary:
     grand_total: Decimal = Decimal('0.00')
+    grand_target_value: Decimal = Decimal('0.00')
+    grand_value_variance: Decimal = Decimal('0.00')
+    grand_current_allocation: Decimal = Decimal('0.00')
+    grand_target_allocation: Decimal = Decimal('0.00')
+    grand_allocation_variance: Decimal = Decimal('0.00')
     holding_groups: OrderedDict[str, HoldingsGroup] = field(default_factory=OrderedDict)
 
 
@@ -417,21 +439,81 @@ class PortfolioSummaryService:
         """
         Get all holdings grouped by category and group, sorted by value.
         Optionally filter by account_id.
+        Includes target allocation, current allocation, and variance calculations.
         """
         # Ensure prices are up to date
         PortfolioSummaryService.update_prices(user)
 
+        # Fetch base data
         holdings = Holding.objects.filter(account__user=user).select_related(
             'account', 'security', 'security__asset_class'
         )
-
         if account_id:
             holdings = holdings.filter(account_id=account_id)
 
-        # First, aggregate by ticker
+        target_allocations = TargetAllocation.objects.filter(user=user).select_related('asset_class')
+
+        # --- PRE-CALCULATION PHASE ---
+
+        # Map targets: (account_type, asset_class_id) -> target_pct
+        target_map: dict[tuple[str, int], Decimal] = {}
+        for ta in target_allocations:
+            target_map[(ta.account_type, ta.asset_class_id)] = ta.target_pct
+
+        # Calculate Account Totals and Security Counts per Asset Class per Account
+        account_totals: dict[int, Decimal] = defaultdict(Decimal)
+        # account_id -> asset_class_id -> set of security tickers
+        account_ac_security_counts: dict[int, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
+        # Account-level security count mapping since we might filter by account_id but need context
+        # Actually, if we filter by account_id, we only care about that account's context.
+
+        # We need to iterate ALL holdings to build the account stats first, even if we are filtering?
+        # No, if we filter by account_id, we only show data for that account.
+
+        for holding in holdings:
+            val = Decimal('0.00')
+            if holding.current_price:
+                 val = holding.shares * holding.current_price
+
+            account_totals[holding.account_id] += val
+            account_ac_security_counts[holding.account_id][holding.security.asset_class_id].add(holding.security.ticker)
+
+
+        # --- AGGREGATION PHASE ---
+
         ticker_data: dict[str, AggregatedHolding] = {}
+        grand_total_value = Decimal('0.00')
+
         for holding in holdings:
             ticker = holding.security.ticker
+            current_val = Decimal('0.00')
+            if holding.current_price:
+                current_val = holding.shares * holding.current_price
+
+            grand_total_value += current_val
+
+            # Determine Target Value for this specific holding instance
+            # Target for Asset Class in this Account
+            ac_target_pct = target_map.get((holding.account.account_type, holding.security.asset_class_id), Decimal('0.00'))
+
+            # Number of securities in this asset class held in this account
+            num_securities = len(account_ac_security_counts[holding.account_id][holding.security.asset_class_id])
+
+            # Allocate target evenly among securities
+            # If num_securities is 0 (shouldn't happen here), handle division by zero
+            security_target_pct = ac_target_pct / Decimal(num_securities) if num_securities > 0 else Decimal('0.00')
+
+            # Dollar Target for this holding
+            account_total = account_totals[holding.account_id]
+            holding_target_value = account_total * (security_target_pct / Decimal('100.00'))
+
+            # Target Shares
+            # If price is 0 or None, we can't calculate target shares reasonably.
+            holding_target_shares = Decimal('0.00')
+            if holding.current_price and holding.current_price > 0:
+                 holding_target_shares = holding_target_value / holding.current_price
+
+
             if ticker not in ticker_data:
                 ticker_data[ticker] = AggregatedHolding(
                     ticker=ticker,
@@ -442,10 +524,27 @@ class PortfolioSummaryService:
                 )
 
             ticker_data[ticker].shares += holding.shares
-            if holding.current_price:
-                ticker_data[ticker].value += holding.shares * holding.current_price
+            ticker_data[ticker].value += current_val
+            ticker_data[ticker].target_value += holding_target_value
+            ticker_data[ticker].target_shares += holding_target_shares
 
-        # Now group by category
+        # --- FINAL METRICS CALCULATION ---
+
+        for holding_data in ticker_data.values():
+            # Current Allocation %
+            if grand_total_value > 0:
+                holding_data.current_allocation = (holding_data.value / grand_total_value) * Decimal('100.00')
+                holding_data.target_allocation = (holding_data.target_value / grand_total_value) * Decimal('100.00')
+
+            # Variances
+            holding_data.value_variance = holding_data.value - holding_data.target_value
+            holding_data.shares_variance = holding_data.shares - holding_data.target_shares
+            holding_data.allocation_variance = holding_data.current_allocation - holding_data.target_allocation
+
+
+        # --- GROUPING ---
+
+        # Now group by category (existing logic)
         categories: defaultdict[str, HoldingsCategory] = defaultdict(
             lambda: HoldingsCategory(label='', holdings=[])
         )
@@ -470,6 +569,11 @@ class PortfolioSummaryService:
 
             categories[category_code].holdings.append(data)
             categories[category_code].total += data.value
+            categories[category_code].total_target_value += data.target_value
+            categories[category_code].total_value_variance += data.value_variance
+            categories[category_code].total_current_allocation += data.current_allocation
+            categories[category_code].total_target_allocation += data.target_allocation
+            categories[category_code].total_allocation_variance += data.allocation_variance
 
         # Sort holdings within each category by current value (desc) then ticker for stability
         for category_holdings in categories.values():
@@ -479,12 +583,21 @@ class PortfolioSummaryService:
             )
 
         holding_groups: OrderedDict[str, HoldingsGroup] = OrderedDict()
-        grand_total = Decimal('0.00')
+        grand_target_value = Decimal('0.00')
+        grand_value_variance = Decimal('0.00')
+        grand_current_allocation = Decimal('0.00')
+        grand_target_allocation = Decimal('0.00')
+        grand_allocation_variance = Decimal('0.00')
 
         for group_code in group_order:
             category_codes = grouped_category_codes.get(group_code, [])
             group_categories: OrderedDict[str, HoldingsCategory] = OrderedDict()
             group_total = Decimal('0.00')
+            group_target_value = Decimal('0.00')
+            group_value_variance = Decimal('0.00')
+            group_current_allocation = Decimal('0.00')
+            group_target_allocation = Decimal('0.00')
+            group_allocation_variance = Decimal('0.00')
 
             for category_code in category_codes:
                 category_holdings_optional = categories.get(category_code)
@@ -493,13 +606,18 @@ class PortfolioSummaryService:
 
                 category_holdings = category_holdings_optional
 
-                # Ensure label is set (might not be if no holdings populated it yet, but we skip empty ones)
+                # Ensure label is set
                 if not category_holdings.label:
                      cat_obj = category_map.get(category_code)
                      category_holdings.label = cat_obj.label if cat_obj else category_code
 
                 group_categories[category_code] = category_holdings
                 group_total += category_holdings.total
+                group_target_value += category_holdings.total_target_value
+                group_value_variance += category_holdings.total_value_variance
+                group_current_allocation += category_holdings.total_current_allocation
+                group_target_allocation += category_holdings.total_target_allocation
+                group_allocation_variance += category_holdings.total_allocation_variance
 
             if not group_categories:
                 continue
@@ -510,11 +628,25 @@ class PortfolioSummaryService:
             holding_groups[group_code] = HoldingsGroup(
                 label=group_label,
                 total=group_total,
+                total_target_value=group_target_value,
+                total_value_variance=group_value_variance,
+                total_current_allocation=group_current_allocation,
+                total_target_allocation=group_target_allocation,
+                total_allocation_variance=group_allocation_variance,
                 categories=group_categories,
             )
-            grand_total += group_total
+            grand_target_value += group_target_value
+            grand_value_variance += group_value_variance
+            grand_current_allocation += group_current_allocation
+            grand_target_allocation += group_target_allocation
+            grand_allocation_variance += group_allocation_variance
 
         return {
             'holding_groups': holding_groups,
-            'grand_total': grand_total,
+            'grand_total': grand_total_value,
+            'grand_target_value': grand_target_value,
+            'grand_value_variance': grand_value_variance,
+            'grand_current_allocation': grand_current_allocation,
+            'grand_target_allocation': grand_target_allocation,
+            'grand_allocation_variance': grand_allocation_variance,
         }
