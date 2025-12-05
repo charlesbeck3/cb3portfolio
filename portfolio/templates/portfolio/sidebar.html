@@ -51,10 +51,23 @@
         border-right: 1px solid #dee2e6;
     }
 
-    .accordion-button:not(.collapsed) {
-        background-color: #e9ecef;
+    .accordion-item {
+        background-color: #ffffff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        border: 1px solid rgba(0,0,0,0.05);
+    }
+
+    .accordion-button {
+        background-color: #ffffff;
         color: #212529;
         box-shadow: none;
+    }
+
+    .accordion-button:not(.collapsed) {
+        background-color: #f1f3f5;
+        color: #212529;
+        box-shadow: none;
+        border-bottom: 1px solid #dee2e6;
     }
 
     .accordion-button:focus {
@@ -71,6 +84,6 @@
     }
 
     .list-group-item:hover {
-        background-color: #e9ecef;
+        background-color: #f8f9fa;
     }
 </style>

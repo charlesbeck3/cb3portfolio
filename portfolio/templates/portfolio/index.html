@@ -40,13 +40,12 @@
     <div class="col-md-10">
         <div class="row">
             <div class="col-md-12">
-                <h1>Dashboard</h1>
-                <p class="lead">Welcome to your portfolio manager.</p>
-
-                <div class="card mt-4">
-                    <div class="card-body">
-                        <h5 class="card-title">Quick Actions</h5>
-                        <p class="card-text">Manage your assets and view reports.</p>
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h1 class="mb-0">Dashboard</h1>
+                        <p class="lead mb-0 text-muted">Welcome to your portfolio manager.</p>
+                    </div>
+                    <div>
                         <a href="{% url 'portfolio:holdings' %}" class="btn btn-primary">View Holdings</a>
                         <a href="#" class="btn btn-secondary">Rebalance</a>
                     </div>

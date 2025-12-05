@@ -18,7 +18,17 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         context['sidebar_data'] = PortfolioSummaryService.get_account_summary(self.request.user)
 
         # Pass account types for column headers
-        context['account_types'] = Account.ACCOUNT_TYPES
+        # Only include account types that have at least one account
+        assert self.request.user.is_authenticated
+        existing_types = set(
+            Account.objects.filter(user=self.request.user)
+            .values_list('account_type', flat=True)
+            .distinct()
+        )
+        context['account_types'] = [
+            (code, label) for code, label in Account.ACCOUNT_TYPES
+            if code in existing_types
+        ]
 
         return context
 
