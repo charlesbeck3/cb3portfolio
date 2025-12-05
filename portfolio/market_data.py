@@ -1,54 +1,46 @@
 import logging
 from decimal import Decimal
-from typing import Any
 
 import yfinance as yf
-
-from portfolio.models import Holding
 
 logger = logging.getLogger(__name__)
 
 
 class MarketDataService:
     @staticmethod
-    def update_prices(user: Any) -> None:
+    def get_prices(tickers: list[str]) -> dict[str, Decimal]:
         """
-        Fetch current prices for all securities held by the user and update Holding.current_price.
+        Fetch current prices for a list of tickers.
+        Returns a dictionary mapping ticker -> price.
         """
-        holdings = Holding.objects.filter(account__user=user).select_related('security')
-        tickers = list({h.security.ticker for h in holdings})
-
         if not tickers:
-            return
+            return {}
+
+        price_map: dict[str, Decimal] = {}
 
         # Handle cash-equivalent tickers separately - they're always $1.00
         cash_tickers = {'CASH', 'IBOND'}
-        cash_holdings = [h for h in holdings if h.security.ticker in cash_tickers]
-        for holding in cash_holdings:
-            holding.current_price = Decimal('1.00')
-            holding.save(update_fields=['current_price'])
+        params_tickers = []
 
-        # Remove cash tickers from list to fetch from yfinance
-        tickers = [t for t in tickers if t not in cash_tickers]
+        for ticker in tickers:
+            if ticker in cash_tickers:
+                 price_map[ticker] = Decimal('1.00')
+            else:
+                 params_tickers.append(ticker)
 
-        if not tickers:
-            return
+        if not params_tickers:
+            return price_map
 
         try:
             # Fetch data for all tickers at once
-            data = yf.download(tickers, period="1d", progress=False)['Close']
+            data = yf.download(params_tickers, period="1d", progress=False)['Close']
 
-            # If only one ticker, data is a Series, otherwise DataFrame
-            # We need to handle both cases or ensure we access it correctly
-
-            # Create a map of ticker -> price
-            price_map = {}
-            if len(tickers) == 1:
+            if len(params_tickers) == 1:
                 # If single ticker, 'data' might be a Series or DataFrame depending on yfinance version/args
                 # yfinance 0.2+ usually returns DataFrame with MultiIndex if group_by='ticker' (default is column)
                 # But with simple download of 1 ticker, it might be just a DataFrame with columns Open, High, etc.
                 # Let's be safe and fetch the last value.
-                ticker = tickers[0]
+                ticker = params_tickers[0]
                 try:
                     price = data.iloc[-1]
                     # If it's a series (one ticker), price is the value.
@@ -68,7 +60,7 @@ class MarketDataService:
                 # Multiple tickers, 'data' is a DataFrame where columns are tickers
                 # Get the last row (latest prices)
                 latest_prices = data.iloc[-1]
-                for ticker in tickers:
+                for ticker in params_tickers:
                     try:
                         price = latest_prices[ticker]
                         val = price.item() if hasattr(price, 'item') else price
@@ -82,11 +74,7 @@ class MarketDataService:
                     except Exception:
                          logger.warning(f"Could not extract price for {ticker}")
 
-            # Update holdings
-            for holding in holdings:
-                if holding.security.ticker in price_map:
-                    holding.current_price = price_map[holding.security.ticker]
-                    holding.save(update_fields=['current_price'])
-
         except Exception as e:
             logger.error(f"Error updating prices: {e}")
+
+        return price_map

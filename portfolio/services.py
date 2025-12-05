@@ -17,13 +17,32 @@ logger = logging.getLogger(__name__)
 
 class PortfolioSummaryService:
     @staticmethod
+    def update_prices(user: Any) -> None:
+        """
+        Fetch current prices for all securities held by the user and update Holding.current_price.
+        """
+        holdings = Holding.objects.filter(account__user=user).select_related('security')
+        tickers = list({h.security.ticker for h in holdings})
+
+        if not tickers:
+            return
+
+        price_map = MarketDataService.get_prices(tickers)
+
+        # Update holdings
+        for holding in holdings:
+            if holding.security.ticker in price_map:
+                holding.current_price = price_map[holding.security.ticker]
+                holding.save(update_fields=['current_price'])
+
+    @staticmethod
     def get_holdings_summary(user: Any) -> PortfolioSummary:
         """
         Aggregate holdings by Asset Class (Category) and Account Type.
         Returns a structure suitable for rendering the summary table.
         """
         # Ensure prices are up to date
-        MarketDataService.update_prices(user)
+        PortfolioSummaryService.update_prices(user)
 
         holdings = Holding.objects.filter(account__user=user).select_related(
             'account',
@@ -177,7 +196,7 @@ class PortfolioSummaryService:
         Includes aggregate absolute deviation from target allocation for each account.
         """
         # Ensure prices are up to date
-        MarketDataService.update_prices(user)
+        PortfolioSummaryService.update_prices(user)
 
         # Prefetch the 'account_type' and its 'group' field
         accounts = Account.objects.filter(user=user).select_related('institution', 'account_type__group').prefetch_related('holdings__security__asset_class')
@@ -299,7 +318,7 @@ class PortfolioSummaryService:
         Includes target allocation, current allocation, and variance calculations.
         """
         # Ensure prices are up to date
-        MarketDataService.update_prices(user)
+        PortfolioSummaryService.update_prices(user)
 
         # Fetch base data
         holdings = Holding.objects.filter(account__user=user).select_related(
