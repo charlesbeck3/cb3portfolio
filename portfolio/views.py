@@ -29,4 +29,5 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
         context.update(PortfolioSummaryService.get_holdings_by_category(self.request.user))
+        context['sidebar_data'] = PortfolioSummaryService.get_account_summary(self.request.user)
         return context
