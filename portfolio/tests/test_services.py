@@ -244,3 +244,55 @@ class PortfolioSummaryServiceTests(TestCase):
 
         # Expect Retirement (20000) then Investments (8000)
         self.assertEqual(groups, ['Retirement', 'Investments'])
+
+    @patch('portfolio.services.PortfolioSummaryService.update_prices')
+    def test_get_account_summary_absolute_deviation(self, mock_update_prices: MagicMock) -> None:
+        """Test absolute deviation calculation."""
+        # Setup specific scenario for Roth Account
+        # Total Value: $100
+        # US Stock: $60 (Target 50% -> $50) -> Dev 10
+        # Bonds: $40 (Target 50% -> $50) -> Dev 10
+        # Total Dev: 20
+
+        # Modify existing holding (US Stocks)
+        self.holding_vti_roth.current_price = Decimal('1.00')
+        self.holding_vti_roth.shares = Decimal('60.00')
+        self.holding_vti_roth.save()
+
+        # Add new holding (Bonds) to same account
+        Holding.objects.create(
+            account=self.account_roth,
+            security=self.sec_bnd,
+            shares=Decimal('40.00'),
+            current_price=Decimal('1.00')
+        )
+
+        # Create Targets
+        TargetAllocation.objects.create(
+            user=self.user,
+            account_type='ROTH_IRA',
+            asset_class=self.asset_class_us,
+            target_pct=Decimal('50.0')
+        )
+        TargetAllocation.objects.create(
+            user=self.user,
+            account_type='ROTH_IRA',
+            asset_class=self.asset_class_bonds,
+            target_pct=Decimal('50.0')
+        )
+
+        summary = PortfolioSummaryService.get_account_summary(self.user)
+
+        # Find Roth account
+        roth_account = None
+        for group in summary['groups'].values():
+            for acc in group['accounts']:
+                if acc['name'] == 'Roth IRA':
+                    roth_account = acc
+                    break
+
+        self.assertIsNotNone(roth_account)
+        assert roth_account is not None
+        self.assertEqual(roth_account['total'], Decimal('100.00'))
+        self.assertEqual(roth_account['absolute_deviation'], Decimal('20.00'))
+        self.assertEqual(roth_account['absolute_deviation_pct'], Decimal('20.00'))

@@ -5,7 +5,15 @@ from typing import Any, TypedDict
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from portfolio.models import Account, AssetCategory, AssetClass, Holding, Institution, Security
+from portfolio.models import (
+    Account,
+    AssetCategory,
+    AssetClass,
+    Holding,
+    Institution,
+    Security,
+    TargetAllocation,
+)
 
 
 class CategorySeed(TypedDict):
@@ -269,6 +277,49 @@ class Command(BaseCommand):
                     defaults={'shares': holding_data['shares']}
                 )
 
+        # Target Allocations from User provided image
+        # Mapping: Brokerage -> TAXABLE, Trad. IRA -> TRADITIONAL_IRA, Roth IRA -> ROTH_IRA
+        target_data = [
+            {'asset_class': 'US Equities', 'TAXABLE': Decimal('33.0'), 'TRADITIONAL_IRA': Decimal('25.0'), 'ROTH_IRA': Decimal('25.0')},
+            {'asset_class': 'US Real Estate', 'TAXABLE': Decimal('0.0'), 'TRADITIONAL_IRA': Decimal('30.0'), 'ROTH_IRA': Decimal('25.0')},
+            {'asset_class': 'US Value Equities', 'TAXABLE': Decimal('9.6'), 'TRADITIONAL_IRA': Decimal('0.0'), 'ROTH_IRA': Decimal('5.0')},
+            {'asset_class': 'US Dividend Equities', 'TAXABLE': Decimal('9.6'), 'TRADITIONAL_IRA': Decimal('0.0'), 'ROTH_IRA': Decimal('5.0')},
+            {'asset_class': 'International Developed Equities', 'TAXABLE': Decimal('23.9'), 'TRADITIONAL_IRA': Decimal('10.0'), 'ROTH_IRA': Decimal('15.0')},
+            {'asset_class': 'International Emerging Equities', 'TAXABLE': Decimal('9.6'), 'TRADITIONAL_IRA': Decimal('0.0'), 'ROTH_IRA': Decimal('5.0')},
+            {'asset_class': 'US Short-term Treasuries', 'TAXABLE': Decimal('9.6'), 'TRADITIONAL_IRA': Decimal('30.0'), 'ROTH_IRA': Decimal('15.0')},
+            {'asset_class': 'US Intermediate-term Treasuries', 'TAXABLE': Decimal('4.8'), 'TRADITIONAL_IRA': Decimal('5.0'), 'ROTH_IRA': Decimal('5.0')},
+            {'asset_class': 'Inflation Adjusted Bond', 'TAXABLE': Decimal('0.0'), 'TRADITIONAL_IRA': Decimal('0.0'), 'ROTH_IRA': Decimal('0.0')},
+            {'asset_class': 'Cash', 'TAXABLE': Decimal('0.0'), 'TRADITIONAL_IRA': Decimal('0.0'), 'ROTH_IRA': Decimal('0.0')},
+        ]
+
+        account_types = ['TAXABLE', 'TRADITIONAL_IRA', 'ROTH_IRA']
+
+        for row in target_data:
+            ac_name = row['asset_class']
+            # Only create targets if > 0 to keep it clean, or create all?
+            # Creating all allows explicit 0 targets, but usually we care about positive allocations.
+            # However, explicit 0 might be useful to override defaults if we had them.
+            # Let's create all provided in the table to be safe, except implicit zeros if deemed unnecessary.
+            # The prompt implies using the targets in the file.
+
+            try:
+                asset_class = AssetClass.objects.get(name=ac_name)
+            except AssetClass.DoesNotExist:
+                self.stdout.write(self.style.ERROR(f'Asset Class not found for target: {ac_name}'))
+                continue
+
+            for acc_type in account_types:
+                target_pct = row[acc_type]
+
+                # Update or create the target
+                TargetAllocation.objects.update_or_create(
+                    user=admin_user,
+                    account_type=acc_type,
+                    asset_class=asset_class,
+                    defaults={'target_pct': target_pct}
+                )
+
+        self.stdout.write(self.style.SUCCESS('Target Allocations seeded successfully!'))
         self.stdout.write(self.style.SUCCESS('Database seeded successfully!'))
 
     def _map_account_fields(self, account_subtype: str) -> str:

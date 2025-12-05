@@ -1,4 +1,5 @@
 {% load humanize %}
+{% load portfolio_extras %}
 
 <div class="sidebar">
     <div class="sidebar-header mb-3">
@@ -30,8 +31,15 @@
                                 <div class="fw-bold">{{ account.name }}</div>
                                 <div class="text-muted small">{{ account.institution }}</div>
                             </div>
-                            <div class="text-success small fw-bold">
-                                ${{ account.total|floatformat:0|intcomma }}
+                            <div class="text-end">
+                                <div class="text-success small fw-bold">
+                                    ${{ account.total|floatformat:0|intcomma }}
+                                </div>
+                                {% if account.absolute_deviation_pct > 0 %}
+                                <div class="text-muted small" style="font-size: 0.75em;" title="Absolute Deviation vs Target">
+                                    dev: {{ account.absolute_deviation_pct|accounting_percent:1 }}
+                                </div>
+                                {% endif %}
                             </div>
                         </li>
                         {% endfor %}

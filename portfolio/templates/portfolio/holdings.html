@@ -1,5 +1,6 @@
 {% extends "portfolio/base.html" %}
 {% load humanize %}
+{% load portfolio_extras %}
 
 {% block title %}Holdings - Portfolio Manager{% endblock %}
 
@@ -47,21 +48,21 @@
                                         <td>{{ holding.name }}</td>
                                         <td>{{ holding.asset_class }}</td>
                                         <td class="text-end">{{ holding.shares|floatformat:4 }}</td>
-                                        <td class="text-end">${{ holding.current_price|default:"0"|floatformat:2|intcomma }}</td>
-                                        <td class="text-end">${{ holding.value|floatformat:0|intcomma }}</td>
+                                        <td class="text-end">{{ holding.current_price|default:"0"|accounting_amount:2 }}</td>
+                                        <td class="text-end">{{ holding.value|accounting_amount:0 }}</td>
                                     </tr>
                                     {% endfor %}
                                     {% if group_data.categories|length > 1 %}
                                     <tr class="table-secondary fw-bold group-{{ forloop.parentloop.counter }}-rows collapse show">
                                         <td colspan="5">{{ category_data.label }} Total</td>
-                                        <td class="text-end">${{ category_data.total|floatformat:0|intcomma }}</td>
+                                        <td class="text-end">{{ category_data.total|accounting_amount:0 }}</td>
                                     </tr>
                                     {% endif %}
                                     {% endfor %}
                                     <tr class="table-primary fw-bold border-top group-toggle mt-3" data-bs-toggle="collapse"
                                         data-bs-target=".group-{{ forloop.counter }}-rows" aria-expanded="true" role="button">
                                         <td colspan="5">{{ group_data.label|default:group_code }} Total</td>
-                                        <td class="text-end">${{ group_data.total|floatformat:0|intcomma }}</td>
+                                        <td class="text-end">{{ group_data.total|accounting_amount:0 }}</td>
                                     </tr>
                                     {% endfor %}
                                     {% else %}
@@ -73,7 +74,7 @@
                                 <tfoot>
                                     <tr class="table-dark fw-bold">
                                         <td colspan="5">Grand Total</td>
-                                        <td class="text-end">${{ grand_total|floatformat:0|intcomma }}</td>
+                                        <td class="text-end">{{ grand_total|accounting_amount:0 }}</td>
                                     </tr>
                                 </tfoot>
                             </table>

@@ -320,11 +320,19 @@ class PortfolioSummaryService:
     def get_account_summary(user: Any) -> dict[str, Any]:
         """
         Get summary of accounts grouped by type (Retirement vs Investments).
+        Includes aggregate absolute deviation from target allocation for each account.
         """
         # Ensure prices are up to date
         PortfolioSummaryService.update_prices(user)
 
-        accounts = Account.objects.filter(user=user).prefetch_related('holdings')
+        accounts = Account.objects.filter(user=user).select_related('institution').prefetch_related('holdings__security__asset_class')
+
+        # 1. Fetch all targets for this user and map by account_type -> asset_class_name
+        targets = TargetAllocation.objects.filter(user=user).select_related('asset_class')
+        # Map: account_type -> asset_class_name -> target_pct
+        target_map: dict[str, dict[str, Decimal]] = defaultdict(dict)
+        for t in targets:
+            target_map[t.account_type][t.asset_class.name] = t.target_pct
 
         # Define groups
         groups: dict[str, dict[str, Any]] = {
@@ -344,16 +352,39 @@ class PortfolioSummaryService:
         grand_total = Decimal('0.00')
 
         for account in accounts:
-            # Calculate account total
             account_total = Decimal('0.00')
+            # Group holdings by asset class to compare with targets
+            # Map: asset_class_name -> current_value
+            holdings_by_ac: dict[str, Decimal] = defaultdict(Decimal)
+
             for holding in account.holdings.all():
                 if holding.current_price:
-                    account_total += holding.shares * holding.current_price
+                    val = holding.shares * holding.current_price
+                    account_total += val
+                    holdings_by_ac[holding.security.asset_class.name] += val
+
+            # Calculate Absolute Deviation
+            # Deviation = Sum(Abs(Actual_Value - Target_Value)) for each asset class
+            # We need to consider all asset classes that have EITHER a holding OR a target.
+
+            account_targets = target_map.get(account.account_type, {})
+            all_asset_classes = set(holdings_by_ac.keys()) | set(account_targets.keys())
+
+            absolute_deviation = Decimal('0.00')
+            absolute_deviation_pct = Decimal('0.00')
+
+            if account_total > 0:
+                for ac_name in all_asset_classes:
+                    actual_val = holdings_by_ac.get(ac_name, Decimal('0.00'))
+                    target_pct = account_targets.get(ac_name, Decimal('0.00'))
+                    target_val = account_total * (target_pct / Decimal('100.00'))
+
+                    diff = abs(actual_val - target_val)
+                    absolute_deviation += diff
+
+                absolute_deviation_pct = (absolute_deviation / account_total) * Decimal('100.00')
 
             group_name = type_map.get(account.account_type, 'Investments')
-
-            # Check if it's a cash account (heuristic based on name or holdings?)
-            # For now, rely on type map.
 
             groups[group_name]['accounts'].append({
                 'id': account.id,
@@ -361,6 +392,8 @@ class PortfolioSummaryService:
                 'institution': account.institution.name,
                 'total': account_total,
                 'account_type': account.account_type,
+                'absolute_deviation': absolute_deviation,
+                'absolute_deviation_pct': absolute_deviation_pct,
             })
             groups[group_name]['total'] += account_total
             grand_total += account_total

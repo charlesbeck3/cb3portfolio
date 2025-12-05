@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django import template
+from django.utils.safestring import mark_safe
 
 register = template.Library()
 
@@ -34,3 +35,45 @@ def subtract(value: Any, arg: Any) -> Decimal:
     except (InvalidOperation, TypeError, ValueError):
         return Decimal('0')
     return dec_value - dec_arg
+    return dec_value - dec_arg
+
+
+@register.filter
+def accounting_amount(value: Any, decimals: int = 0) -> str:
+    """Format value as accounting amount: (1,234) for negative."""
+    try:
+        d = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return '-'
+
+    is_negative = d < 0
+    abs_val = abs(d)
+
+    # Format number with commas and specified decimals
+    formatted = f"{abs_val:,.{decimals}f}"
+
+    if is_negative:
+        return f"(${formatted})"
+
+    # Add hidden parenthesis for alignment
+    return mark_safe(f"${formatted}<span style='visibility: hidden;'>)</span>")
+
+
+@register.filter
+def accounting_percent(value: Any, decimals: int = 1) -> str:
+    """Format value as accounting percent: (12.3%) for negative."""
+    try:
+        d = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return '-'
+
+    is_negative = d < 0
+    abs_val = abs(d)
+
+    formatted = f"{abs_val:.{decimals}f}"
+
+    if is_negative:
+        return f"({formatted}%)"
+
+    # Add hidden parenthesis for alignment
+    return mark_safe(f"{formatted}%<span style='visibility: hidden;'>)</span>")
