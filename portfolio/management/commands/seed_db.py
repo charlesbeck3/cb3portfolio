@@ -5,7 +5,7 @@ from typing import Any, TypedDict
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from portfolio.models import Account, AssetCategory, AssetClass, Holding, Security
+from portfolio.models import Account, AssetCategory, AssetClass, Holding, Institution, Security
 
 
 class CategorySeed(TypedDict):
@@ -250,13 +250,14 @@ class Command(BaseCommand):
         ]
 
         for account_data in account_rows:
+            institution, _ = Institution.objects.get_or_create(name=account_data['institution'])
             account_type = self._map_account_fields(account_data['account_subtype'])
             account_obj, _ = Account.objects.update_or_create(
                 user=admin_user,
                 name=account_data['name'],
                 defaults={
                     'account_type': account_type,
-                    'institution': account_data['institution'],
+                    'institution': institution,
                 }
             )
 

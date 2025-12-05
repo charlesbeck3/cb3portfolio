@@ -358,7 +358,7 @@ class PortfolioSummaryService:
             groups[group_name]['accounts'].append({
                 'id': account.id,
                 'name': account.name,
-                'institution': account.institution,
+                'institution': account.institution.name,
                 'total': account_total,
                 'account_type': account.account_type,
             })

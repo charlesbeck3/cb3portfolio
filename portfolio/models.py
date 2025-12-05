@@ -59,6 +59,17 @@ class AssetClass(models.Model):
     def __str__(self) -> str:
         return self.name
 
+class Institution(models.Model):
+    """Financial institution (e.g., Vanguard, Fidelity)."""
+    name = models.CharField(max_length=100, unique=True)
+
+    def __str__(self) -> str:
+        return self.name
+
+    class Meta:
+        ordering = ['name']
+
+
 class Account(models.Model):
     """Investment account (e.g., Roth IRA, Taxable)."""
 
@@ -72,7 +83,7 @@ class Account(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='accounts')
     name = models.CharField(max_length=100)
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPES)
-    institution = models.CharField(max_length=100)
+    institution = models.ForeignKey(Institution, on_delete=models.PROTECT, related_name='accounts')
 
     @property
     def tax_treatment(self) -> str:

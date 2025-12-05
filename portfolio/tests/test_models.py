@@ -8,6 +8,7 @@ from portfolio.models import (
     AssetCategory,
     AssetClass,
     Holding,
+    Institution,
     RebalancingRecommendation,
     Security,
     TargetAllocation,
@@ -33,6 +34,7 @@ class AssetClassTests(TestCase):
 class AccountTests(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.institution = Institution.objects.create(name="Vanguard")
 
     def test_create_account(self) -> None:
         """Test creating an account."""
@@ -40,13 +42,20 @@ class AccountTests(TestCase):
             user=self.user,
             name="Roth IRA",
             account_type="ROTH_IRA",
-            institution="Vanguard",
+            institution=self.institution,
         )
         self.assertEqual(account.name, "Roth IRA")
         self.assertEqual(str(account), "Roth IRA (testuser)")
 
     def test_tax_treatment_property(self) -> None:
         """Test tax_treatment property derivation."""
+        # Note: We need to provide required fields even if testing a property, 
+        # but since we are just instantiating the model (not saving), we can skip institution if not accessed.
+        # However, to be safe and consistent, let's just use simple instantiation if possible, 
+        # or if we save, we need institution.
+        # The original test instantiated without saving: roth = Account(account_type='ROTH_IRA')
+        # This is fine as long as we don't save.
+        
         roth = Account(account_type='ROTH_IRA')
         self.assertEqual(roth.tax_treatment, 'TAX_FREE')
         
@@ -82,6 +91,7 @@ class SecurityTests(TestCase):
 class HoldingTests(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.institution = Institution.objects.create(name="Vanguard")
         self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
             name="US Stocks",
@@ -91,7 +101,7 @@ class HoldingTests(TestCase):
             user=self.user,
             name="Roth IRA",
             account_type="ROTH_IRA",
-            institution="Vanguard",
+            institution=self.institution,
         )
         self.security = Security.objects.create(
             ticker="VTI",
@@ -158,6 +168,7 @@ class TargetAllocationTests(TestCase):
 class RebalancingRecommendationTests(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.institution = Institution.objects.create(name="Vanguard")
         self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
             name="US Stocks",
@@ -167,7 +178,7 @@ class RebalancingRecommendationTests(TestCase):
             user=self.user,
             name="Roth IRA",
             account_type="ROTH_IRA",
-            institution="Vanguard",
+            institution=self.institution,
         )
         self.security = Security.objects.create(
             ticker="VTI",

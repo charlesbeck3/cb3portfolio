@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from portfolio.models import Account, AssetCategory, AssetClass, Holding, Security, TargetAllocation
+from portfolio.models import Account, AssetCategory, AssetClass, Holding, Institution, Security, TargetAllocation
 from portfolio.services import PortfolioSummaryService
 
 User = get_user_model()
@@ -12,16 +12,17 @@ User = get_user_model()
 class PortfolioSummaryServiceTests(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(username='testuser', password='password')
+        self.institution = Institution.objects.create(name="Vanguard")
         self.category_equities = AssetCategory.objects.get(code='EQUITIES')
         self.category_us_equities = AssetCategory.objects.get(code='US_EQUITIES')
         self.category_fixed_income = AssetCategory.objects.get(code='FIXED_INCOME')
         self.asset_class_us = AssetClass.objects.create(name='US Stocks', category=self.category_us_equities)
         self.asset_class_bonds = AssetClass.objects.create(name='Bonds', category=self.category_fixed_income)
         self.account_roth = Account.objects.create(
-            user=self.user, name='Roth IRA', account_type='ROTH_IRA'
+            user=self.user, name='Roth IRA', account_type='ROTH_IRA', institution=self.institution
         )
         self.account_taxable = Account.objects.create(
-            user=self.user, name='Taxable', account_type='TAXABLE'
+            user=self.user, name='Taxable', account_type='TAXABLE', institution=self.institution
         )
         self.sec_vti = Security.objects.create(ticker='VTI', name='Vanguard Total Stock Market', asset_class=self.asset_class_us)
         self.sec_bnd = Security.objects.create(ticker='BND', name='Vanguard Total Bond Market', asset_class=self.asset_class_bonds)
