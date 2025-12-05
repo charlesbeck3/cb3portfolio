@@ -27,8 +27,8 @@
                         {% for account in group.accounts %}
                         <li class="list-group-item border-0 d-flex justify-content-between align-items-center ps-4">
                             <div>
-                                <div class="fw-bold small">{{ account.institution }}</div>
-                                <div class="text-muted small">{{ account.name }}</div>
+                                <div class="fw-bold">{{ account.name }}</div>
+                                <div class="text-muted small">{{ account.institution }}</div>
                             </div>
                             <div class="text-success small fw-bold">
                                 ${{ account.total|floatformat:0|intcomma }}
