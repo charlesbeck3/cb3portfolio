@@ -18,10 +18,10 @@ class PortfolioSummaryServiceTests(TestCase):
         self.asset_class_us = AssetClass.objects.create(name='US Stocks', category=self.category_us_equities)
         self.asset_class_bonds = AssetClass.objects.create(name='Bonds', category=self.category_fixed_income)
         self.account_roth = Account.objects.create(
-            user=self.user, name='Roth IRA', account_type='ROTH_IRA', tax_treatment='TAX_FREE'
+            user=self.user, name='Roth IRA', account_type='ROTH_IRA'
         )
         self.account_taxable = Account.objects.create(
-            user=self.user, name='Taxable', account_type='TAXABLE', tax_treatment='TAXABLE'
+            user=self.user, name='Taxable', account_type='TAXABLE'
         )
         self.sec_vti = Security.objects.create(ticker='VTI', name='Vanguard Total Stock Market', asset_class=self.asset_class_us)
         self.sec_bnd = Security.objects.create(ticker='BND', name='Vanguard Total Bond Market', asset_class=self.asset_class_bonds)

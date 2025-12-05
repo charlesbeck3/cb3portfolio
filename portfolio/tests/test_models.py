@@ -41,10 +41,23 @@ class AccountTests(TestCase):
             name="Roth IRA",
             account_type="ROTH_IRA",
             institution="Vanguard",
-            tax_treatment="TAX_FREE"
         )
         self.assertEqual(account.name, "Roth IRA")
         self.assertEqual(str(account), "Roth IRA (testuser)")
+
+    def test_tax_treatment_property(self) -> None:
+        """Test tax_treatment property derivation."""
+        roth = Account(account_type='ROTH_IRA')
+        self.assertEqual(roth.tax_treatment, 'TAX_FREE')
+        
+        trad = Account(account_type='TRADITIONAL_IRA')
+        self.assertEqual(trad.tax_treatment, 'TAX_DEFERRED')
+        
+        k401 = Account(account_type='401K')
+        self.assertEqual(k401.tax_treatment, 'TAX_DEFERRED')
+        
+        taxable = Account(account_type='TAXABLE')
+        self.assertEqual(taxable.tax_treatment, 'TAXABLE')
 
 
 class SecurityTests(TestCase):
@@ -79,7 +92,6 @@ class HoldingTests(TestCase):
             name="Roth IRA",
             account_type="ROTH_IRA",
             institution="Vanguard",
-            tax_treatment="TAX_FREE"
         )
         self.security = Security.objects.create(
             ticker="VTI",
@@ -156,7 +168,6 @@ class RebalancingRecommendationTests(TestCase):
             name="Roth IRA",
             account_type="ROTH_IRA",
             institution="Vanguard",
-            tax_treatment="TAX_FREE"
         )
         self.security = Security.objects.create(
             ticker="VTI",

@@ -250,14 +250,13 @@ class Command(BaseCommand):
         ]
 
         for account_data in account_rows:
-            account_type, tax_treatment = self._map_account_fields(account_data['account_subtype'])
+            account_type = self._map_account_fields(account_data['account_subtype'])
             account_obj, _ = Account.objects.update_or_create(
                 user=admin_user,
                 name=account_data['name'],
                 defaults={
                     'account_type': account_type,
                     'institution': account_data['institution'],
-                    'tax_treatment': tax_treatment,
                 }
             )
 
@@ -271,10 +270,10 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS('Database seeded successfully!'))
 
-    def _map_account_fields(self, account_subtype: str) -> tuple[str, str]:
+    def _map_account_fields(self, account_subtype: str) -> str:
         subtype = account_subtype.lower()
         if 'roth' in subtype:
-            return 'ROTH_IRA', 'TAX_FREE'
+            return 'ROTH_IRA'
         if 'trad' in subtype:
-            return 'TRADITIONAL_IRA', 'TAX_DEFERRED'
-        return 'TAXABLE', 'TAXABLE'
+            return 'TRADITIONAL_IRA'
+        return 'TAXABLE'

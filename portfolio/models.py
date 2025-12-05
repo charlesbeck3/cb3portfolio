@@ -69,17 +69,18 @@ class Account(models.Model):
         ('TAXABLE', 'Taxable'),
     ]
 
-    TAX_TREATMENTS = [
-        ('TAX_FREE', 'Tax Free'),
-        ('TAX_DEFERRED', 'Tax Deferred'),
-        ('TAXABLE', 'Taxable'),
-    ]
-
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='accounts')
     name = models.CharField(max_length=100)
     account_type = models.CharField(max_length=20, choices=ACCOUNT_TYPES)
     institution = models.CharField(max_length=100)
-    tax_treatment = models.CharField(max_length=20, choices=TAX_TREATMENTS)
+
+    @property
+    def tax_treatment(self) -> str:
+        if self.account_type == 'ROTH_IRA':
+            return 'TAX_FREE'
+        elif self.account_type in ('TRADITIONAL_IRA', '401K'):
+            return 'TAX_DEFERRED'
+        return 'TAXABLE'
 
     def __str__(self) -> str:
         return f"{self.name} ({self.user.username})"
