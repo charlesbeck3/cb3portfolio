@@ -19,18 +19,19 @@ from .base import PortfolioTestMixin
 
 User = get_user_model()
 
+
 class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username='testuser', password='password')
-        self.institution = Institution.objects.create(name="Vanguard") # Keep this for existing tests
+        self.institution = Institution.objects.create(name="Vanguard")
 
         # Create Assets
-        self.category_equities = AssetCategory.objects.get(code='EQUITIES') # Keep for existing tests
-        self.category_us_equities = AssetCategory.objects.get(code='US_EQUITIES') # Keep for existing tests
-        self.category_fixed_income = AssetCategory.objects.get(code='FIXED_INCOME') # Keep for existing tests
-        self.asset_class_us = AssetClass.objects.create(name='US Stocks', category=self.category_us_equities) # Keep for existing tests
-        self.asset_class_bonds = AssetClass.objects.create(name='Bonds', category=self.category_fixed_income) # Keep for existing tests
+        self.category_equities = AssetCategory.objects.get(code='EQUITIES')
+        self.category_us_equities = AssetCategory.objects.get(code='US_EQUITIES')
+        self.category_fixed_income = AssetCategory.objects.get(code='FIXED_INCOME')
+        self.asset_class_us = AssetClass.objects.create(name='US Stocks', category=self.category_us_equities)
+        self.asset_class_bonds = AssetClass.objects.create(name='Bonds', category=self.category_fixed_income)
 
         # Create Account using AccountType object
         self.account_roth = Account.objects.create(
@@ -52,20 +53,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
             account=self.account_taxable, security=self.sec_bnd, shares=Decimal('20.0'), current_price=Decimal('80.00')
         )
 
-    @patch('portfolio.services.yf.download')
-    def test_update_prices(self, mock_download: MagicMock) -> None:
-        # Mock yfinance response
-        mock_data = MagicMock()
-        # Mocking .iloc[-1] to return a dict-like object or series
-        mock_data.iloc.__getitem__.return_value = {'VTI': 210.00, 'BND': 85.00}
-        mock_download.return_value = {'Close': mock_data}
-        PortfolioSummaryService.update_prices(self.user)
-        self.holding_vti_roth.refresh_from_db()
-        self.holding_bnd_taxable.refresh_from_db()
-        self.assertEqual(self.holding_vti_roth.current_price, Decimal('210.00'))
-        self.assertEqual(self.holding_bnd_taxable.current_price, Decimal('85.00'))
-
-    @patch('portfolio.services.PortfolioSummaryService.update_prices')
+    @patch('portfolio.market_data.MarketDataService.update_prices')
     def test_get_holdings_summary(self, mock_update_prices: MagicMock) -> None:
         # Ensure prices are set (already set in setUp, but update_prices is mocked so they won't change)
         summary = PortfolioSummaryService.get_holdings_summary(self.user)
@@ -99,7 +87,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         self.assertEqual(percentages['ROTH_IRA'].quantize(Decimal('0.01')), Decimal('55.56'))
         self.assertEqual(percentages['TAXABLE'].quantize(Decimal('0.01')), Decimal('44.44'))
 
-    @patch('portfolio.services.PortfolioSummaryService.update_prices')
+    @patch('portfolio.market_data.MarketDataService.update_prices')
     def test_get_holdings_summary_with_targets_and_variance(self, mock_update_prices: MagicMock) -> None:
         """Target allocations should produce target dollar amounts and zero variance when aligned."""
 
@@ -156,7 +144,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         self.assertEqual(taxable_data.target, Decimal('1600.00'))
         self.assertEqual(taxable_data.variance, Decimal('0.00'))
 
-    @patch('portfolio.services.PortfolioSummaryService.update_prices')
+    @patch('portfolio.market_data.MarketDataService.update_prices')
     def test_get_account_summary(self, mock_update_prices: MagicMock) -> None:
         summary = PortfolioSummaryService.get_account_summary(self.user)
 
@@ -178,7 +166,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         self.assertEqual(len(investments['accounts']), 1)
         self.assertEqual(investments['accounts'][0]['name'], 'Taxable')
 
-    @patch('portfolio.services.PortfolioSummaryService.update_prices')
+    @patch('portfolio.market_data.MarketDataService.update_prices')
     def test_get_holdings_by_category(self, mock_update_prices: MagicMock) -> None:
         result = PortfolioSummaryService.get_holdings_by_category(self.user)
 
@@ -220,7 +208,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         self.assertEqual(bnd_holding.ticker, 'BND')
         self.assertEqual(bnd_holding.value, Decimal('1600.00'))
 
-    @patch('portfolio.services.PortfolioSummaryService.update_prices')
+    @patch('portfolio.market_data.MarketDataService.update_prices')
     def test_get_account_summary_sorting(self, mock_update_prices: MagicMock) -> None:
         # Create a third account type with a middle value to verify sorting
         # Roth: 2000 (Retirement)
@@ -256,7 +244,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         # Expect Retirement (20000) then Investments (8000)
         self.assertEqual(groups, ['Retirement', 'Investments'])
 
-    @patch('portfolio.services.PortfolioSummaryService.update_prices')
+    @patch('portfolio.market_data.MarketDataService.update_prices')
     def test_get_account_summary_absolute_deviation(self, mock_update_prices: MagicMock) -> None:
         """Test absolute deviation calculation."""
         # Setup specific scenario for Roth Account
