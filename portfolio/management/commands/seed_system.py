@@ -121,6 +121,8 @@ class Command(BaseCommand):
         asset_classes: list[AssetClassSeed] = [
             {'name': 'US Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.08')},
             {'name': 'US Real Estate', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.06')},
+            {'name': 'US Quality Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.06')},
+            {'name': 'US Small Cap Value Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.06')},
             {'name': 'US Dividend Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.07')},
             {'name': 'US Value Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.075')},
             {'name': 'International Developed Equities', 'category': 'INTERNATIONAL_EQUITIES', 'expected_return': Decimal('0.07')},
@@ -160,6 +162,8 @@ class Command(BaseCommand):
             {'ticker': 'CASH', 'name': 'Cash Holding', 'asset_class': 'Cash'},
             {'ticker': 'VXUS', 'name': 'Vanguard Total International Stock ETF', 'asset_class': 'International Developed Equities'}, # Needed for test user
             {'ticker': 'BND', 'name': 'Vanguard Total Bond Market ETF', 'asset_class': 'US Intermediate-term Treasuries'}, # Needed for test user
+            {'ticker': 'AVUV', 'name': 'Avantis US Small Cap Value ETF', 'asset_class': 'US Small Cap Value Equities'},
+            {'ticker': 'JQUA', 'name': 'JPMorgan US Quality Factor ETF', 'asset_class': 'US Quality Equities'},
         ]
 
         for sec_data in securities:
