@@ -1,6 +1,6 @@
 import os
 from decimal import Decimal
-from typing import Any, TypedDict
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
@@ -23,7 +23,7 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         self.stdout.write('Seeding User Data...')
-        
+
         # Helper to lookup types efficiently
         type_objects = {t.code: t for t in AccountType.objects.all()}
 
@@ -151,9 +151,9 @@ class Command(BaseCommand):
             {'asset_class': 'Inflation Adjusted Bond', 'TAXABLE': Decimal('0.0'), 'TRADITIONAL_IRA': Decimal('0.0'), 'ROTH_IRA': Decimal('0.0')},
             {'asset_class': 'Cash', 'TAXABLE': Decimal('0.0'), 'TRADITIONAL_IRA': Decimal('0.0'), 'ROTH_IRA': Decimal('0.0')},
         ]
-        
+
         self.seed_user_targets(admin_user, target_data, type_objects)
-        
+
         # ---------------------------
         # 2. Test User
         # ---------------------------
@@ -176,7 +176,7 @@ class Command(BaseCommand):
                 'institution': 'Wells Fargo',
                 'holdings': [
                     {'ticker': 'VTI', 'shares': Decimal('100.00')},
-                    {'ticker': 'VXUS', 'shares': Decimal('50.00'), 'fallback_ticker': 'VEA'}, 
+                    {'ticker': 'VXUS', 'shares': Decimal('50.00'), 'fallback_ticker': 'VEA'},
                     {'ticker': 'BND', 'shares': Decimal('20.00'), 'fallback_ticker': 'VGIT'},
                     {'ticker': 'CASH', 'shares': Decimal('1000.00')},
                 ],
@@ -201,7 +201,7 @@ class Command(BaseCommand):
                 ],
             },
         ]
-        
+
         self.seed_user_portfolio(test_user, test_accounts, type_objects)
 
         test_targets = [
@@ -210,23 +210,26 @@ class Command(BaseCommand):
             {'asset_class': 'US Real Estate', 'ROTH_IRA': 50},
             {'asset_class': 'US Short-term Treasuries', 'TRADITIONAL_IRA': 100},
         ]
-        
+
         self.seed_user_targets(test_user, test_targets, type_objects)
 
         self.stdout.write(self.style.SUCCESS('User Data seeded successfully!'))
 
-    
+
     def seed_user_portfolio(self, user: Any, accounts_data: list[dict], type_objects: dict) -> None:
         for account_data in accounts_data:
             institution, _ = Institution.objects.get_or_create(name=account_data['institution'])
-            
+
             # Helper logic to handle casing or direct code match
             subtype = account_data['account_subtype']
             # Simple mapping if not redundant
-            if subtype.lower() == 'taxable': subtype = 'TAXABLE'
-            elif 'trad' in subtype.lower(): subtype = 'TRADITIONAL_IRA'
-            elif 'roth' in subtype.lower(): subtype = 'ROTH_IRA'
-            
+            if subtype.lower() == 'taxable':
+                subtype = 'TAXABLE'
+            elif 'trad' in subtype.lower():
+                subtype = 'TRADITIONAL_IRA'
+            elif 'roth' in subtype.lower():
+                subtype = 'ROTH_IRA'
+
             account_type = type_objects.get(subtype)
             if not account_type:
                  self.stdout.write(self.style.ERROR(f"Unknown Account Type code: {subtype}"))
@@ -270,8 +273,9 @@ class Command(BaseCommand):
                 continue
 
             for key, val in row.items():
-                if key == 'asset_class': continue
-                
+                if key == 'asset_class':
+                    continue
+
                 # key implies account type code
                 if key in type_objects:
                     TargetAllocation.objects.update_or_create(

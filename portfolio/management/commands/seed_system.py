@@ -1,4 +1,3 @@
-import os
 from decimal import Decimal
 from typing import Any, TypedDict
 
@@ -60,17 +59,18 @@ class Command(BaseCommand):
         groups: list[AccountGroupSeed] = [
             {'name': 'Investments', 'sort_order': 1},
             {'name': 'Retirement', 'sort_order': 2},
-            {'name': 'Deposit', 'sort_order': 3}, 
+            {'name': 'Deposit', 'sort_order': 3},
         ]
-        
+
         group_objects = {}
         for g_data in groups:
-             obj, created = AccountGroup.objects.get_or_create(
-                 name=g_data['name'], 
+             group_obj, created = AccountGroup.objects.get_or_create(
+                 name=g_data['name'],
                  defaults={'sort_order': g_data['sort_order']}
              )
-             group_objects[obj.name] = obj
-             if created: self.stdout.write(self.style.SUCCESS(f'Created Group: {obj.name}'))
+             group_objects[group_obj.name] = group_obj
+             if created:
+                 self.stdout.write(self.style.SUCCESS(f'Created Group: {group_obj.name}'))
 
         # 2. Account Types
         types: list[AccountTypeSeed] = [
@@ -79,9 +79,9 @@ class Command(BaseCommand):
              {'code': 'ROTH_IRA', 'label': 'Roth IRA', 'group': 'Retirement', 'tax_treatment': 'TAX_FREE'},
              {'code': 'DEPOSIT', 'label': 'Deposit Account', 'group': 'Deposit', 'tax_treatment': 'TAXABLE'},
         ]
-        
+
         for t_data in types:
-             obj, created = AccountType.objects.update_or_create(
+             type_obj, created = AccountType.objects.update_or_create(
                  code=t_data['code'],
                  defaults={
                      'label': t_data['label'],
@@ -89,7 +89,8 @@ class Command(BaseCommand):
                      'tax_treatment': t_data['tax_treatment']
                  }
              )
-             if created: self.stdout.write(self.style.SUCCESS(f'Created Account Type: {obj.label}'))
+             if created:
+                 self.stdout.write(self.style.SUCCESS(f'Created Account Type: {type_obj.label}'))
 
         # 3. Asset Categories (hierarchical)
         categories: list[CategorySeed] = [
@@ -101,7 +102,7 @@ class Command(BaseCommand):
             {'code': 'CASH', 'label': 'Cash', 'parent': None, 'sort_order': 6},
         ]
 
-        category_objects = {}
+        category_objects: dict[str, AssetCategory] = {}
         for cat_data in categories:
             parent_code = cat_data['parent']
             parent_obj = category_objects.get(parent_code) if parent_code else None
@@ -177,7 +178,7 @@ class Command(BaseCommand):
             )
             if created:
                 self.stdout.write(self.style.SUCCESS(f'Created Security: {sec_obj.ticker}'))
-        
+
         # 6. Institutions
         institutions: list[InstitutionSeed] = [
             {'name': 'Bank of America'},
@@ -192,8 +193,8 @@ class Command(BaseCommand):
         ]
 
         for inst_data in institutions:
-            obj, created = Institution.objects.get_or_create(name=inst_data['name'])
+            inst_obj, created = Institution.objects.get_or_create(name=inst_data['name'])
             if created:
-                self.stdout.write(self.style.SUCCESS(f'Created Institution: {obj.name}'))
+                self.stdout.write(self.style.SUCCESS(f'Created Institution: {inst_obj.name}'))
 
         self.stdout.write(self.style.SUCCESS('System Data seeded successfully!'))

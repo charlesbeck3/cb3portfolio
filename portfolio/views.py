@@ -134,11 +134,13 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         account_types_qs = AccountType.objects.filter(accounts__user=user).distinct().order_by('group__sort_order', 'label')
 
         account_types = []
-        for at in account_types_qs:
+        for at_obj in account_types_qs:
+            at: Any = at_obj
             # Attach accounts to account type for template iteration
             at_accounts = list(Account.objects.filter(user=user, account_type=at))
             # Calculate current percentages for each account
-            for acc in at_accounts:
+            for acc_obj in at_accounts:
+                acc: Any = acc_obj
                 total = account_values[acc.id]
                 acc.current_total_value = total
                 acc.allocation_map = {}
@@ -185,7 +187,8 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         # 2. Build Tree
         tree: dict[AssetCategory, dict[str, Any]] = {}
 
-        for ac in asset_classes:
+        for ac_obj in asset_classes:
+            ac: Any = ac_obj
             group = get_group(ac)
             category = ac.category
 
@@ -362,7 +365,7 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                  # Allow slight tolerance?
                  if cash_residual < Decimal('-0.01'):
                       errors.append(f"Total allocation for {at.label} exceeds 100% ({total_pct}%)")
-                 cash_residual = 0
+                 cash_residual = Decimal('0.00')
 
             default_updates[at.id][cash_ac.id] = cash_residual
 
@@ -482,7 +485,7 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                 # All other existing overrides for this account/asset that are NOT in map should be DELETED (reset to default).
 
                 current_overrides = TargetAllocation.objects.filter(user=user, account__isnull=False)
-                override_obj_map = {(t.account_id, t.asset_class_id): t for t in current_overrides}
+                override_obj_map = {(cast(int, t.account_id), t.asset_class_id): t for t in current_overrides}
 
                 processed_overrides = set()
 

@@ -9,10 +9,10 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         self.stdout.write('Starting Database Seeding...')
-        
+
         call_command('seed_system')
         call_command('seed_users')
-        
+
         self.stdout.write(self.style.SUCCESS('--------------------------------------'))
         self.stdout.write(self.style.SUCCESS('FULL DATABASE SEED COMPLETE'))
         self.stdout.write(self.style.SUCCESS('--------------------------------------'))
