@@ -56,6 +56,46 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
 
         return context
 
+    def post(self, request: Any, **kwargs: Any) -> Any:
+        account_id = kwargs.get('account_id')
+        if not account_id:
+            messages.error(request, "Can only edit holdings for a specific account.")
+            return redirect('portfolio:holdings')
+
+        try:
+            account = Account.objects.get(id=account_id, user=request.user)
+        except Account.DoesNotExist:
+            messages.error(request, "Account not found.")
+            return redirect('portfolio:holdings')
+
+        # Track updates
+        updates_count = 0
+
+        # Iterate over POST data
+        for key, value in request.POST.items():
+            if not value:
+                continue
+
+            if key.startswith('shares_'):
+                ticker = key.replace('shares_', '')
+                try:
+                    shares = Decimal(value)
+                    # Find holding
+                    holding = Holding.objects.filter(account=account, security__ticker=ticker).first()
+                    if holding:
+                        holding.shares = shares
+                        holding.save()
+                        updates_count += 1
+                except (ValueError, IndexError):
+                    pass
+
+        if updates_count > 0:
+            messages.success(request, f"Updated {updates_count} holdings.")
+        else:
+            messages.info(request, "No changes saved.")
+
+        return redirect('portfolio:account_holdings', account_id=account_id)
+
 
 class AllocationsView(LoginRequiredMixin, TemplateView):
     template_name = 'portfolio/allocations.html'
