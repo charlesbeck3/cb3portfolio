@@ -36,6 +36,50 @@ class PortfolioSummaryService:
                 holding.save(update_fields=['current_price'])
 
     @staticmethod
+    def get_effective_targets(user: Any) -> dict[int, dict[str, Decimal]]:
+        """
+        Get the effective target allocation percentage for each account and asset class.
+        Returns: {account_id: {asset_class_name: target_pct}}
+        Logic:
+           1. Start with Account Type defaults for all Asset Classes.
+           2. Overlay Account-specific overrides.
+        """
+        # Fetch all targets
+        targets = TargetAllocation.objects.filter(user=user).select_related('account_type', 'asset_class', 'account')
+
+        # 1. Build Type Defaults: {account_type_id: {asset_class_name: pct}}
+        type_defaults: dict[int, dict[str, Decimal]] = defaultdict(dict)
+        # 2. Build Account Overrides: {account_id: {asset_class_name: pct}}
+        account_overrides: dict[int, dict[str, Decimal]] = defaultdict(dict)
+
+        for t in targets:
+            ac_name = t.asset_class.name
+            if t.account_id:
+                account_overrides[t.account_id][ac_name] = t.target_pct
+            else:
+                type_defaults[t.account_type_id][ac_name] = t.target_pct
+
+        # Fetch all User Accounts to resolve effective targets for each
+        accounts = Account.objects.filter(user=user).select_related('account_type')
+
+        effective_targets: dict[int, dict[str, Decimal]] = {}
+
+        for account in accounts:
+            # Check if this account has specific overrides
+            overrides = account_overrides.get(account.id, {})
+
+            if overrides:
+                # STRATEGY CHANGE: If ANY override exists for an account, ignore ALL defaults.
+                # The account follows a purely custom strategy.
+                effective_targets[account.id] = overrides.copy()
+            else:
+                # Fallback to Account Type defaults
+                defaults = type_defaults.get(account.account_type_id, {}).copy()
+                effective_targets[account.id] = defaults
+
+        return effective_targets
+
+    @staticmethod
     def get_holdings_summary(user: Any) -> PortfolioSummary:
         """
         Aggregate holdings by Asset Class (Category) and Account Type.
@@ -47,6 +91,10 @@ class PortfolioSummaryService:
         # 1. Fetch Data & Initialize Structure
         holdings = Holding.objects.get_for_summary(user)
         categories = AssetCategory.objects.select_related('parent').all()
+        # Ensure we have all Asset Classes in the summary structure initialized
+        # (Pass 2 may skip this if we trust holdings cover it, but for targets we need empty slots?)
+        # Currently the summary structure is built dynamically by asset class name encounter?
+        # See _aggregate_holdings update...
 
         category_labels, category_group_map, group_labels = PortfolioSummaryService._build_category_maps(categories)
 
@@ -55,12 +103,30 @@ class PortfolioSummaryService:
             group_labels=group_labels,
         )
 
-        # 2. Aggregate Holdings into Summary
-        PortfolioSummaryService._aggregate_holdings(summary, holdings, category_group_map, group_labels)
+        # Pre-initialize asset classes in summary so targets can be filled even if no holdings?
+        # Fetching all asset classes:
+        from .models import AssetClass
+        all_asset_classes = AssetClass.objects.select_related('category').all()
+        for ac in all_asset_classes:
+             cat_code = ac.category.code
+             # Ensure category exists in summary
+             if cat_code not in summary.categories:
+                  # Initialize category... (done by defaultdict in PortfolioSummary but we need to ensure labels)
+                  pass
+             # Initialize asset class slot
+             _ = summary.categories[cat_code].asset_classes[ac.name]
 
-        # 3. Calculate Targets and Variances
+        # 2. Aggregate Holdings into Summary + Track Account Totals
+        account_totals: dict[int, Decimal] = defaultdict(Decimal)
+        account_type_map: dict[int, str] = {}
+
+        PortfolioSummaryService._aggregate_holdings(
+            summary, holdings, category_group_map, group_labels, account_totals, account_type_map
+        )
+
+        # 3. Calculate Targets and Variances (Bottom-Up)
         PortfolioSummaryService._calculate_targets_and_variances(
-            user, summary, category_group_map
+            user, summary, category_group_map, account_totals, account_type_map
         )
 
         # 4. Sort and Organize
@@ -84,13 +150,20 @@ class PortfolioSummaryService:
         summary: PortfolioSummary,
         holdings: Any,
         category_group_map: dict[str, str],
-        group_labels: dict[str, str]
+        group_labels: dict[str, str],
+        account_totals: dict[int, Decimal],
+        account_type_map: dict[int, str],
     ) -> None:
         for holding in holdings:
             if holding.current_price is None:
                 continue
 
             value = holding.shares * holding.current_price
+
+            # Track Account Totals for Target Calculation
+            account_totals[holding.account_id] += value
+            if holding.account_id not in account_type_map:
+                account_type_map[holding.account_id] = holding.account.account_type.code
 
             asset_class = holding.security.asset_class
             category = asset_class.category
@@ -128,54 +201,122 @@ class PortfolioSummaryService:
         user: Any,
         summary: PortfolioSummary,
         category_group_map: dict[str, str],
+        account_totals: dict[int, Decimal],
+        account_type_map: dict[int, str],  # account_id -> account_type_code
     ) -> None:
-        target_allocations = TargetAllocation.objects.get_for_user(user)
-        target_lookup: dict[tuple[str, str], Decimal] = {}
-        for target in target_allocations:
-            key = (target.account_type.code, target.asset_class.name)
-            target_lookup[key] = target.target_pct
+        # 1. Get Effective Targets per Account
+        # Map: account_id -> asset_class_name -> target_pct
+        effective_targets = PortfolioSummaryService.get_effective_targets(user)
 
-        for category_code, category_data in summary.categories.items():
-            for asset_class_name, asset_class_data in category_data.asset_classes.items():
-                for account_type_code, account_data in asset_class_data.account_types.items():
-                    # Get target percentage (default to 0 if not found)
-                    target_pct = target_lookup.get((account_type_code, asset_class_name), Decimal('0.00'))
+        # 2. Iterate through all accounts to calculate target dollars
+        # These will be aggregated into the summary structure
 
-                    # Calculate target dollar amount
-                    account_type_total = summary.account_type_grand_totals.get(account_type_code, Decimal('0.00'))
-                    target_dollars = account_type_total * (target_pct / Decimal('100'))
+        # We need a reverse map of asset class name -> category/group info to update the right buckets
+        # Or we can just iterate the effective targets if we know they cover all asset classes?
+        # Better: iterate through accounts, then iterate through their target map.
 
-                    # Calculate variance
-                    current_dollars = account_data.current
-                    variance_dollars = current_dollars - target_dollars
+        # We also need to clear existing target/variance fields in summary?
+        # They are initialized to 0 in structs.py so we should be fine accumulating.
 
-                    # Update the account data
-                    account_data.target = target_dollars
-                    account_data.variance = variance_dollars
+        # However, we must ensure we cover ALL asset classes for an account, even if target is 0?
+        # Actually, if target is 0, target_dollars is 0.
+        # But we need to ensure we calculate variance for asset classes that have HOLDINGS but NO TARGET.
+        # The current implementation calculates variance based on (Current - Target).
+        # We need to sum up Target Dollars from this bottom-up approach.
+        # Then, after summing all Target Dollars, `variance` can be calculated as `current - target`.
 
-                    # Update asset class totals
-                    asset_class_data.target_total += target_dollars
-                    asset_class_data.variance_total += variance_dollars
+        # So providing we correctly sum all target dollars into the `summary` structure,
+        # we can then do a pass to calculate variances?
+        # OR we can calculate variances at the end.
 
-                    # Update category totals
-                    category_data.account_type_target_totals[account_type_code] += target_dollars
-                    category_data.account_type_variance_totals[account_type_code] += variance_dollars
-                    category_data.target_total += target_dollars
-                    category_data.variance_total += variance_dollars
+        # The `summary` structure already has `current` populated.
+        # We just need to populate `target`.
 
-                    # Update group totals
-                    group_code = category_group_map.get(category_code, category_code)
-                    group_entry = summary.groups[group_code]
-                    group_entry.account_type_target_totals[account_type_code] += target_dollars
-                    group_entry.account_type_variance_totals[account_type_code] += variance_dollars
-                    group_entry.target_total += target_dollars
-                    group_entry.variance_total += variance_dollars
+        # 2a. Calculate Target Dollars
+        for account_id, ac_targets in effective_targets.items():
+            account_total = account_totals.get(account_id, Decimal('0.00'))
+            if account_total == 0:
+                continue
 
-                    # Update grand totals
-                    summary.account_type_grand_target_totals[account_type_code] += target_dollars
-                    summary.account_type_grand_variance_totals[account_type_code] += variance_dollars
-                    summary.grand_target_total += target_dollars
-                    summary.grand_variance_total += variance_dollars
+            at_code = account_type_map.get(account_id)
+            if not at_code:
+                continue
+
+            for asset_class_name, target_pct in ac_targets.items():
+                target_dollars = account_total * (target_pct / Decimal('100.00'))
+
+                # Where does this asset class belong?
+                # We need to find its category code.
+                # Use a helper lookup or search?
+                # Since we don't have a direct map here, let's find it in the summary structure.
+                # This is slightly inefficient but safe.
+
+                # Optimization: Build AC -> Category map once
+                # Actually we can do this in the outer scope or pass it in.
+                # Let's try to find it in summary.
+
+                found = False
+                for cat_code, cat_data in summary.categories.items():
+                    if asset_class_name in cat_data.asset_classes:
+                        # Update Asset Class
+                        ac_data = cat_data.asset_classes[asset_class_name]
+                        ac_data.account_types[at_code].target += target_dollars
+                        ac_data.target_total += target_dollars
+
+                        # Update Category
+                        cat_data.account_type_target_totals[at_code] += target_dollars
+                        cat_data.target_total += target_dollars
+
+                        # Update Group
+                        group_code = category_group_map.get(cat_code, cat_code)
+                        group_entry = summary.groups[group_code]
+                        group_entry.account_type_target_totals[at_code] += target_dollars
+                        group_entry.target_total += target_dollars
+
+                        # Update Grand Total
+                        summary.account_type_grand_target_totals[at_code] += target_dollars
+                        summary.grand_target_total += target_dollars
+
+                        found = True
+                        break
+
+                if not found:
+                    # Asset class might exist in targets but not in current summary (no holdings)?
+                    # If so, we should theoretically show it, but the summary structure is built from holdings?
+                    # If we only show what we hold, checking summary is fine.
+                    # If we want to show "Target but 0 holding", we need to ensure summary includes all asset classes.
+                    # The current `get_holdings_summary` initializes `categories` from DB.
+                    # And `asset_classes` inside categories?
+                    # `AssetCategory.objects.select_related('parent').all()` only gets categories.
+                    # We need to insure all asset classes are initialized in the summary.
+                    pass
+
+        # 3. Calculate Variances (Current - Target)
+        for cat_code, cat_data in summary.categories.items():
+            for _ac_name, ac_data in cat_data.asset_classes.items():
+                for _at_code, at_data in ac_data.account_types.items():
+                    at_data.variance = at_data.current - at_data.target
+                ac_data.variance_total = ac_data.total - ac_data.target_total
+
+            for at_code in cat_data.account_type_totals:
+                cat_data.account_type_variance_totals[at_code] = (
+                    cat_data.account_type_totals[at_code] - cat_data.account_type_target_totals[at_code]
+                )
+            cat_data.variance_total = cat_data.total - cat_data.target_total
+
+            group_code = category_group_map.get(cat_code, cat_code)
+            group_entry = summary.groups[group_code]
+            for at_code in group_entry.account_type_totals:
+                group_entry.account_type_variance_totals[at_code] = (
+                    group_entry.account_type_totals[at_code] - group_entry.account_type_target_totals[at_code]
+                )
+            group_entry.variance_total = group_entry.total - group_entry.target_total
+
+        for at_code in summary.account_type_grand_totals:
+            summary.account_type_grand_variance_totals[at_code] = (
+                summary.account_type_grand_totals[at_code] - summary.account_type_grand_target_totals[at_code]
+            )
+        summary.grand_variance_total = summary.grand_total - summary.grand_target_total
 
     @staticmethod
     def _sort_and_organize_summary(summary: PortfolioSummary, category_group_map: dict[str, str]) -> None:
@@ -226,13 +367,9 @@ class PortfolioSummaryService:
         # Prefetch data using Manager
         accounts = Account.objects.get_summary_data(user)
 
-        # 1. Fetch all targets for this user and map by account_type_code -> asset_class_name
-        targets = TargetAllocation.objects.get_for_user(user)
-        # Map: account_type_code -> asset_class_name -> target_pct
-        target_map: dict[str, dict[str, Decimal]] = defaultdict(dict)
-        for t in targets:
-            # t.account_type is now a foreign key object
-            target_map[t.account_type.code][t.asset_class.name] = t.target_pct
+        # 1. Fetch Effective Targets
+        effective_targets_map = PortfolioSummaryService.get_effective_targets(user)
+        # Map: account_id -> asset_class_name -> target_pct
 
         # Initialize groups dynamically from AccountGroup model
         # We need an OrderedDict to maintain display order
@@ -277,8 +414,8 @@ class PortfolioSummaryService:
             # Deviation = Sum(Abs(Actual_Value - Target_Value)) for each asset class
             # We need to consider all asset classes that have EITHER a holding OR a target.
 
-            # account.account_type is the object, get 'code' for lookup
-            account_targets = target_map.get(account.account_type.code, {})
+            # account.account_type is the object now, but we use effective targets for this account
+            account_targets = effective_targets_map.get(account.id, {})
             all_asset_classes = set(holdings_by_ac.keys()) | set(account_targets.keys())
 
             absolute_deviation = Decimal('0.00')
@@ -350,14 +487,20 @@ class PortfolioSummaryService:
         if account_id:
             holdings_qs = holdings_qs.filter(account_id=account_id)
 
-        target_allocations = TargetAllocation.objects.get_for_user(user)
+
 
         # --- PRE-CALCULATION PHASE ---
 
-        # Map targets: (account_type_code, asset_class_id) -> target_pct
-        target_map: dict[tuple[str, int], Decimal] = {}
-        for ta in target_allocations:
-            target_map[(ta.account_type.code, ta.asset_class_id)] = ta.target_pct
+        # Use Effective Targets Logic
+        # account_id -> asset_class_name -> target_pct
+        # Note: get_effective_targets returns map by Asset Class NAME.
+        # But get_holdings_by_category iteration uses asset_class_id or object?
+        # The holding.security.asset_class has an ID and a Name.
+        # Let's map effective targets to (account_id, asset_class_id) if possible?
+        # get_effective_targets uses names.
+        # We can map names to IDs or use names in the loop.
+
+        effective_targets_map = PortfolioSummaryService.get_effective_targets(user)
 
         # Calculate Account Totals and Security Counts per Asset Class per Account
         account_totals: dict[int, Decimal] = defaultdict(Decimal)
@@ -393,8 +536,9 @@ class PortfolioSummaryService:
 
             # Determine Target Value for this specific holding instance
             # Target for Asset Class in this Account
-            # holding.account.account_type is the model instance, use .code
-            ac_target_pct = target_map.get((holding.account.account_type.code, holding.security.asset_class_id), Decimal('0.00'))
+            # Use Effective Target
+            ac_targets = effective_targets_map.get(holding.account_id, {})
+            ac_target_pct = ac_targets.get(holding.security.asset_class.name, Decimal('0.00'))
 
             # Number of securities in this asset class held in this account
             num_securities = len(account_ac_security_counts[holding.account_id][holding.security.asset_class_id])
