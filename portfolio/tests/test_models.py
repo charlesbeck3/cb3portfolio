@@ -144,7 +144,7 @@ class TargetAllocationTests(TestCase, PortfolioTestMixin):
         )
         self.assertEqual(target.target_pct, Decimal("40.00"))
         # Using f-string to match new str logic if needed, but simple string also works provided type label is correct
-        self.assertEqual(str(target), f"{self.user.username} - {self.type_roth.label} - {self.asset_class.name}: 40.00%")
+        self.assertEqual(str(target), f"{self.user.username} - {self.type_roth.label} (Default) - {self.asset_class.name}: 40.00%")
 
     def test_target_allocation_isolation(self) -> None:
         """Test that different users can have their own allocations."""

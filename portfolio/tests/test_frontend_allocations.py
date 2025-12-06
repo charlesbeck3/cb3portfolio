@@ -10,14 +10,14 @@ from .base import PortfolioTestMixin
 User = get_user_model()
 
 @pytest.fixture(autouse=True)
-def live_server_url(live_server):
+def live_server_url(live_server) -> str:
     """Explicitly use live_server fixture for Playwright tests."""
     return live_server.url
 
 @pytest.mark.django_db
 class TestFrontendAllocations(PortfolioTestMixin):
     @pytest.fixture(autouse=True)
-    def setup_data(self):
+    def setup_data(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username='testuser', password='password')
 
@@ -37,7 +37,7 @@ class TestFrontendAllocations(PortfolioTestMixin):
         # Holdings: $1000 US Stocks
         Holding.objects.create(account=self.acc_roth, security=self.sec_vti, shares=10, current_price=100)
 
-    def test_interactive_calculation(self, page: Page, live_server_url):
+    def test_interactive_calculation(self, page: Page, live_server_url: str) -> None:
         """
         Verify that changing an override input dynamically updates:
         1. Total Portfolio Target %
@@ -94,7 +94,7 @@ class TestFrontendAllocations(PortfolioTestMixin):
         expect(page.locator(row_total_selector)).to_have_text('100.0%')
         expect(page.locator(row_var_selector)).to_have_text('0.0%')
 
-    def test_category_subtotal_updates(self, page: Page, live_server_url):
+    def test_category_subtotal_updates(self, page: Page, live_server_url: str) -> None:
         """Verify Category Subtotals update dynamically."""
         # Login
         page.goto(f"{live_server_url}/accounts/login/")
@@ -123,7 +123,7 @@ class TestFrontendAllocations(PortfolioTestMixin):
         input_locator.fill('80')
         expect(page.locator(sub_target_selector)).to_have_text('80.0%')
 
-    def test_cash_row_updates(self, page: Page, live_server_url):
+    def test_cash_row_updates(self, page: Page, live_server_url: str) -> None:
         """Verify Cash Row calculations."""
         # Login
         page.goto(f"{live_server_url}/accounts/login/")
