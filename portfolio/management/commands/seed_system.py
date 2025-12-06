@@ -9,6 +9,7 @@ from portfolio.models import (
     AccountType,
     AssetCategory,
     AssetClass,
+    Institution,
     Security,
 )
 
@@ -42,6 +43,10 @@ class SecuritySeed(TypedDict):
     ticker: str
     name: str
     asset_class: str
+
+
+class InstitutionSeed(TypedDict):
+    name: str
 
 
 class Command(BaseCommand):
@@ -115,7 +120,7 @@ class Command(BaseCommand):
         # 4. Asset Classes
         asset_classes: list[AssetClassSeed] = [
             {'name': 'US Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.08')},
-            {'name': 'US Real Estate', 'category': 'REAL_ASSETS', 'expected_return': Decimal('0.06')},
+            {'name': 'US Real Estate', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.06')},
             {'name': 'US Dividend Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.07')},
             {'name': 'US Value Equities', 'category': 'US_EQUITIES', 'expected_return': Decimal('0.075')},
             {'name': 'International Developed Equities', 'category': 'INTERNATIONAL_EQUITIES', 'expected_return': Decimal('0.07')},
@@ -169,4 +174,22 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(self.style.SUCCESS(f'Created Security: {sec_obj.ticker}'))
         
+        # 6. Institutions
+        institutions: list[InstitutionSeed] = [
+            {'name': 'Bank of America'},
+            {'name': 'Merrill Lynch'},
+            {'name': 'Wealthfront'},
+            {'name': 'Wells Fargo'},
+            {'name': 'JP Morgan Chase'},
+            {'name': 'Charles Schwab'},
+            {'name': 'Citibank'},
+            {'name': 'Treasury Direct'},
+            {'name': 'Vanguard'},
+        ]
+
+        for inst_data in institutions:
+            obj, created = Institution.objects.get_or_create(name=inst_data['name'])
+            if created:
+                self.stdout.write(self.style.SUCCESS(f'Created Institution: {obj.name}'))
+
         self.stdout.write(self.style.SUCCESS('System Data seeded successfully!'))

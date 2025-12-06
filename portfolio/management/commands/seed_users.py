@@ -45,20 +45,20 @@ class Command(BaseCommand):
         admin_accounts: list[dict[str, Any]] = [
             {
                 'name': 'Treasury Direct',
-                'account_subtype': 'TAXABLE',
+                'account_subtype': 'DEPOSIT',
                 'institution': 'Treasury Direct',
                 'holdings': [{'ticker': 'IBOND', 'shares': Decimal('108000.00')}],
             },
             {
                 'name': 'WF Cash Account',
-                'account_subtype': 'TAXABLE',
-                'institution': 'Wells Fargo',
+                'account_subtype': 'DEPOSIT',
+                'institution': 'Wealthfront',
                 'holdings': [{'ticker': 'CASH', 'shares': Decimal('150000.00')}],
             },
             {
                 'name': 'WF S&P',
                 'account_subtype': 'TAXABLE',
-                'institution': 'Wells Fargo',
+                'institution': 'Wealthfront',
                 'holdings': [{'ticker': 'VOO', 'shares': Decimal('95.48')}],
             },
             {
@@ -79,7 +79,7 @@ class Command(BaseCommand):
             {
                 'name': 'CB IRA',
                 'account_subtype': 'TRADITIONAL_IRA',
-                'institution': 'Charles Schwab',
+                'institution': 'Merrill Lynch',
                 'holdings': [
                     {'ticker': 'VGSH', 'shares': Decimal('2078.00')},
                     {'ticker': 'VTI', 'shares': Decimal('288.00')},
@@ -92,7 +92,7 @@ class Command(BaseCommand):
             {
                 'name': 'EB IRA',
                 'account_subtype': 'TRADITIONAL_IRA',
-                'institution': 'Charles Schwab',
+                'institution': 'Merrill Lynch',
                 'holdings': [
                     {'ticker': 'VGSH', 'shares': Decimal('1535.00')},
                     {'ticker': 'VNQ', 'shares': Decimal('713.00')},
@@ -105,7 +105,7 @@ class Command(BaseCommand):
             {
                 'name': 'CB Roth IRA',
                 'account_subtype': 'ROTH_IRA',
-                'institution': 'Charles Schwab',
+                'institution': 'Merrill Lynch',
                 'holdings': [
                     {'ticker': 'VTI', 'shares': Decimal('85.00')},
                     {'ticker': 'USRT', 'shares': Decimal('448.00')},
@@ -121,7 +121,7 @@ class Command(BaseCommand):
             {
                 'name': 'EB Roth IRA',
                 'account_subtype': 'ROTH_IRA',
-                'institution': 'Charles Schwab',
+                'institution': 'Merrill Lynch',
                 'holdings': [
                     {'ticker': 'VTI', 'shares': Decimal('78.00')},
                     {'ticker': 'USRT', 'shares': Decimal('401.00')},
