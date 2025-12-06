@@ -15,6 +15,7 @@ from portfolio.models import (
     AssetCategory,
     AssetClass,
     Holding,
+    Security,
     TargetAllocation,
 )
 from portfolio.services import PortfolioSummaryService
@@ -53,6 +54,8 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
         if account_id and self.request.user.is_authenticated:
                  with contextlib.suppress(Account.DoesNotExist):
                      context['account'] = Account.objects.get(id=account_id, user=self.request.user)
+                     # Pass securities for the "Add Holding" modal
+                     context['securities'] = Security.objects.all().order_by('ticker')
 
         return context
 
@@ -71,6 +74,35 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
         # Track updates
         updates_count = 0
 
+        # Check for Add Holding
+        security_id = request.POST.get('security_id')
+        if security_id:
+            initial_shares_str = request.POST.get('initial_shares', '0')
+            try:
+                initial_shares = Decimal(initial_shares_str)
+                if initial_shares > 0:
+                    security = Security.objects.get(id=security_id)
+
+                    # Create or Get Holding
+                    holding, created = Holding.objects.get_or_create(
+                        account=account,
+                        security=security,
+                        defaults={'shares': initial_shares}
+                    )
+
+                    if not created:
+                        messages.warning(request, f"Holding for {security.ticker} already exists. Please edit shares instead.")
+                    else:
+                        messages.success(request, f"Added {security.ticker} to account.")
+            except Security.DoesNotExist:
+                messages.error(request, "Security not found.")
+            except Exception as e:
+                messages.error(request, f"Error adding holding: {e}")
+
+            return redirect('portfolio:account_holdings', account_id=account_id)
+
+        # Iterate over POST data (Edit Logic)
+
         # Iterate over POST data
         for key, value in request.POST.items():
             if not value:
@@ -81,10 +113,20 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
                 try:
                     shares = Decimal(value)
                     # Find holding
-                    holding = Holding.objects.filter(account=account, security__ticker=ticker).first()
-                    if holding:
-                        holding.shares = shares
-                        holding.save()
+                    # Mypy issue: variable reuse? Let's use a specific name or ensure type.
+                    # 'holding' was used above in the add block.
+                    # It's better to verify scope. The 'add' block returns, so we are safe,
+                    # but mypy might check the whole function scope.
+                    # Let's just cast or ignore if it's a simple 'Optional' issue,
+                    # but the error was "Incompatible types in assignment (expression has type "Holding | None", variable has type "Holding")".
+                    # This implies 'holding' was inferred as 'Holding' (not optional) somewhere?
+                    # Ah, 'get_or_create' returns (Holding, bool), so 'holding' there is 'Holding'.
+                    # Here 'first()' returns 'Holding | None'.
+                    # So we should use a different variable name to avoid confusion.
+                    target_holding = Holding.objects.filter(account=account, security__ticker=ticker).first()
+                    if target_holding:
+                        target_holding.shares = shares
+                        target_holding.save()
                         updates_count += 1
                 except (ValueError, IndexError):
                     pass

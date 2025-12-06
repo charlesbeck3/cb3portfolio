@@ -26,6 +26,9 @@
                         All Holdings
                         {% if account %}
                         <div class="float-end">
+                             <button type="button" class="btn btn-sm btn-success me-2" data-bs-toggle="modal" data-bs-target="#addHoldingModal">
+                                 Add New Position
+                             </button>
                              <button type="submit" form="holdings-form" class="btn btn-sm btn-primary">Save Changes</button>
                         </div>
                         {% endif %}
@@ -172,4 +175,43 @@
     </div>
 </div>
 </div>
+</div>
+
+<!-- Add Holding Modal -->
+{% if account %}
+<div class="modal fade" id="addHoldingModal" tabindex="-1" aria-labelledby="addHoldingModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addHoldingModalLabel">Add New Position to {{ account.name }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="{% url 'portfolio:account_holdings' account.id %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="security_id" class="form-label">Security</label>
+                        <select class="form-select" id="security_id" name="security_id" required>
+                            <option value="">Select Security...</option>
+                            {% for s in securities %}
+                            <option value="{{ s.id }}">{{ s.ticker }} - {{ s.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Select from existing securities.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="initial_shares" class="form-label">Initial Shares</label>
+                        <input type="number" class="form-control" id="initial_shares" name="initial_shares" step="0.0001" min="0.0001" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Position</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 {% endblock %}
