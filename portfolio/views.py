@@ -238,7 +238,18 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Any:
         user = request.user
         account_types = AccountType.objects.filter(accounts__user=user).distinct()
-        asset_classes = AssetClass.objects.exclude(name='Cash').all()
+        
+        try:
+            cash_ac = AssetClass.objects.get(name='Cash')
+        except AssetClass.DoesNotExist:
+             messages.error(request, "Cash asset class not found. Please contact support.")
+             return redirect('portfolio:target_allocations')
+
+        # Assets inputs (exclude Cash)
+        input_asset_classes = list(AssetClass.objects.exclude(name='Cash').all())
+        
+        # All assets for saving (include Cash)
+        save_asset_classes = input_asset_classes + [cash_ac]
         
         # Data structure to collect updates before saving
         # account_type_id -> {asset_class_id: decimal_value}
@@ -248,7 +259,7 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
             # 1. Extract and Validate Input
             for at in account_types:
                 total_pct = Decimal('0.00')
-                for ac in asset_classes:
+                for ac in input_asset_classes:
                     key = f"target_{at.id}_{ac.id}"
                     val_str = request.POST.get(key, '').strip()
                     
@@ -273,21 +284,23 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                 if total_pct > Decimal('100.00') + Decimal('0.01'):
                     messages.error(request, f"Total allocation for {at.label} exceeds 100% ({total_pct}%)")
                     return redirect('portfolio:target_allocations')
+                
+                # Calculate Cash Residual
+                cash_residual = Decimal('100.00') - total_pct
+                # Avoid negative zero or tiny precision issues
+                if cash_residual < Decimal('0.00'): 
+                    cash_residual = Decimal('0.00')
+                    
+                updates[at.id][cash_ac.id] = cash_residual
 
             # 2. Persist Updates
             with transaction.atomic():
-                # Delete existing targets for these account types? 
-                # Or just update/delete specific ones?
-                # Cleaner is to iterate what we have and update/create/delete.
-                
-                # We can iterate through the matrix again. 
-                
                 current_targets = TargetAllocation.objects.filter(user=user).select_related('account_type', 'asset_class')
                 # Map for quick lookup: (account_type_id, asset_class_id) -> obj
                 target_obj_map = {(t.account_type_id, t.asset_class_id): t for t in current_targets}
                 
                 for at in account_types:
-                    for ac in asset_classes:
+                    for ac in save_asset_classes:
                         val = updates[at.id].get(ac.id, Decimal('0.00'))
                         key = (at.id, ac.id)
                         

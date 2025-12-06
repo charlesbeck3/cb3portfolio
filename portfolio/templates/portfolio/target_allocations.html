@@ -440,22 +440,22 @@ document.addEventListener('DOMContentLoaded', function() {
             const total = colTotals[colId] || 0;
             const cashEl = document.getElementById(`cash-${colId}`);
             
-            // Render Target Total
-            totalEl.textContent = formatPct(total);
-            
             // Render Cash Target
             const cashTarget = 100 - total;
             if (cashEl) cashEl.textContent = formatPct(cashTarget);
 
-            // Validation
+            // Render Total Row Target (Always 100% as Cash absorbs remainder)
+            totalEl.textContent = formatPct(100);
+
+            // Validation (Check Invested Total)
             if (total > 100.01) { 
-                totalEl.classList.add('text-danger');
-                totalEl.classList.remove('text-dark');
+                // Mark Total Row as invalid? No, Mark Cash as invalid.
+                // Or maybe mark Total row if we want to show "Something is wrong"
+                // But logically Total is 100. 
+                // Let's keep red text on Cash if negative.
                 if (cashEl) cashEl.classList.add('text-danger'); 
                 valid = false;
             } else {
-                totalEl.classList.remove('text-danger');
-                totalEl.classList.add('text-dark');
                 if (cashEl) cashEl.classList.remove('text-danger');
             }
             
@@ -464,6 +464,13 @@ document.addEventListener('DOMContentLoaded', function() {
             const cashCurrentEl = document.getElementById(`cash-current-${colId}`);
             if (cashCurrentEl) cashCurrentEl.textContent = formatPct(cashCurrent);
             updateVariance(`cash-var-${colId}`, cashTarget, cashCurrent);
+            
+            // Total Row Variance (Always 0 if Target 100 and Current 100)
+             const totalVarEl = totalEl.closest('td').nextElementSibling;
+             if (totalVarEl) {
+                 totalVarEl.textContent = formatPct(0);
+                 totalVarEl.classList.remove('text-danger', 'text-success');
+             }
 
             
             // Cash Weighted Numerator Accumulation
