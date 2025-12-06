@@ -124,6 +124,14 @@ class TargetAllocation(models.Model):
     account_type = models.ForeignKey(AccountType, on_delete=models.PROTECT, related_name='target_allocations')
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='target_allocations')
     asset_class = models.ForeignKey(AssetClass, on_delete=models.PROTECT, related_name='target_allocations')
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name='target_allocations',
+        null=True,
+        blank=True,
+        help_text="Optional specific account override. If null, applies to the account type generally."
+    )
     target_pct = models.DecimalField(
         max_digits=5,
         decimal_places=2,
@@ -133,10 +141,25 @@ class TargetAllocation(models.Model):
     objects = TargetAllocationManager()
 
     class Meta:
-        unique_together = ('user', 'account_type', 'asset_class')
+        constraints = [
+            # Constraint for Default Type Allocation (account is null)
+            models.UniqueConstraint(
+                fields=['user', 'account_type', 'asset_class'],
+                condition=models.Q(account__isnull=True),
+                name='unique_default_target_allocation'
+            ),
+            # Constraint for Specific Account Override (account is not null)
+            models.UniqueConstraint(
+                fields=['user', 'account', 'asset_class'],
+                condition=models.Q(account__isnull=False),
+                name='unique_account_target_allocation'
+            )
+        ]
 
     def __str__(self) -> str:
-        return f"{self.user.username} - {self.account_type} - {self.asset_class.name}: {self.target_pct}%"
+        if self.account:
+            return f"{self.user.username} - {self.account.name} (Override) - {self.asset_class.name}: {self.target_pct}%"
+        return f"{self.user.username} - {self.account_type} (Default) - {self.asset_class.name}: {self.target_pct}%"
 
 class Security(models.Model):
     """Individual investment security (e.g., VTI, BND)."""
