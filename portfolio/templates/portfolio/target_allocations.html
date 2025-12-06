@@ -232,13 +232,30 @@
                                         </td>
                                         
                                         {% for acc in at.active_accounts %}
+                                            <!-- CASH: Current (Calculated from Holdings) -->
                                             <td class="text-end pe-2 d-none col-acc-{{ at.id }} text-muted small table-warning">
                                                  {{ acc.allocation_map|get_item:cash_asset_class_id|default:0|accounting_percent:1 }}
                                             </td>
+                                            
+                                            <!-- CASH: Override Input -->
+                                            <td class="p-1 table-warning d-none col-acc-{{ at.id }}">
+                                                 <input type="number"
+                                                       name="target_account_{{ acc.id }}_{{ cash_asset_class_id }}"
+                                                       step="0.01"
+                                                       min="0"
+                                                       max="100"
+                                                       class="form-control form-control-sm text-end override-input px-1"
+                                                       data-acc-id="{{ acc.id }}"
+                                                       data-at-id="{{ at.id }}"
+                                                       data-ac-id="cash"
+                                                       value="{{ acc.target_map|get_item:cash_asset_class_id|default:'' }}"
+                                                       placeholder="--">
+                                            </td>
+
+                                            <!-- CASH: Effective (Calculated or Override) -->
                                             <td class="text-end pe-2 d-none col-acc-{{ at.id }} table-warning">
                                                 <span id="cash-eff-{{ acc.id }}">100%</span>
                                             </td>
-                                            <td class="d-none col-acc-{{ at.id }} table-warning"></td>
                                         {% endfor %}
                                     {% endfor %}
                                     
@@ -384,12 +401,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         let totalPortfolioTarget = 0;
         
-        // Start by iterating inputs to ensure we cover all assets
-        // Or better iterate DOM rows to update UI row by row.
-        
-        // Also need Cash Default/Effective
-        // Calculated per account.
-        
         const accountEffectiveCash = {}; // accId -> val
         const atEffectiveCashDollars = {}; // atId -> dollars
         
@@ -401,16 +412,8 @@ document.addEventListener('DOMContentLoaded', function() {
              }
         });
         
-        // We iterate AL ACCOUNT TYPES -> ACCOUNTS
-        // This mirrors the logic in Service
-        
-        // Iterate all overrides inputs to identify accounts? 
-        // Or better use the structure we know exists.
-        
-        // We can select all override inputs to find unique accounts.
         const accountIds = new Set();
         overrideInputs.forEach(inp => accountIds.add(inp.dataset.accId));
-        // Also need to know their AT ID.
         const accountAtMap = {};
         overrideInputs.forEach(inp => accountAtMap[inp.dataset.accId] = inp.dataset.atId);
         
@@ -421,33 +424,39 @@ document.addEventListener('DOMContentLoaded', function() {
             const accDefaults = defaults[atId] || {};
             const accOverrides = overrides[accId] || {};
             
-            // STRATEGY CHANGE: If ANY override exists for an account, ignore ALL defaults.
+            // FULL OVERRIDE LOGIC: If ANY override exists for an account, ignore ALL defaults.
+            // This includes explicit Cash overrides.
             const hasOverrides = Object.keys(accOverrides).length > 0;
             
-            let accTotalEffective = 0;
+            let accTotalEffectiveNonCash = 0;
             
+            // Process Standard Asset Classes
             assetRows.forEach(row => {
                 const acId = row.dataset.acId;
                 if(acId === 'cash') return;
                 
                 let effective = 0;
                 if (hasOverrides) {
+                    // Under Full Override, if not specified, it's 0.
                     effective = accOverrides[acId] || 0;
                 } else {
                     effective = accDefaults[acId] || 0;
                 }
                 
-                accTotalEffective += effective;
+                accTotalEffectiveNonCash += effective;
                 
-                // Update specific row UI for this account
-                // Need to find the cell for this acc_id
-                // Use DOM query or ID mapping
+                // Update UI
                 const effSpan = document.getElementById(`eff-${accId}-${acId}`);
                 if(effSpan) { 
                     effSpan.textContent = formatPct(effective); 
-                    if(accOverrides.hasOwnProperty(acId)) {
+                    if(hasOverrides && accOverrides.hasOwnProperty(acId)) {
+                        // Explicit override
                         effSpan.classList.add('fw-bold');
+                    } else if (hasOverrides) {
+                         // Implied 0 under full override
+                         effSpan.classList.remove('fw-bold'); // Or maybe muted?
                     } else {
+                        // Default
                         effSpan.classList.remove('fw-bold');
                     }
                 }
@@ -463,17 +472,41 @@ document.addEventListener('DOMContentLoaded', function() {
                 aggTargetDollars[acId] += dollars;
             });
             
-            // Cash
-            let cashEff = 100 - accTotalEffective;
-            if (cashEff < 0) {
-                 cashEff = 0; // Or allow negative with warning?
-                 valid = false; // Flag invalid?
+            // Process Cash
+            let cashEff = 0;
+            if (hasOverrides) {
+                 if (accOverrides['cash'] !== undefined) {
+                      // Explicit Cash Override
+                      cashEff = accOverrides['cash'];
+                 } else {
+                      // Implicit Residual Cash under Full Override
+                      // If user overrode stocks to 60%, and didn't specify cash, cash is 40%.
+                      // If user overrode stocks to 0%, cash is 100%.
+                      cashEff = Math.max(0, 100 - accTotalEffectiveNonCash);
+                 }
+            } else {
+                 // No Overrides - use Default Residual Logic logic
+                 // We need calculate default totals for this AT to know default cash
+                 const defTotal = defaultTotals[atId] || 0;
+                 cashEff = Math.max(0, 100 - defTotal);
             }
+            
             const cashSpan = document.getElementById(`cash-eff-${accId}`);
             if(cashSpan) {
                 cashSpan.textContent = formatPct(cashEff);
-                if (cashEff < 0) cashSpan.classList.add('text-danger');
-                else cashSpan.classList.remove('text-danger');
+                if (hasOverrides && accOverrides['cash'] !== undefined) {
+                     cashSpan.classList.add('fw-bold', 'text-primary'); 
+                } else {
+                     cashSpan.classList.remove('fw-bold', 'text-primary');
+                }
+                
+                // Warning if total != 100?
+                const totalAlloc = accTotalEffectiveNonCash + cashEff;
+                if (Math.abs(totalAlloc - 100) > 0.1) {
+                     cashSpan.classList.add('text-danger');
+                } else {
+                     cashSpan.classList.remove('text-danger');
+                }
             }
             
             const cashDollars = accValue * (cashEff/100);
@@ -482,7 +515,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Total Row for Account
             const totSpan = document.getElementById(`total-eff-${accId}`);
-            if(totSpan) totSpan.textContent = formatPct(accTotalEffective + cashEff);
+            if(totSpan) totSpan.textContent = formatPct(accTotalEffectiveNonCash + cashEff);
         }
         
         // 4. Update Aggregates in UI

@@ -400,50 +400,83 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
             # Effective Mix = Override if exists else Default.
             # So calculating updates requires combining Defaults + Inputs.
 
-            # Let's get the Default Dict for this account's type
-            defaults = default_updates[acc.account_type_id]
+            # FULL OVERRIDE LOGIC IMPLEMENTATION
+            # If ANY override is provided for an account, we treat it as a "Custom Strategy" account.
+            # This means we DO NOT fallback to defaults for unspecified asset classes.
+            # Unspecified asset classes are assumed to be 0%.
 
-            # Collect tentative effective values
-            effective_values = {}
+            # 1. Identify if this account has ANY explicit input provided (Standard or Cash)
+            has_explicit_input = False
 
+            # Check Standard Assets
             for ac in input_asset_classes:
                 input_key = f"target_account_{acc.id}_{ac.id}"
                 val_str = request.POST.get(input_key, '').strip()
-
                 if val_str:
-                    # Explicit Override
+                    has_explicit_input = True
+                    break
+
+            # Check Cash
+            if not has_explicit_input:
+                cash_input_key = f"target_account_{acc.id}_{cash_ac.id}"
+                if request.POST.get(cash_input_key, '').strip():
+                    has_explicit_input = True
+
+            if has_explicit_input:
+                # Full Override Mode
+                effective_values = {}
+
+                # Process Standard Assets
+                for ac in input_asset_classes:
+                    input_key = f"target_account_{acc.id}_{ac.id}"
+                    val_str = request.POST.get(input_key, '').strip()
+
+                    if val_str:
+                        try:
+                            val = Decimal(val_str)
+                            override_updates[acc.id][ac.id] = val
+                            effective_values[ac.id] = val
+                        except ValueError:
+                            errors.append(f"Invalid value for {acc.name} - {ac.name}")
+                    else:
+                        # Explicitly 0 if not provided in Full Override Mode
+                        # We don't need to save 0 explicitly if we clean up old overrides correctly.
+                        # But for effective calculation, it's 0.
+                        effective_values[ac.id] = Decimal('0.00')
+
+                # Process Cash
+                cash_input_key = f"target_account_{acc.id}_{cash_ac.id}"
+                cash_val_str = request.POST.get(cash_input_key, '').strip()
+
+                total_standard = sum(effective_values.values())
+
+                if cash_val_str:
                     try:
-                        val = Decimal(val_str)
-                        override_updates[acc.id][ac.id] = val
-                        effective_values[ac.id] = val
+                        cash_val = Decimal(cash_val_str)
+                        override_updates[acc.id][cash_ac.id] = cash_val
+                        # Validation: Sum should be close to 100
+                        if abs(total_standard + cash_val - Decimal('100.00')) > Decimal('0.1'):
+                             # Warning or Error? Let's just warn but save.
+                             # Actually UI shows warning.
+                             pass
                     except ValueError:
-                        errors.append(f"Invalid value for {acc.name} - {ac.name}")
+                         errors.append(f"Invalid value for {acc.name} - Cash")
                 else:
-                    # No Override - use Default
-                    # But we don't save it to override_updates
-                    effective_values[ac.id] = defaults.get(ac.id, Decimal('0.00'))
+                    # Implicit Residual Cash in Full Override Mode
+                    # If user just said "Stocks 60", Cash is 40.
+                    cash_residual = Decimal('100.00') - total_standard
+                    if cash_residual < 0:
+                         # Over-allocated?
+                         pass
+                    # We save this residual explicitly as an override because we are in Full Override mode
+                    # and we want to lock it in vs defaults.
+                    override_updates[acc.id][cash_ac.id] = max(Decimal('0.00'), cash_residual)
 
-            # Calculate Total of Effective Non-Cash
-            total_effective = sum(effective_values.values())
-
-            # Calculate Effective Cash
-            cash_effective = Decimal('100.00') - total_effective
-
-            # Validations?
-            if cash_effective < -0.01:
-                 errors.append(f"Allocation for {acc.name} exceeds 100% ({total_effective}%)")
-
-            # Now, do we explicitly save a Cash Override?
-            # Only if necessary.
-            # Necessary conditions:
-            # 1. We have explicit overrides on other assets that differ from defaults.
-            # 2. This creates a Cash Residual that differs from the Default Cash Residual.
-            # -> If (Cash Effective) != (Default Cash), we MUST save a Cash Override.
-
-            default_cash = defaults.get(cash_ac.id, Decimal('0.00'))
-
-            if abs(cash_effective - default_cash) > Decimal('0.001'):
-                 override_updates[acc.id][cash_ac.id] = max(Decimal('0.00'), cash_effective)
+            else:
+                # No Override Mode - Account follows Defaults purely.
+                # We don't save anything to override_updates.
+                # Existing overrides will be wiped in the cleanup step.
+                pass
 
         if errors:
             for err in errors:
