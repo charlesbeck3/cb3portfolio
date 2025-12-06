@@ -1,0 +1,509 @@
+{% extends "portfolio/base.html" %}
+{% load portfolio_extras %}
+
+{% block title %}Target Allocations | CB3 Portfolio{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1 class="h2 mb-0">Target Allocations</h1>
+                <p class="text-muted mt-2">Set your target allocation percentages for each account type. The remaining percentage will automatically be allocated to Cash.</p>
+            </div>
+            <div>
+                 <a href="{% url 'portfolio:dashboard' %}" class="btn btn-outline-secondary me-2">Cancel</a>
+                 <button type="submit" form="allocation-form" id="save-button-top" class="btn btn-primary">Save Targets</button>
+            </div>
+        </div>
+
+        <form method="post" id="allocation-form">
+            {% csrf_token %}
+            <div class="card shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped table-hover mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col" class="ps-4" rowspan="2">Asset Class</th>
+                                    {% for at in account_types %}
+                                        <th scope="col" class="text-center border-bottom-0" colspan="3">{{ at.label }}</th>
+                                    {% endfor %}
+                                    <th scope="col" class="text-center table-active border-bottom-0" colspan="3">Total Portfolio (%)</th>
+                                </tr>
+                                <tr>
+                                    {% for at in account_types %}
+                                        <th scope="col" class="text-center small border-top-0 text-muted" style="min-width: 60px;">Curr</th>
+                                        <th scope="col" class="text-center small border-top-0 text-muted" style="min-width: 90px;">Target</th>
+                                        <th scope="col" class="text-center small border-top-0 text-muted" style="min-width: 60px;">Var</th>
+                                    {% endfor %}
+                                    <th scope="col" class="text-center small table-active border-top-0 text-muted">Curr</th>
+                                    <th scope="col" class="text-center small table-active border-top-0 text-muted">Target</th>
+                                    <th scope="col" class="text-center small table-active border-top-0 text-muted">Var</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for group, categories in hierarchical_data %}
+                                    <!-- Groups -->
+                                    {% for category, assets in categories %}
+                                         {% for ac in assets %}
+                                            <tr>
+                                                <td class="ps-4">{{ ac.name }}</td>
+                                                {% for at in account_types %}
+                                                    <!-- 1. Current (Per Account) -->
+                                                    <td class="text-end pe-2 text-muted small" 
+                                                        data-current-local="{{ current_allocations|get_item:at.id|get_item:ac.id_key|default:0 }}">
+                                                        {{ current_allocations|get_item:at.id|get_item:ac.id_key|default:0|accounting_percent:1 }}
+                                                    </td>
+
+                                                    <!-- 2. Target Input -->
+                                                    <td class="p-2">
+                                                        <div class="input-group input-group-sm">
+                                                            <input type="number" 
+                                                                   name="target_{{ at.id }}_{{ ac.id }}" 
+                                                                   step="0.01" 
+                                                                   min="0" 
+                                                                   max="100"
+                                                                   class="form-control text-end allocation-input" 
+                                                                   data-col="{{ at.id }}"
+                                                                   data-category="{{ category.code }}"
+                                                                   data-group="{{ group.code }}"
+                                                                   data-row="row-{{ ac.id }}"
+                                                                   data-ac-id="{{ ac.id }}"
+                                                                   data-at-id="{{ at.id }}"
+                                                                   value="{{ target_map|get_item:at.id|get_item:ac.id|default:'' }}"
+                                                                   aria-label="{{ ac.name }} in {{ at.label }}">
+                                                            <span class="input-group-text d-none d-xl-block">%</span>
+                                                        </div>
+                                                    </td>
+                                                    
+                                                    <!-- 3. Variance (Per Account) -->
+                                                    <td class="text-end pe-3 fw-bold small">
+                                                        <span id="var-{{ at.id }}-{{ ac.id }}">0.0%</span>
+                                                    </td>
+                                                {% endfor %}
+                                                
+                                                <!-- PORTFOLIO TOTALS -->
+                                                <td class="text-end pe-3 table-active text-muted" data-current="{{ ac.current_pct|stringformat:'.2f' }}">
+                                                    {{ ac.current_pct|accounting_percent:1 }}
+                                                </td>
+                                                <td class="text-end pe-3 table-active">
+                                                    <span id="row-total-{{ ac.id }}">0.00%</span>
+                                                </td>
+                                                <td class="text-end pe-3 table-active fw-bold">
+                                                    <span id="row-var-{{ ac.id }}">0.00%</span>
+                                                </td>
+                                            </tr>
+                                        {% endfor %}
+                                        
+                                        <!-- Category Subtotal -->
+                                        {% if categories|length > 1 %}
+                                        <tr class="table-secondary">
+                                            <td class="fw-bold ps-4 text-uppercase text-secondary small">
+                                                {{ category.label }} Total
+                                            </td>
+                                            {% for at in account_types %}
+                                                <!-- Current -->
+                                                <td class="text-end pe-2 text-secondary small"
+                                                    data-current-local="{{ current_allocations|get_item:at.id|get_item:category.code_key|default:0 }}">
+                                                    {{ current_allocations|get_item:at.id|get_item:category.code_key|default:0|accounting_percent:1 }}
+                                                </td>
+                                                <!-- Target -->
+                                                <td class="text-end pe-2 fw-bold small text-secondary">
+                                                    <span id="cat-{{ category.code }}-{{ at.id }}">0.00%</span>
+                                                </td>
+                                                <!-- Variance -->
+                                                <td class="text-end pe-3 fw-bold small text-secondary">
+                                                    <span id="cat-var-{{ category.code }}-{{ at.id }}">0.0%</span>
+                                                </td>
+                                            {% endfor %}
+                                            
+                                            <!-- Portfolio Totals -->
+                                            <td class="text-end pe-3 fw-bold small text-secondary table-active text-muted" data-current="{{ category.current_pct|stringformat:'.2f' }}">
+                                                {{ category.current_pct|accounting_percent:1 }}
+                                            </td>
+                                            <td class="text-end pe-3 fw-bold small text-secondary table-active">
+                                                <span id="cat-total-{{ category.code }}">0.00%</span>
+                                            </td>
+                                            <td class="text-end pe-3 fw-bold small text-secondary table-active">
+                                                <span id="cat-var-{{ category.code }}">0.00%</span>
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                    {% endfor %}
+
+                                    <!-- Group Total -->
+                                    <tr class="table-primary fw-bold border-top border-bottom-2">
+                                        <td class="ps-4 text-primary">
+                                            {{ group.label }} Total
+                                        </td>
+                                        {% for at in account_types %}
+                                            <!-- Current -->
+                                            <td class="text-end pe-2 text-primary small"
+                                                data-current-local="{{ current_allocations|get_item:at.id|get_item:group.code_key|default:0 }}">
+                                                {{ current_allocations|get_item:at.id|get_item:group.code_key|default:0|accounting_percent:1 }}
+                                            </td>
+                                             <!-- Target -->
+                                            <td class="text-end pe-2 text-primary">
+                                                <span id="group-{{ group.code }}-{{ at.id }}">0.00%</span>
+                                            </td>
+                                            <!-- Variance -->
+                                            <td class="text-end pe-3 text-primary small">
+                                                <span id="group-var-{{ group.code }}-{{ at.id }}">0.0%</span>
+                                            </td>
+                                        {% endfor %}
+                                        
+                                        <!-- Portfolio Totals -->
+                                        <td class="text-end pe-3 text-primary table-active text-muted" data-current="{{ group.current_pct|stringformat:'.2f' }}">
+                                            {{ group.current_pct|accounting_percent:1 }}
+                                        </td>
+                                        <td class="text-end pe-3 text-primary table-active">
+                                            <span id="group-total-{{ group.code }}">0.00%</span>
+                                        </td>
+                                        <td class="text-end pe-3 text-primary table-active">
+                                             <span id="group-var-{{ group.code }}">0.00%</span>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                
+                                <!-- Implicit Cash Row -->
+                                <tr class="table-warning fw-bold border-top-2">
+                                    <td class="ps-4">Cash</td>
+                                    {% for at in account_types %}
+                                        <!-- Cash Current -->
+                                        <td class="text-end pe-2 text-muted small">
+                                             <span id="cash-current-{{ at.id }}">--</span>
+                                        </td>
+                                        <!-- Cash Target -->
+                                        <td class="text-end pe-2">
+                                            <span id="cash-{{ at.id }}">100.00%</span>
+                                        </td>
+                                        <td class="text-end pe-3">
+                                            <span id="cash-var-{{ at.id }}">0.0%</span>
+                                        </td>
+                                    {% endfor %}
+                                    <td class="text-end pe-3 table-active text-muted" id="cash-current-total">
+                                         --
+                                    </td>
+                                    <td class="text-end pe-3 table-active">
+                                        <span id="cash-weighted-total">0.00%</span>
+                                    </td>
+                                    <td class="text-end pe-3 table-active">
+                                         <span id="cash-weighted-var">0.00%</span>
+                                    </td>
+                                </tr>
+
+                                <!-- Total Row -->
+                                <tr class="table-light border-top fw-bold">
+                                    <td class="ps-4">Total</td>
+                                    {% for at in account_types %}
+                                        <td class="text-end pe-2 text-muted small">100%</td>
+                                        <td class="text-end pe-2">
+                                            <span id="total-{{ at.id }}" class="total-display">0.00%</span>
+                                        </td>
+                                        <td class="text-end pe-3">0.0%</td>
+                                    {% endfor %}
+                                    <td class="text-end pe-3 table-active text-muted">100.0%</td>
+                                    <td class="text-end pe-3 table-active">
+                                        <span id="grand-weighted-total">0.00%</span>
+                                    </td>
+                                    <td class="text-end pe-3 table-active">0.0%</td>
+                                </tr>
+                                
+                                <!-- Total Value Row (Reference) -->
+                                <tr class="table-light border-top text-muted" style="font-size: 0.75rem;">
+                                    <td class="ps-4">Total Value ($)</td>
+                                    {% for at in account_types %}
+                                        <!-- Current ($ Value) -->
+                                        <td class="text-end pe-2">
+                                            {{ account_type_totals|get_item:at.id|default:0|accounting_amount:0 }}
+                                        </td>
+                                        <!-- Target -->
+                                        <td class="text-end pe-2">--</td>
+                                        <!-- Variance -->
+                                        <td class="text-end pe-3">--</td>
+                                    {% endfor %}
+                                    <!-- Portfolio Totals -->
+                                    <td class="text-end pe-2 fw-bold">
+                                        {{ portfolio_total_value|accounting_amount:0 }}
+                                    </td>
+                                    <td class="text-end pe-2">--</td>
+                                    <td class="text-end pe-3">--</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-3 text-end">
+                <button type="submit" id="save-button-bottom" class="btn btn-primary">Save Targets</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{{ account_type_totals|json_script:"account-totals-data" }}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const inputs = document.querySelectorAll('.allocation-input');
+    const saveButtons = [document.getElementById('save-button-top'), document.getElementById('save-button-bottom')];
+    
+    // Parse totals: {at_id: "decimal_str"}
+    const rawTotals = JSON.parse(document.getElementById('account-totals-data').textContent);
+    const accountTotals = {};
+    let portfolioTotal = 0;
+
+    for (const [key, val] of Object.entries(rawTotals)) {
+         const floatVal = parseFloat(val);
+         accountTotals[key] = floatVal;
+         portfolioTotal += floatVal;
+    }
+
+    function formatPct(val) {
+        return val.toFixed(1) + '%';
+    }
+
+    function updateVariance(elId, targetVal, currentVal) {
+        const varEl = document.getElementById(elId);
+        if (!varEl) return;
+        
+        const variance = currentVal - targetVal;
+        varEl.textContent = formatPct(variance);
+        
+        varEl.classList.remove('text-success', 'text-danger');
+        if (Math.abs(variance) < 0.01) {
+            // Neutral
+        } else if (variance >= 0) {
+            varEl.classList.add('text-success');
+        } else {
+            varEl.classList.add('text-danger');
+        }
+    }
+
+    function updateTotals() {
+        const colTotals = {}; 
+        const catTotals = {}; 
+        const groupTotals = {}; 
+        
+        const rowWeightedNumerators = {}; 
+        const catWeightedNumerators = {}; 
+        const groupWeightedNumerators = {}; 
+        let cashWeightedNumerator = 0;
+
+        let valid = true;
+        
+        // Track current totals per column to calc cash current
+        const colCurrentTotals = {};
+
+        inputs.forEach(input => {
+            const colId = input.dataset.col;
+            const catCode = input.dataset.category;
+            const groupCode = input.dataset.group;
+            const rowId = input.dataset.row.replace('row-', '');
+            const acId = input.dataset.acId;
+            const atId = input.dataset.atId;
+            
+            const val = parseFloat(input.value) || 0;
+            
+            // Col Totals
+            if (!colTotals[colId]) colTotals[colId] = 0;
+            colTotals[colId] += val;
+
+            // Category Totals
+            if (!catTotals[catCode]) catTotals[catCode] = {};
+            if (!catTotals[catCode][colId]) catTotals[catCode][colId] = 0;
+            catTotals[catCode][colId] += val;
+
+            // Group Totals
+            if (!groupTotals[groupCode]) groupTotals[groupCode] = {};
+            if (!groupTotals[groupCode][colId]) groupTotals[groupCode][colId] = 0;
+            groupTotals[groupCode][colId] += val;
+            
+            // Local Variance Update (Cell Level)
+            // Layout: <td>Current</td> <td>Input</td> <td>Var</td>
+            const inputTd = input.closest('td');
+            const currentTd = inputTd.previousElementSibling; // Current is now BEFORE input
+            const varTd = inputTd.nextElementSibling; // Var is still NEXT after input
+            
+            if (currentTd && varTd) {
+                 const currentVal = parseFloat(currentTd.dataset.currentLocal || 0);
+                 const varSpan = varTd.querySelector('span'); // #var
+                 if (varSpan) {
+                      updateVariance(varSpan.id, val, currentVal); // target=val, current=currentVal
+                 }
+                 
+                 // Accumulate column current total for Cash calc
+                 if (!colCurrentTotals[colId]) colCurrentTotals[colId] = 0;
+                 colCurrentTotals[colId] += currentVal;
+            }
+
+            // Weighted Calc
+            if (portfolioTotal > 0) {
+                 const weightVal = val * (accountTotals[colId] || 0); 
+                 
+                 if (!rowWeightedNumerators[rowId]) rowWeightedNumerators[rowId] = 0;
+                 rowWeightedNumerators[rowId] += weightVal;
+
+                 if (!catWeightedNumerators[catCode]) catWeightedNumerators[catCode] = 0;
+                 catWeightedNumerators[catCode] += weightVal;
+
+                 if (!groupWeightedNumerators[groupCode]) groupWeightedNumerators[groupCode] = 0;
+                 groupWeightedNumerators[groupCode] += weightVal;
+            }
+        });
+        
+        // --- 1. Subtotal Rows (Target & Variance) ---
+        // Layout: <td>Current</td> <td>Target</td> <td>Var</td>
+        
+        // Categories
+        for (const [catCode, colMap] of Object.entries(catTotals)) {
+             for (const [colId, total] of Object.entries(colMap)) {
+                 const catEl = document.getElementById(`cat-${catCode}-${colId}`);
+                 if (catEl) {
+                     catEl.textContent = formatPct(total);
+                     // Current is Previous Sibling to Target Cell
+                     const targetTd = catEl.closest('td');
+                     const currentTd = targetTd.previousElementSibling; 
+                     
+                     if (currentTd) {
+                          const cur = parseFloat(currentTd.dataset.currentLocal || 0);
+                          updateVariance(`cat-var-${catCode}-${colId}`, total, cur);
+                     }
+                 }
+             }
+        }
+        
+        // Groups
+        for (const [groupCode, colMap] of Object.entries(groupTotals)) {
+             for (const [colId, total] of Object.entries(colMap)) {
+                 const groupEl = document.getElementById(`group-${groupCode}-${colId}`);
+                 if (groupEl) {
+                     groupEl.textContent = formatPct(total);
+                     // Current is Previous Sibling
+                     const targetTd = groupEl.closest('td');
+                     const currentTd = targetTd.previousElementSibling;
+
+                     if (currentTd) {
+                          const cur = parseFloat(currentTd.dataset.currentLocal || 0);
+                          updateVariance(`group-var-${groupCode}-${colId}`, total, cur);
+                     }
+                 }
+             }
+        }
+
+
+        // --- 2. Portfolio Totals & Variance ---
+        // Layout: Current | Target | Var
+        for (const [rowId, numerator] of Object.entries(rowWeightedNumerators)) {
+             const weightedAvg = portfolioTotal > 0 ? numerator / portfolioTotal : 0;
+             const el = document.getElementById(`row-total-${rowId}`);
+             if (el) {
+                 el.textContent = formatPct(weightedAvg);
+                 const currentEl = el.closest('tr').querySelector('[data-current]');
+                 // currentEl is the Element with data-current. 
+                 // In new layout, it's just the TD before. 
+                 // But since we use selector, it's fine.
+                 updateVariance(`row-var-${rowId}`, weightedAvg, parseFloat(currentEl?.dataset.current||0));
+             }
+        }
+        
+        for (const [catCode, numerator] of Object.entries(catWeightedNumerators)) {
+             const weightedAvg = portfolioTotal > 0 ? numerator / portfolioTotal : 0;
+             const el = document.getElementById(`cat-total-${catCode}`);
+             if (el) {
+                 el.textContent = formatPct(weightedAvg);
+                 const currentEl = el.closest('tr').querySelector('[data-current]');
+                 updateVariance(`cat-var-${catCode}`, weightedAvg, parseFloat(currentEl?.dataset.current||0));
+             }
+        }
+
+        for (const [groupCode, numerator] of Object.entries(groupWeightedNumerators)) {
+             const weightedAvg = portfolioTotal > 0 ? numerator / portfolioTotal : 0;
+             const el = document.getElementById(`group-total-${groupCode}`);
+             if (el) {
+                 el.textContent = formatPct(weightedAvg);
+                 const currentEl = el.closest('tr').querySelector('[data-current]');
+                 updateVariance(`group-var-${groupCode}`, weightedAvg, parseFloat(currentEl?.dataset.current||0));
+             }
+        }
+
+
+        // --- 3. Cash Row (Implicit) ---
+        // Layout: Current | Target | Var
+        let cashWeightedNumeratorVar = 0;
+        let totalInvestedCurrent = 0;
+
+        document.querySelectorAll('[id^="total-"]').forEach(totalEl => {
+            const colId = totalEl.id.replace('total-', '');
+            const total = colTotals[colId] || 0;
+            const cashEl = document.getElementById(`cash-${colId}`);
+            
+            // Render Target Total
+            totalEl.textContent = formatPct(total);
+            
+            // Render Cash Target
+            const cashTarget = 100 - total;
+            if (cashEl) cashEl.textContent = formatPct(cashTarget);
+
+            // Validation
+            if (total > 100.01) { 
+                totalEl.classList.add('text-danger');
+                totalEl.classList.remove('text-dark');
+                if (cashEl) cashEl.classList.add('text-danger'); 
+                valid = false;
+            } else {
+                totalEl.classList.remove('text-danger');
+                totalEl.classList.add('text-dark');
+                if (cashEl) cashEl.classList.remove('text-danger');
+            }
+            
+            // Cash Variance & Current
+            const cashCurrent = 100 - (colCurrentTotals[colId] || 0);
+            const cashCurrentEl = document.getElementById(`cash-current-${colId}`);
+            if (cashCurrentEl) cashCurrentEl.textContent = formatPct(cashCurrent);
+            updateVariance(`cash-var-${colId}`, cashTarget, cashCurrent);
+
+            
+            // Cash Weighted Numerator Accumulation
+            if (portfolioTotal > 0) {
+                 cashWeightedNumerator += (cashTarget * (accountTotals[colId] || 0));
+            }
+        });
+        
+        // Portfolio Cash Current
+        document.querySelectorAll('[id^="group-total-"]').forEach(el => {
+             const tr = el.closest('tr');
+             const cur = tr.querySelector('[data-current]');
+             if (cur) totalInvestedCurrent += parseFloat(cur.dataset.current || 0);
+        });
+        const cashCurrentPct = 100 - totalInvestedCurrent;
+        const cashCurrentTotalEl = document.getElementById('cash-current-total');
+        if (cashCurrentTotalEl) cashCurrentTotalEl.textContent = formatPct(cashCurrentPct);
+        
+        // Portfolio Cash Target & Var
+        if (portfolioTotal > 0) {
+             const cashWeightedAvg = cashWeightedNumerator / portfolioTotal;
+             document.getElementById('cash-weighted-total').textContent = formatPct(cashWeightedAvg);
+             updateVariance('cash-weighted-var', cashWeightedAvg, cashCurrentPct);
+             
+             // Grand Weighted 
+             let calculatedGrand = cashWeightedAvg;
+             for (const numerator of Object.values(groupWeightedNumerators)) {
+                  calculatedGrand += (numerator / portfolioTotal);
+             }
+             document.getElementById('grand-weighted-total').textContent = formatPct(calculatedGrand);
+        }
+        
+        saveButtons.forEach(btn => btn.disabled = !valid);
+    }
+
+    inputs.forEach(input => {
+        input.addEventListener('input', updateTotals);
+    });
+
+    updateTotals();
+});
+</script>
+{% endblock %}

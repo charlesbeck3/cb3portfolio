@@ -1,4 +1,3 @@
-from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -7,92 +6,90 @@ from django.utils.safestring import mark_safe
 
 register = template.Library()
 
+
 @register.filter
-def get_item(dictionary: Mapping[Any, Any] | None, key: Any) -> Any:
-    if dictionary is None:
+def get_item(dictionary: dict[Any, Any] | None, key: Any) -> Any:
+    """
+    Get a value from a dictionary using a key.
+    Usage: {{ mydict|get_item:key }}
+    """
+    if not dictionary:
         return None
     return dictionary.get(key)
 
 
 @register.filter
 def percentage_of(value: Any, total: Any) -> Decimal:
+    """
+    Calculate percentage of value / total.
+    Usage: {{ value|percentage_of:total }}
+    """
     try:
-        dec_value = Decimal(str(value))
-        dec_total = Decimal(str(total))
-    except (InvalidOperation, TypeError, ValueError):
+        val_d = Decimal(str(value))
+        tot_d = Decimal(str(total))
+        if tot_d == 0:
+            return Decimal('0')
+        return (val_d / tot_d) * Decimal('100')
+    except (ValueError, TypeError, InvalidOperation):
         return Decimal('0')
-    if dec_total == 0:
-        return Decimal('0')
-    return (dec_value / dec_total) * Decimal('100')
 
 
 @register.filter
 def subtract(value: Any, arg: Any) -> Decimal:
-    """Subtract arg from value."""
+    """
+    Subtract arg from value.
+    Usage: {{ value|subtract:arg }}
+    """
     try:
-        dec_value = Decimal(str(value))
-        dec_arg = Decimal(str(arg))
-    except (InvalidOperation, TypeError, ValueError):
+        val_d = Decimal(str(value))
+        arg_d = Decimal(str(arg))
+        return val_d - arg_d
+    except (ValueError, TypeError, InvalidOperation):
         return Decimal('0')
-    return dec_value - dec_arg
+
+
+def _format_accounting(value: Any, decimals: int = 0, prefix: str = '', suffix: str = '') -> str:
+    try:
+        val_f = float(str(value))
+    except (ValueError, TypeError):
+        return '-'
+
+    is_negative = val_f < 0
+    abs_val = abs(val_f)
+    
+    # Format number with commas and specific decimals
+    # {:,.2f} format
+    fmt = f"{{:,.{decimals}f}}"
+    formatted_num = fmt.format(abs_val)
+    
+    result = f"{prefix}{formatted_num}{suffix}"
+
+    if is_negative:
+        return f"({result})"
+    else:
+        # Use invisible parentheses for alignment
+        return mark_safe(f'<span style="visibility: hidden">(</span>{result}<span style="visibility: hidden">)</span>')
 
 
 @register.filter
 def accounting_amount(value: Any, decimals: int = 0) -> str:
-    """Format value as accounting amount: (1,234) for negative."""
-    try:
-        d = Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError):
-        return '-'
-
-    is_negative = d < 0
-    abs_val = abs(d)
-
-    # Format number with commas and specified decimals
-    formatted = f"{abs_val:,.{decimals}f}"
-
-    if is_negative:
-        return f"(${formatted})"
-
-    # Add hidden parenthesis for alignment
-    return mark_safe(f"${formatted}<span style='visibility: hidden;'>)</span>")
-
-
-@register.filter
-def accounting_percent(value: Any, decimals: int = 1) -> str:
-    """Format value as accounting percent: (12.3%) for negative."""
-    try:
-        d = Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError):
-        return '-'
-
-    is_negative = d < 0
-    abs_val = abs(d)
-
-    formatted = f"{abs_val:.{decimals}f}"
-
-    if is_negative:
-        return f"({formatted}%)"
-
-    # Add hidden parenthesis for alignment
-    return mark_safe(f"{formatted}%<span style='visibility: hidden;'>)</span>")
+    """
+    Format currency in accounting style: (1,234.00) for negative, 1,234.00 for positive (aligned).
+    """
+    return _format_accounting(value, decimals, prefix='$')
 
 
 @register.filter
 def accounting_number(value: Any, decimals: int = 2) -> str:
-    """Format value as accounting number: (123.45) for negative, no symbol."""
-    try:
-        d = Decimal(str(value))
-    except (InvalidOperation, TypeError, ValueError):
-        return '-'
+    """
+    Format number in accounting style: (1,234.00).
+    """
+    return _format_accounting(value, decimals)
 
-    is_negative = d < 0
-    abs_val = abs(d)
 
-    formatted = f"{abs_val:,.{decimals}f}"
-
-    if is_negative:
-        return f"({formatted})"
-
-    # Add hidden parenthesis for alignment
-    return mark_safe(f"{formatted}<span style='visibility: hidden;'>)</span>")
+@register.filter
+def accounting_percent(value: Any, decimals: int = 1) -> str:
+    """
+    Format percent in accounting style: (12.5%).
+    """
+    return _format_accounting(value, decimals, suffix='%')
