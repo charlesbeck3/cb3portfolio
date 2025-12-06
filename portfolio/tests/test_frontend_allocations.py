@@ -1,4 +1,5 @@
 from typing import Any
+
 from django.contrib.auth import get_user_model
 
 import pytest
