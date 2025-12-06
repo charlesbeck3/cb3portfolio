@@ -111,7 +111,7 @@
                                         </td>
                                     </tr>
                                     {% endfor %}
-                                    {% if group_data.categories|length > 1 %}
+                                    {% if group_data.categories|length > 1 and category_data.asset_classes|length > 1 %}
                                     <tr
                                         class="table-secondary fw-bold group-{{ forloop.parentloop.counter }}-rows collapse show">
                                         {% with category_label=summary.category_labels|get_item:category_code %}
@@ -134,6 +134,7 @@
                                     </tr>
                                     {% endif %}
                                     {% endfor %}
+                                    {% if group_data.asset_class_count > 1 %}
                                     <tr class="table-primary fw-bold border-top group-toggle mt-3"
                                         data-bs-toggle="collapse" data-bs-target=".group-{{ forloop.counter }}-rows"
                                         aria-expanded="true" role="button">
@@ -153,6 +154,7 @@
                                             {{ group_data.variance_total|accounting_amount:0 }}
                                         </td>
                                     </tr>
+                                    {% endif %}
                                     {% endfor %}
                                 </tbody>
                                 <tfoot>
@@ -248,7 +250,7 @@
                                         {% endwith %}
                                     </tr>
                                     {% endfor %}
-                                    {% if group_data.categories|length > 1 %}
+                                    {% if group_data.categories|length > 1 and category_data.asset_classes|length > 1 %}
                                     <tr class="table-secondary fw-bold">
                                         {% with category_label=summary.category_labels|get_item:category_code %}
                                         <td class="ps-4">{{ category_label|default:category_code }} Total</td>
@@ -278,6 +280,7 @@
                                     </tr>
                                     {% endif %}
                                     {% endfor %}
+                                    {% if group_data.asset_class_count > 1 %}
                                     <tr class="table-primary fw-bold border-top">
                                         <td>{{ group_data.label|default:group_code }} Total</td>
                                         {% for code, label in account_types %}
@@ -303,6 +306,7 @@
                                         </td>
                                         {% endwith %}
                                     </tr>
+                                    {% endif %}
                                     {% endfor %}
                                 </tbody>
                                 <tfoot>

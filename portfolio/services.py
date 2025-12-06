@@ -338,6 +338,7 @@ class PortfolioSummaryService:
             group_code = category_group_map.get(category_code, category_code)
             group_entry = summary.groups[group_code]
             group_entry.categories[category_code] = category_data
+            group_entry.asset_class_count += len(category_data.asset_classes)
 
         sorted_groups = sorted(
             summary.groups.items(), key=lambda item: item[1].total, reverse=True

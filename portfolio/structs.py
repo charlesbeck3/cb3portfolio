@@ -39,6 +39,7 @@ class GroupEntry:
     account_type_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    asset_class_count: int = 0
 
 
 @dataclass

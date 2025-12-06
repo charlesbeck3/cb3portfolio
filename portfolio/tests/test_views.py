@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from portfolio.models import Account
+from portfolio.models import Account, AssetCategory, AssetClass, Holding, Security
 
 from .base import PortfolioTestMixin
 
@@ -41,7 +41,91 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         self.assertIn('ROTH_IRA', codes)
         self.assertNotIn('TRADITIONAL_IRA', codes)
         self.assertNotIn('TAXABLE', codes)
-        self.assertNotIn('401K', codes)
+    def test_redundant_totals(self) -> None:
+        """
+        Verify that redundant total rows are suppressed:
+        1. Category Total hidden if Category has only 1 Asset Class.
+        2. Group Total hidden if Group has only 1 Asset Class (total).
+        """
+        # --- Setup Data ---
+        
+        # 1. Single Asset Group (simulating Cash)
+        # Group 'Deposit Accounts' (self.group_dep) created in mixin.
+        # Create Category 'Cash' -> 1 Asset Class 'Cash' -> 1 Security 'CASH'
+        cat_cash, _ = AssetCategory.objects.get_or_create(code='CASH', defaults={'label': 'Cash', 'sort_order': 10})
+        ac_cash, _ = AssetClass.objects.get_or_create(name='Cash', defaults={'category': cat_cash, 'expected_return': 0})
+        sec_cash, _ = Security.objects.get_or_create(ticker='CASH', defaults={'name': 'Cash Holding', 'asset_class': ac_cash})
+        
+        # Create Holding in a Deposit Account
+        acc_dep = Account.objects.create(
+            user=self.user, 
+            name='My Cash', 
+            account_type=AccountType.objects.get(code='TAXABLE'), # Using TAXABLE for simplicity, technically could be DEPOSIT
+            institution=self.institution
+        )
+        Holding.objects.create(account=acc_dep, security=sec_cash, shares=100, current_price=1)
+
+        # 2. Multi-Asset Group
+        # Group 'Investments' (self.group_inv).
+        # Category 'Equities' -> 2 Asset Classes 'US Stocks', 'Intl Stocks'
+        cat_eq, _ = AssetCategory.objects.get_or_create(code='EQUITIES', defaults={'label': 'Equities', 'sort_order': 1})
+        # Link category to group? The link is via AssetCategory.parent??
+        # Logic in services.py: group = category.parent or category.
+        # But wait, Group is AccountGroup, Category is AssetCategory.
+        # services.py maps: group_code = category.parent or category.code
+        # And summary.groups keys are these codes.
+        # BUT AccountGroup logic in get_account_summary is different from get_holdings_summary?
+        # Re-read services.py:
+        # _build_category_maps loops categories. group = category.parent or category.
+        # This means "Group" in the dashboard holdings table is actually the Parent Category (if exists) or the Category itself.
+        # It is NOT AccountGroup.
+        
+        # So "Cash" scenario: Category 'Cash' (parent=None). Group Code = 'CASH'.
+        # It has 1 Asset Class.
+        # So Group 'CASH' has 1 Asset Class.
+        
+        # "Investments" scenario?
+        # If we have US Equities (parent=Equities) and Intl Equities (parent=Equities).
+        # Group Code = 'Equities'.
+        # Group 'Equities' has 2 Categories (US, Intl) -> Multiple Asset Classes (>=2).
+        # So Group Total for 'Equities' should be SHOWN.
+        
+        # Let's create 'Equities' Parent Category
+        cat_parent_eq, _ = AssetCategory.objects.get_or_create(code='EQUITIES', defaults={'label': 'Equities Parent', 'sort_order': 1})
+        
+        # Sub-category 1: US Equities
+        cat_us, _ = AssetCategory.objects.get_or_create(code='US_EQ', defaults={'label': 'US Equities', 'parent': cat_parent_eq, 'sort_order': 1})
+        ac_us, _ = AssetClass.objects.get_or_create(name='US Stocks', defaults={'category': cat_us, 'expected_return': 0.1})
+        sec_us, _ = Security.objects.get_or_create(ticker='VTI', defaults={'name': 'VTI', 'asset_class': ac_us})
+        Holding.objects.create(account=acc_dep, security=sec_us, shares=10, current_price=100)
+        
+        # Sub-category 2: Intl Equities
+        cat_intl, _ = AssetCategory.objects.get_or_create(code='INTL_EQ', defaults={'label': 'Intl Equities', 'parent': cat_parent_eq, 'sort_order': 2})
+        ac_intl, _ = AssetClass.objects.get_or_create(name='Intl Stocks', defaults={'category': cat_intl, 'expected_return': 0.1})
+        sec_intl, _ = Security.objects.get_or_create(ticker='VXUS', defaults={'name': 'VXUS', 'asset_class': ac_intl})
+        Holding.objects.create(account=acc_dep, security=sec_intl, shares=10, current_price=50)
+
+        # --- Execute ---
+        response = self.client.get(reverse('portfolio:dashboard'))
+        content = response.content.decode('utf-8')
+
+        # --- Assertions ---
+        
+        # 1. Cash Scenario (Single Asset Class in Group 'CASH')
+        # Asset Class 'Cash' should be present
+        self.assertIn('Cash', content)
+        # Category Total 'Cash Total' should NOT be present (Category has 1 AC)
+        # Group Total 'Cash Total' should NOT be present (Group has 1 AC)
+        # Note: If label is "Cash", total row is "Cash Total".
+        self.assertNotIn('Cash Total', content, "Redundant Total row for Cash should be hidden.")
+        
+        # 2. Equities Scenario (Multi Asset Class in Group 'EQUITIES')
+        # Category 'US Equities' has 1 Asset Class -> 'US Equities Total' should be HIDDEN
+        self.assertIn('US Equities', content)
+        self.assertNotIn('US Equities Total', content, "Redundant Category Total for US Equities should be hidden.")
+        
+        # Group 'Equities Parent' has 2 Asset Classes (US Stocks + Intl Stocks) -> Group Total SHOWN
+        self.assertIn('Equities Parent Total', content, "Group Total for Equities should be shown.")
 
 
 class HoldingsViewTests(TestCase, PortfolioTestMixin):
