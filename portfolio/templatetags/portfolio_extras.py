@@ -56,12 +56,12 @@ def _format_accounting(value: Any, decimals: int = 0, prefix: str = '', suffix: 
 
     is_negative = val_f < 0
     abs_val = abs(val_f)
-    
+
     # Format number with commas and specific decimals
     # {:,.2f} format
     fmt = f"{{:,.{decimals}f}}"
     formatted_num = fmt.format(abs_val)
-    
+
     result = f"{prefix}{formatted_num}{suffix}"
 
     if is_negative:
