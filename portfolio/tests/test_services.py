@@ -6,7 +6,6 @@ from django.test import TestCase
 
 from portfolio.models import (
     Account,
-    AssetCategory,
     AssetClass,
     Holding,
     Institution,
