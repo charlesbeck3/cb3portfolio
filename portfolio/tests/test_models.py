@@ -18,10 +18,14 @@ from .base import PortfolioTestMixin
 User = get_user_model()
 
 
-class AssetClassTests(TestCase):
+class AssetClassTests(TestCase, PortfolioTestMixin):
+    def setUp(self) -> None:
+        self.setup_portfolio_data()
+
     def test_create_asset_class(self) -> None:
         """Test creating an asset class."""
-        us_equities = AssetCategory.objects.get(code="US_EQUITIES")
+        # Use category created in mixin
+        us_equities = self.cat_us_eq
         ac = AssetClass.objects.create(
             name="US Stocks",
             category=us_equities,
@@ -73,10 +77,10 @@ class AccountTests(TestCase, PortfolioTestMixin):
 
 class SecurityTests(TestCase, PortfolioTestMixin): # Added mixin just in case, though not strictly needed if not using AccountType
     def setUp(self) -> None:
-        self.category = AssetCategory.objects.get(code="US_EQUITIES")
+        self.setup_portfolio_data()
         self.asset_class = AssetClass.objects.create(
             name="US Stocks",
-            category=self.category,
+            category=self.cat_us_eq,
         )
 
     def test_create_security(self) -> None:
@@ -95,10 +99,9 @@ class HoldingTests(TestCase, PortfolioTestMixin): # Inherit from PortfolioTestMi
         self.setup_portfolio_data() # Call setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         # self.institution = Institution.objects.create(name="Vanguard") # Removed, as it's in mixin
-        self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
             name="US Stocks",
-            category=self.category,
+            category=self.cat_us_eq,
         )
         self.account = Account.objects.create(
             user=self.user,
@@ -128,10 +131,9 @@ class TargetAllocationTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
-        self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
             name="US Stocks",
-            category=self.category,
+            category=self.cat_us_eq,
         )
 
     def test_create_target_allocation(self) -> None:
@@ -174,10 +176,9 @@ class RebalancingRecommendationTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
-        self.category = AssetCategory.objects.get(code="US_EQUITIES")
         self.asset_class = AssetClass.objects.create(
             name="US Stocks",
-            category=self.category,
+            category=self.cat_us_eq,
         )
         self.account = Account.objects.create(
             user=self.user,

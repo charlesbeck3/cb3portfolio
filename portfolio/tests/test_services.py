@@ -27,11 +27,9 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         self.institution = Institution.objects.create(name="Vanguard")
 
         # Create Assets
-        self.category_equities = AssetCategory.objects.get(code='EQUITIES')
-        self.category_us_equities = AssetCategory.objects.get(code='US_EQUITIES')
-        self.category_fixed_income = AssetCategory.objects.get(code='FIXED_INCOME')
-        self.asset_class_us = AssetClass.objects.create(name='US Stocks', category=self.category_us_equities)
-        self.asset_class_bonds = AssetClass.objects.create(name='Bonds', category=self.category_fixed_income)
+        # Use categories from mixin: self.cat_us_eq, self.cat_fi
+        self.asset_class_us = AssetClass.objects.create(name='US Stocks', category=self.cat_us_eq)
+        self.asset_class_bonds = AssetClass.objects.create(name='Bonds', category=self.cat_fi)
 
         # Create Account using AccountType object
         self.account_roth = Account.objects.create(
