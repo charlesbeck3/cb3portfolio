@@ -83,7 +83,7 @@
                                     {% for cat_info, assets in categories %}
                                          <!-- Assets -->
                                          {% for ac in assets %}
-                                            <tr data-ac-id="{{ ac.id }}">
+                                            <tr data-ac-id="{{ ac.id }}" data-category-code="{{ cat_info.obj.code }}">
                                                 <td class="ps-4">{{ ac.name }}</td>
                                                 {% for at in account_types %}
                                                     <!-- 1. Account Type Columns -->
@@ -166,7 +166,9 @@
                                             {% for at in account_types %}
                                                 <!-- Account Type Subtotals -->
                                                 <td class="text-end pe-1 small text-dark">
-                                                    {{ cat_info.allocation_map|get_item:at.id|default:0|accounting_percent:1 }}
+                                                    <span id="sub-curr-{{ at.id }}-{{ cat_info.obj.code }}">
+                                                        {{ cat_info.allocation_map|get_item:at.id|default:0|accounting_percent:1 }}
+                                                    </span>
                                                 </td>
                                                 <td class="text-end pe-1 small text-dark">
                                                      <!-- Default Target Sum (JS will update) -->
@@ -199,7 +201,7 @@
                                             
                                             <!-- Portfolio Totals Subtotal -->
                                             <td class="text-end pe-2 table-active text-dark">
-                                                {{ cat_info.total_value|percentage_of:portfolio_total_value|accounting_percent:1 }}
+                                                <span id="sub-total-curr-{{ cat_info.obj.code }}">{{ cat_info.total_value|percentage_of:portfolio_total_value|accounting_percent:1 }}</span>
                                             </td>
                                             <td class="text-end pe-2 table-active text-dark">
                                                 <span id="sub-total-target-{{ cat_info.obj.code }}">--</span>
@@ -259,7 +261,9 @@
                                         {% endfor %}
                                     {% endfor %}
                                     
-                                    <td class="text-end pe-2 table-active">--</td>
+                                    <td class="text-end pe-2 table-active">
+                                        <span id="cash-current">--</span>
+                                    </td>
                                     <td class="text-end pe-2 table-active">
                                         <span id="cash-total">0.00%</span>
                                     </td>
@@ -393,13 +397,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // 3. Compute Effective Targets & Aggregate
-        // We need list of all acIds (from rows)
         const assetRows = document.querySelectorAll('tr[data-ac-id]');
         const aggTargetDollars = {}; // acId -> dollars
         const atTargetDollars = {}; // atId -> {acId: dollars}
-        const atTotalDollars = {}; // atId -> total target dollars across all assets (should match sum of accounts)
-        
-        let totalPortfolioTarget = 0;
+        const atTotalDollars = {}; // atId -> total target dollars
         
         const accountEffectiveCash = {}; // accId -> val
         const atEffectiveCashDollars = {}; // atId -> dollars
@@ -424,8 +425,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const accDefaults = defaults[atId] || {};
             const accOverrides = overrides[accId] || {};
             
-            // FULL OVERRIDE LOGIC: If ANY override exists for an account, ignore ALL defaults.
-            // This includes explicit Cash overrides.
             const hasOverrides = Object.keys(accOverrides).length > 0;
             
             let accTotalEffectiveNonCash = 0;
@@ -437,7 +436,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 let effective = 0;
                 if (hasOverrides) {
-                    // Under Full Override, if not specified, it's 0.
                     effective = accOverrides[acId] || 0;
                 } else {
                     effective = accDefaults[acId] || 0;
@@ -445,18 +443,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 accTotalEffectiveNonCash += effective;
                 
-                // Update UI
+                // Update UI for Account Effective
                 const effSpan = document.getElementById(`eff-${accId}-${acId}`);
                 if(effSpan) { 
                     effSpan.textContent = formatPct(effective); 
                     if(hasOverrides && accOverrides.hasOwnProperty(acId)) {
-                        // Explicit override
-                        effSpan.classList.add('fw-bold');
-                    } else if (hasOverrides) {
-                         // Implied 0 under full override
-                         effSpan.classList.remove('fw-bold'); // Or maybe muted?
+                        effSpan.classList.add('fw-bold'); // Explicit
                     } else {
-                        // Default
                         effSpan.classList.remove('fw-bold');
                     }
                 }
@@ -476,17 +469,11 @@ document.addEventListener('DOMContentLoaded', function() {
             let cashEff = 0;
             if (hasOverrides) {
                  if (accOverrides['cash'] !== undefined) {
-                      // Explicit Cash Override
                       cashEff = accOverrides['cash'];
                  } else {
-                      // Implicit Residual Cash under Full Override
-                      // If user overrode stocks to 60%, and didn't specify cash, cash is 40%.
-                      // If user overrode stocks to 0%, cash is 100%.
                       cashEff = Math.max(0, 100 - accTotalEffectiveNonCash);
                  }
             } else {
-                 // No Overrides - use Default Residual Logic logic
-                 // We need calculate default totals for this AT to know default cash
                  const defTotal = defaultTotals[atId] || 0;
                  cashEff = Math.max(0, 100 - defTotal);
             }
@@ -500,7 +487,6 @@ document.addEventListener('DOMContentLoaded', function() {
                      cashSpan.classList.remove('fw-bold', 'text-primary');
                 }
                 
-                // Warning if total != 100?
                 const totalAlloc = accTotalEffectiveNonCash + cashEff;
                 if (Math.abs(totalAlloc - 100) > 0.1) {
                      cashSpan.classList.add('text-danger');
@@ -529,26 +515,29 @@ document.addEventListener('DOMContentLoaded', function() {
              const totEl = document.getElementById(`total-default-${atId}`);
              if(totEl) totEl.textContent = formatPct(total + cashDef);
              
-             // Check validity
              if (total > 100.01) valid = false;
         }
         
-        // Account Type Aggregates (Weighted Average)
-        // We need AT total value to normalize
-        // But we don't have it explicitly in JS map? 
-        // We can sum accountValues for the accounts belonging to AT.
-        
+        // Prepare Helper for AT Totals
         const atTotalValues = {};
         for(const [accId, atId] of Object.entries(accountAtMap)) {
             if(!atTotalValues[atId]) atTotalValues[atId] = 0;
             atTotalValues[atId] += (accountValues[accId] || 0);
         }
         
-        // Update AT Aggregate Cells
+        // Track Category Totals
+        const categoryTargets = {}; // catCode -> dollars
+        const atCategoryTargets = {}; // atId -> { catCode: dollars }
+        const atCategoryDefaults = {}; // atId -> { catCode: val }
+        
+        // Standard Assets Rows Update
         assetRows.forEach(row => {
-            const acId = row.dataset.acId;
+             const acId = row.dataset.acId;
+             const catCode = row.dataset.categoryCode;
+             
              if(acId === 'cash') return;
              
+             // 4a. Update Account Type Columns
              for (const [atId, dollarsMap] of Object.entries(atTargetDollars)) {
                   const dollars = dollarsMap[acId] || 0;
                   const totalVal = atTotalValues[atId] || 0;
@@ -558,54 +547,19 @@ document.addEventListener('DOMContentLoaded', function() {
                   if(el) el.textContent = formatPct(pct);
 
                   // Update Variance (Current - Wt. Target)
-                  // Get Current Pct from DOM (data-at-current on 'td')
-                  // We need to access the TD element that has `data-at-current`. 
-                  // It's the first cell in the loop for this AT.
-                  // Since we are inside assetRows loop, we can find it.
-                  // The row structure is: Name | (Curr, Target, Agg, Var + AccCols) x N | ...
-                  // This is getting hard to select by index. 
-                  // Improved: Add ID to the Current TD in template? Or Use `data-at-current` selector scoped to row?
-                  
-                  // Let's assume we can select by attribute inside the row.
-                  // But the attribute is on the TD, and there are multiple ATs.
-                  // We can select: `row.querySelector(\`td[data-at-current]\`)` -> this gives the FIRST one.
-                  // We need the one specific to AT.
-                  
-                  // Let's look at template again:
-                  // <td class="..." data-at-current="...">...</td>
-                  // It doesn't have ID or specific class for AT.
-                  // I should add `data-at-id` to that TD in template to make this easy.
-                  // Wait, I can't easily change template structure in this tool call without replacing the WHOLE loop.
-                  // BUT, I can rely on position? No, accounts expand/contract.
-                  
-                  // Alternative: The `data-at-current` value was passed from backend. 
-                  // I can also calculate it here if I have `at_ac_values`?
-                  // I don't have `at_ac_values` in JS.
-                  
-                  // Let's traverse: The `agg-${atId}-${acId}` span is in a TD.
-                  // The "Current" TD is 2 cells before it? 
-                  // Layout: Curr | Target | Wt. Target | Variance
-                  // Agg is inside Wt. Target.
-                  // So properties: 
-                  // Curr (index i)
-                  // Target (index i+1)
-                  // Agg (index i+2)
-                  // Variance (index i+3)
-                  
-                  // So if I have the Agg Element, I can go parentElement -> previousElementSibling -> previousElementSibling.
+                  // Find Current Cell
                   const aggCell = el ? el.parentElement : null;
                   if (aggCell) {
                       const targetCell = aggCell.previousElementSibling;
                       const currCell = targetCell ? targetCell.previousElementSibling : null;
                       
                       if (currCell && currCell.dataset.atCurrent) {
-                           const currentVal = parseFloat(currCell.dataset.atCurrent.replace(',','')) || 0; // Handle Django localization if any
+                           const currentVal = parseFloat(currCell.dataset.atCurrent.replace(/[^0-9.-]/g, '')) || 0;
                            const variance = currentVal - pct;
                            
                            const varEl = document.getElementById(`var-${atId}-${acId}`);
                            if (varEl) {
                                varEl.textContent = formatPct(variance);
-                               // Style
                                varEl.classList.remove('text-success', 'text-danger', 'text-muted');
                                if (variance > 0.05) varEl.classList.add('text-success');
                                else if (variance < -0.05) varEl.classList.add('text-danger');
@@ -613,191 +567,184 @@ document.addEventListener('DOMContentLoaded', function() {
                            }
                       }
                   }
+                  
+                  // Accumulate for Category Subtotals
+                  if (catCode) {
+                      if (!atCategoryTargets[atId]) atCategoryTargets[atId] = {};
+                      if (!atCategoryTargets[atId][catCode]) atCategoryTargets[atId][catCode] = 0;
+                      atCategoryTargets[atId][catCode] += dollars;
+                      
+                      const defVal = (defaults[atId] && defaults[atId][acId]) ? defaults[atId][acId] : 0;
+                      if (!atCategoryDefaults[atId]) atCategoryDefaults[atId] = {};
+                      if (!atCategoryDefaults[atId][catCode]) atCategoryDefaults[atId][catCode] = 0;
+                      atCategoryDefaults[atId][catCode] += defVal;
+                  }
              }
              
-             // Row Total (Portfolio)
+             // 4b. Update Portfolio Total Columns
              const totalDollars = aggTargetDollars[acId] || 0;
              const portPct = portfolioTotal > 0 ? (totalDollars / portfolioTotal * 100) : 0;
              document.getElementById(`row-total-${acId}`).textContent = formatPct(portPct);
              
-             // Update Variance
-             // We need Current % or Dollars from DOM?
-             // Since we have `ac.current_pct` in template rendered as text, we can parse it?
-             // Better: Use `data-current` attributes? Note I didn't add them yet to the replacing content.
-             // Wait, I did replace the whole block.
-             // I missed adding `data-current` to the row total cell in my template above.
-             // But I can parse the text content.
-             const currentText = row.children[row.children.length - 3].innerText.replace('%',''); // -3 is Curr col
-             const currentPct = parseFloat(currentText) || 0;
-             const variance = currentPct - portPct;
-             const varEl = document.getElementById(`row-var-${acId}`);
-             varEl.textContent = formatPct(variance);
-             varEl.className = 'text-end pe-2 table-active fw-bold ' + (variance >= 0 ? 'text-success' : 'text-danger');
-             // Yes, that's easier.
+             // Accumulate Category Target
+             if (catCode) {
+                 if (!categoryTargets[catCode]) categoryTargets[catCode] = 0;
+                 categoryTargets[catCode] += totalDollars;
+             }
+             
+             // Variance
+             // Get Current Pct from DOM (Table-active row)
+             const portTotalCell = document.getElementById(`row-total-${acId}`).parentElement;
+             const portCurrCell = portTotalCell ? portTotalCell.previousElementSibling : null;
+             
+             if (portCurrCell) {
+                 const currentText = portCurrCell.innerText.replace('%','');
+                 const currentPct = parseFloat(currentText) || 0;
+                 const variance = currentPct - portPct;
+                 
+                 const varEl = document.getElementById(`row-var-${acId}`);
+                 varEl.textContent = formatPct(variance);
+                 
+                 // Style
+                 varEl.className = 'text-end pe-2 table-active fw-bold ' + (variance >= 0 ? 'text-success' : 'text-danger');
+             }
         });
         
         // 5. Update Category Subtotals
         const subtotalRows = document.querySelectorAll('tr[class*="category-subtotal-"]');
+        let sumSubtotalCurrents = 0;
+
         subtotalRows.forEach(row => {
-             // Extract category code from class
+             // Extract category code
              const classes = Array.from(row.classList);
              const subClass = classes.find(c => c.startsWith('category-subtotal-'));
              if(!subClass) return;
              const catCode = subClass.replace('category-subtotal-', '');
              
-             // Find all asset rows belonging to this category.
-             // Limitation: We don't have explicit linking in DOM.
-             // Workaround: The asset rows strictly precede the subtotal row until the previous subtotal or header.
-             // Or simpler: We can attach `data-category-code` to asset rows in the template.
-             // Let's assume we added that or will add it. If not, this is hard.
-             // WAIT - I missed adding data-category to asset rows in previous step.
-             // Let's rely on traversing PREVIOUS SIBLINGS until we hit a non-asset row?
-             // That's fragile.
-             // Better: Iterate ALL asset rows, check if they are visually above? No.
+             // Calculate Total Target
+             const catDollars = categoryTargets[catCode] || 0;
+             const catTargetPct = portfolioTotal > 0 ? (catDollars / portfolioTotal * 100) : 0;
              
-             // Correct approach: Update template to include data-category-code on rows.
-             // Since I can't do that in this same step easily without context switching, 
-             // I will implement a DOM traversal fallback: walk backwards from subtotal row.
+             document.getElementById(`sub-total-target-${catCode}`).textContent = formatPct(catTargetPct);
              
-             let sibling = row.previousElementSibling;
-             
-             // Accumulators
-             const subDefaults = {}; // atId -> total
-             const subCurrent = {}; // atId -> total pct
-             const subTargetDollars = {}; // atId -> total dollars
-             const subEffective = {}; // accId -> total pct sum (approx)
-             const subOverrides = {}; // accId -> total
-             
-             while (sibling && sibling.hasAttribute('data-ac-id')) {
-                  const acId = sibling.dataset.acId;
-                  
-                  // 1. Sum Defaults
-                  for (const [atId, val] of Object.entries(defaults)) {
-                       if (val[acId]) {
-                            if (!subDefaults[atId]) subDefaults[atId] = 0;
-                            subDefaults[atId] += val[acId];
-                       }
-                  }
-                  
-                  // 2. Sum Current & Target Dollars (for Agg Pct)
-                  for (const [atId, dollarsMap] of Object.entries(atTargetDollars)) {
-                       const dollars = dollarsMap[acId] || 0;
-                       if (!subTargetDollars[atId]) subTargetDollars[atId] = 0;
-                       subTargetDollars[atId] += dollars;
-                  }
-                  
-                  // 3. Sum Current (from DOM)
-                  const aggSpans = sibling.querySelectorAll('span[id^="agg-"]');
-                  aggSpans.forEach(span => {
-                      const parts = span.id.split('-');
-                      const atId = parts[1];
-                      // Find Curr cell relative to this span
-                      const aggCell = span.parentElement;
-                      const targetCell = aggCell.previousElementSibling;
-                      const currCell = targetCell ? targetCell.previousElementSibling : null;
-                      
-                      if (currCell && currCell.dataset.atCurrent) {
-                           const val = parseFloat(currCell.dataset.atCurrent.replace(',', '')) || 0;
-                           if (!subCurrent[atId]) subCurrent[atId] = 0;
-                           subCurrent[atId] += val;
-                      }
-                  });
-
-                  // 4. Sum Effective (Percentages)
-                   for (const accId of accountIds) {
-                        const effSpan = document.getElementById(`eff-${accId}-${acId}`);
-                        if (effSpan) {
-                             const val = parseFloat(effSpan.textContent) || 0;
-                             if (!subEffective[accId]) subEffective[accId] = 0;
-                             subEffective[accId] += val;
-                        }
-                        
-                        const overInp = document.querySelector(`input[name="target_account_${accId}_${acId}"]`);
-                        if (overInp && overInp.value) {
-                             if (!subOverrides[accId]) subOverrides[accId] = 0;
-                             subOverrides[accId] += parseFloat(overInp.value);
-                        }
-                   }
-                   
-                   sibling = sibling.previousElementSibling;
-             }
-             
-             // Render Subtotals
-             
-             // Defaults
-             for (const [atId, val] of Object.entries(subDefaults)) {
-                  const el = document.getElementById(`sub-def-${atId}-${catCode}`);
-                  if(el) el.textContent = formatPct(val);
-             }
-             
-             // Aggregates & Variance
-             for(const [atId, atVal] of Object.entries(atTotalValues)) {
-                  const dollars = subTargetDollars[atId] || 0;
-                  const aggPct = atVal > 0 ? (dollars / atVal * 100) : 0;
-                  
-                  const aggEl = document.getElementById(`sub-agg-${atId}-${catCode}`);
-                  if(aggEl) aggEl.textContent = formatPct(aggPct);
-                  
-                  // Variance
-                  const currPct = subCurrent[atId] || 0;
-                  const variance = currPct - aggPct;
-                  
-                  const varEl = document.getElementById(`sub-var-${atId}-${catCode}`);
-                  if (varEl) {
-                       varEl.textContent = formatPct(variance);
-                       varEl.classList.remove('text-success', 'text-danger', 'text-warning');
-                       if (variance > 0.05) varEl.classList.add('text-success');
-                       else if (variance < -0.05) varEl.classList.add('text-danger');
-                  }
-             }
-             
-        });
-        
-        // Re-do Loop with better strategy:
-        // 1. Identify ACs per Category (need DOM or data).
-        // 2. Sum up.
-        
-        // Cash Aggregates
-        let portCashDollars = 0;
-        for (const [atId, dollars] of Object.entries(atEffectiveCashDollars)) {
-             const totalVal = atTotalValues[atId] || 0;
-             const pct = totalVal > 0 ? (dollars / totalVal * 100) : 0;
-             const el = document.getElementById(`cash-agg-${atId}`);
-             if(el) el.textContent = formatPct(pct);
-             
-             // Cash Variance
-             const aggCell = el ? el.parentElement : null;
-             if (aggCell) {
-                 const defCell = aggCell.previousElementSibling; 
-                 const currCell = defCell ? defCell.previousElementSibling : null;
+             // Calculate Variance: Current - Target
+             const currSpan = document.getElementById(`sub-total-curr-${catCode}`);
+             if (currSpan) {
+                 const currPct = parseFloat(currSpan.innerText.replace('%','')) || 0;
+                 sumSubtotalCurrents += currPct;
                  
-                 if (currCell && currCell.dataset.atCurrent) {
-                      const curVal = parseFloat(currCell.dataset.atCurrent) || 0;
-                      const variance = curVal - pct;
-                      
-                      const varEl = document.getElementById(`cash-var-${atId}`);
-                      if (varEl) {
-                           varEl.textContent = formatPct(variance);
-                           varEl.classList.remove('text-success', 'text-danger', 'text-muted');
-                           if (variance > 0.05) varEl.classList.add('text-success');
-                           else if (variance < -0.05) varEl.classList.add('text-danger');
-                           else varEl.classList.add('text-muted');
-                      }
+                 const variance = currPct - catTargetPct;
+                 const varEl = document.getElementById(`sub-total-var-${catCode}`);
+                 if (varEl) {
+                     varEl.textContent = formatPct(variance);
+                     varEl.className = 'text-dark ' + (variance >= 0 ? 'text-success' : 'text-danger'); 
                  }
              }
              
-             // Total agg
-             const totEl = document.getElementById(`total-agg-${atId}`);
-             if(totEl) totEl.textContent = formatPct(100); // Should always be 100% aggregation if residuals handled
-             
+             // Update Account Type Subtotals
+             // We iterate over known AT IDs (from defaultTotals keys)
+             for (const atId of Object.keys(defaultTotals)) {
+                  // 1. Default Sum
+                  const defSum = (atCategoryDefaults[atId] && atCategoryDefaults[atId][catCode]) ? atCategoryDefaults[atId][catCode] : 0;
+                  const defEl = document.getElementById(`sub-def-${atId}-${catCode}`);
+                  if (defEl) defEl.textContent = formatPct(defSum);
+                  
+                  // 2. Wt Target
+                  const targDollars = (atCategoryTargets[atId] && atCategoryTargets[atId][catCode]) ? atCategoryTargets[atId][catCode] : 0;
+                  const totalVal = atTotalValues[atId] || 0;
+                  const wtPct = totalVal > 0 ? (targDollars / totalVal * 100) : 0;
+                  
+                  const aggEl = document.getElementById(`sub-agg-${atId}-${catCode}`);
+                  if (aggEl) aggEl.textContent = formatPct(wtPct);
+                  
+                  // 3. Variance
+                  const atCurrSpan = document.getElementById(`sub-curr-${atId}-${catCode}`);
+                  if (atCurrSpan) {
+                       const atCurrPct = parseFloat(atCurrSpan.innerText.replace(/[^0-9.-]/g, '')) || 0;
+                       
+                       const variance = atCurrPct - wtPct;
+                       const varEl = document.getElementById(`sub-var-${atId}-${catCode}`);
+                       if (varEl) {
+                           varEl.textContent = formatPct(variance);
+                           varEl.classList.remove('text-success', 'text-danger', 'text-warning');
+                           if (variance > 0.05) varEl.classList.add('text-success');
+                           else if (variance < -0.05) varEl.classList.add('text-danger');
+                       }
+                  }
+             }
+        });
+
+        
+        // 5b. Update Cash Row Totals
+        let portCashDollars = 0;
+        for (const [atId, dollars] of Object.entries(atEffectiveCashDollars)) {
              portCashDollars += dollars;
+             // Update AT columns too
+             const totalVal = atTotalValues[atId] || 0;
+             const pct = totalVal > 0 ? (dollars / totalVal * 100) : 0;
+             const atCashEl = document.getElementById(`cash-agg-${atId}`);
+             if(atCashEl) atCashEl.textContent = formatPct(pct);
+             
+             // Variance for AT
+             // Get Current from DOM if available? Or calculate?
+             // The template has `data-at-current` on the first cell of cash row (line 220).
+             // But the ID for Variance is `cash-var-${atId}`.
+             
+             // We need to find the Current cell. 
+             // Cash row ID="cash-var-${atId}" is in a TD. Parent is TR? No, Parent is TD.
+             // Wait, `cash-var` is a span inside a TD.
+             // Line 231: <span id="cash-var-...">
+             // Line 219: <td data-at-current="...">
+             // They are siblings in the same TR loop block.
+             // Wait, the loop generates multiple cells.
+             
+             // We can find the current value by ID? No ID on the `data-at-current` cell.
+             // But we can update the template to add ID if we want perfection.
+             // Or rely on calculation? 
+             // Let's rely on `data-at-current` being on the same row.
+             
+             const varEl = document.getElementById(`cash-var-${atId}`);
+             if (varEl) {
+                 // Traverse back to find `data-at-current`
+                 // Structure: Default(with data-at-current) | Default Target Span | Agg Span | Var Span
+                 // Var Span -> TD -> Prev -> Prev -> Prev (Default TD)
+                 
+                 const varTd = varEl.parentElement;
+                 const aggTd = varTd.previousElementSibling;
+                 const defTd = aggTd ? aggTd.previousElementSibling : null;
+                 const currTd = defTd ? defTd.previousElementSibling : null;
+                 
+                 if (currTd && currTd.dataset.atCurrent) {
+                      const curVal = parseFloat(currTd.dataset.atCurrent) || 0; 
+                      // Note: data-at-current is raw value (dollars or pct?). 
+                      // If it's percentage (0-100), fine.
+                      // Line 92 used default:0, line 93 formats it. It's likely a number.
+                      
+                      const variance = curVal - pct;
+                      varEl.textContent = formatPct(variance);
+                      varEl.classList.remove('text-success', 'text-danger');
+                      if (variance > 0.05) varEl.classList.add('text-success');
+                      else if (variance < -0.05) varEl.classList.add('text-danger');
+                 }
+             }
         }
         
         const portCashPct = portfolioTotal > 0 ? (portCashDollars / portfolioTotal * 100) : 0;
         document.getElementById(`cash-total`).textContent = formatPct(portCashPct);
-        // Variance for Cash? Not strictly in DOM?
-        // Added implicit cash row in template.
         
+        // Cash Current (Calculated)
+        const cashCurrentPct = Math.max(0, 100 - sumSubtotalCurrents);
+        const cashCurrEl = document.getElementById('cash-current');
+        if (cashCurrEl) cashCurrEl.textContent = formatPct(cashCurrentPct);
+        
+        // Cash Variance
+        const cashVar = cashCurrentPct - portCashPct;
+        const cashVarEl = document.getElementById('cash-var');
+        if (cashVarEl) {
+            cashVarEl.textContent = formatPct(cashVar);
+            cashVarEl.className = (cashVar >= 0 ? 'text-success' : 'text-danger');
+        }
+
         saveButtons.forEach(btn => btn.disabled = !valid);
     }
     
