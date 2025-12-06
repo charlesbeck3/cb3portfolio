@@ -573,6 +573,69 @@ class PortfolioSummaryService:
             ticker_data[ticker].target_value += holding_target_value
             ticker_data[ticker].target_shares += holding_target_shares
 
+            ticker_data[ticker].target_shares += holding_target_shares
+
+        # --- INJECT EMPTY PRE-CALCULATED TARGETS ---
+        # Identify asset classes with targets but no holdings for specific accounts
+
+        # 1. Build map of all Asset Classes for lookup
+        from .models import AssetClass
+        all_asset_classes = AssetClass.objects.values('id', 'name', 'category_id')
+        ac_lookup = {ac['name']: ac for ac in all_asset_classes}
+
+        # 2. Iterate effective targets and check for missing holdings
+        for acc_id, ac_targets in effective_targets_map.items():
+            # Skip if we are filtering by account and this isn't it
+            if account_id and acc_id != account_id:
+                continue
+
+            # Get current account total (needed for target $ calc)
+            # If account has 0 value, target $ is 0, so usually doesn't matter to show?
+            # But maybe user wants to see what they SHOULD buy?
+            # If account total is 0, we can't really recommend buying X dollars unless we know planned deposit.
+            # So skipping 0-value accounts is reasonable for now.
+            acc_total = account_totals.get(acc_id, Decimal('0.00'))
+            if acc_total == 0:
+                continue
+
+            for ac_name, target_pct in ac_targets.items():
+                if target_pct <= 0:
+                    continue
+
+                # Check if we have any holdings for this AC in this account
+                # Look at account_ac_security_counts
+                ac_id_obj = ac_lookup.get(ac_name)
+                if not ac_id_obj:
+                    # Target refers to unknown asset class?
+                    continue
+
+                ac_id = ac_id_obj['id']
+
+                has_holdings = False
+                if acc_id in account_ac_security_counts and ac_id in account_ac_security_counts[acc_id]:
+                        has_holdings = True
+
+                if not has_holdings:
+                    # We have a target but no holdings. Inject placeholder.
+                    # We aggregate markers by Asset Class Name (so multiple accounts missing same AC group together)
+                    marker_key = f"_EMPTY_{ac_name}"
+
+                    target_val = acc_total * (target_pct / Decimal('100.00'))
+
+                    if marker_key not in ticker_data:
+                        ticker_data[marker_key] = AggregatedHolding(
+                            ticker="", # Blank ticker
+                            name="",   # Blank name
+                            asset_class=ac_name,
+                            category_code=ac_id_obj['category_id'],
+                            current_price=None,
+                            shares=Decimal('0.00'),
+                            value=Decimal('0.00'),
+                        )
+
+                    ticker_data[marker_key].target_value += target_val
+                    # No target shares since no price.
+
         # --- FINAL METRICS CALCULATION ---
 
         for holding_data in ticker_data.values():
