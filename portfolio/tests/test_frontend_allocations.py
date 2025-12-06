@@ -1,3 +1,4 @@
+from typing import Any
 from django.contrib.auth import get_user_model
 
 import pytest
@@ -10,7 +11,7 @@ from .base import PortfolioTestMixin
 User = get_user_model()
 
 @pytest.fixture(autouse=True)
-def live_server_url(live_server) -> str:
+def live_server_url(live_server: Any) -> str:
     """Explicitly use live_server fixture for Playwright tests."""
     return live_server.url
 
