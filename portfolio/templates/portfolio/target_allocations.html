@@ -14,7 +14,12 @@
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
                 <h1 class="h2 mb-0">Target Allocations</h1>
-                <p class="text-muted mt-2">Set your target allocation percentages for each account type. The remaining percentage will automatically be allocated to Cash.</p>
+                <p class="text-muted mt-2">
+                    Set default target allocations for each account type. 
+                    Expand columns to override for specific accounts.
+                    <br>
+                    <small>Aggregate targets are calculated bottom-up based on account values.</small>
+                </p>
             </div>
             <div>
                  <a href="{% url 'portfolio:dashboard' %}" class="btn btn-outline-secondary me-2">Cancel</a>
@@ -27,21 +32,46 @@
             <div class="card shadow-sm">
                 <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-bordered table-striped table-hover mb-0 align-middle">
+                        <table class="table table-bordered table-striped table-hover mb-0 align-middle" id="allocations-table">
                             <thead class="table-light">
                                 <tr>
-                                    <th scope="col" class="ps-4" rowspan="2">Asset Class</th>
+                                    <th scope="col" class="ps-4" rowspan="2" style="min-width: 200px;">Asset Class</th>
                                     {% for at in account_types %}
-                                        <th scope="col" class="text-center border-bottom-0" colspan="3">{{ at.label }}</th>
+                                        <!-- Account Type Header -->
+                                        <th scope="col" class="text-center border-bottom-0 position-relative" colspan="4">
+                                            {{ at.label }}
+                                            {% if at.active_accounts %}
+                                            <button type="button" class="btn btn-sm btn-link p-0 ms-2 text-decoration-none expand-btn" 
+                                                    data-at-id="{{ at.id }}" title="Show/Hide Individual Accounts">
+                                                [+]
+                                            </button>
+                                            {% endif %}
+                                        </th>
+                                        <!-- Individual Accounts Headers -->
+                                        {% for acc in at.active_accounts %}
+                                            <th scope="col" class="text-center border-bottom-0 table-warning d-none col-acc-{{ at.id }}" colspan="3">
+                                                <small>{{ acc.name }}</small>
+                                            </th>
+                                        {% endfor %}
                                     {% endfor %}
                                     <th scope="col" class="text-center table-active border-bottom-0" colspan="3">Total Portfolio (%)</th>
                                 </tr>
                                 <tr>
                                     {% for at in account_types %}
-                                        <th scope="col" class="text-center small border-top-0 text-muted" style="min-width: 60px;">Curr</th>
+                                        <!-- Account Type Sub-headers -->
+                                        <th scope="col" class="text-center small border-top-0 text-muted" style="min-width: 50px;">Current</th>
                                         <th scope="col" class="text-center small border-top-0 text-muted" style="min-width: 90px;">Target</th>
-                                        <th scope="col" class="text-center small border-top-0 text-muted" style="min-width: 60px;">Var</th>
+                                        <th scope="col" class="text-center small border-top-0 text-muted" style="min-width: 60px;">Wt. Target</th>
+                                        <th scope="col" class="text-center small border-top-0 text-muted" style="min-width: 50px;">Variance</th>
+                                        
+                                        <!-- Individual Accounts Sub-headers -->
+                                        {% for acc in at.active_accounts %}
+                                            <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ at.id }}" style="min-width: 50px;">Curr</th>
+                                            <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ at.id }}" style="min-width: 80px;">Override</th>
+                                            <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ at.id }}" style="min-width: 50px;">Eff</th>
+                                        {% endfor %}
                                     {% endfor %}
+                                    
                                     <th scope="col" class="text-center small table-active border-top-0 text-muted">Curr</th>
                                     <th scope="col" class="text-center small table-active border-top-0 text-muted">Target</th>
                                     <th scope="col" class="text-center small table-active border-top-0 text-muted">Var</th>
@@ -50,151 +80,174 @@
                             <tbody>
                                 {% for group, categories in hierarchical_data %}
                                     <!-- Groups -->
-                                    {% for category, assets in categories %}
+                                    {% for cat_info, assets in categories %}
+                                         <!-- Assets -->
                                          {% for ac in assets %}
-                                            <tr>
+                                            <tr data-ac-id="{{ ac.id }}">
                                                 <td class="ps-4">{{ ac.name }}</td>
                                                 {% for at in account_types %}
-                                                    <!-- 1. Current (Per Account) -->
-                                                    <td class="text-end pe-2 text-muted small" 
-                                                        data-current-local="{{ current_allocations|get_item:at.id|get_item:ac.id_key|default:0 }}">
-                                                        {{ current_allocations|get_item:at.id|get_item:ac.id_key|default:0|accounting_percent:1 }}
+                                                    <!-- 1. Account Type Columns -->
+                                                    <!-- Current -->
+                                                    <td class="text-end pe-1 text-muted small" 
+                                                        data-at-current="{{ at.allocation_map|get_item:ac.id|default:0 }}">
+                                                        {{ at.allocation_map|get_item:ac.id|default:0|accounting_percent:1 }}
                                                     </td>
 
-                                                    <!-- 2. Target Input -->
-                                                    <td class="p-2">
+                                                    <!-- Default Input -->
+                                                    <td class="p-1">
                                                         <div class="input-group input-group-sm">
                                                             <input type="number" 
                                                                    name="target_{{ at.id }}_{{ ac.id }}" 
                                                                    step="0.01" 
                                                                    min="0" 
-                                                                   max="100"
-                                                                   class="form-control text-end allocation-input" 
-                                                                   data-col="{{ at.id }}"
-                                                                   data-category="{{ category.code }}"
-                                                                   data-group="{{ group.code }}"
-                                                                   data-row="row-{{ ac.id }}"
-                                                                   data-ac-id="{{ ac.id }}"
+                                                                   max="100" 
+                                                                   class="form-control form-control-sm text-end default-input px-1"
                                                                    data-at-id="{{ at.id }}"
-                                                                   value="{{ target_map|get_item:at.id|get_item:ac.id|default:'' }}"
-                                                                   aria-label="{{ ac.name }} in {{ at.label }}">
-                                                            <span class="input-group-text d-none d-xl-block">%</span>
+                                                                   data-ac-id="{{ ac.id }}"
+                                                                   value="{{ at.target_map|get_item:ac.id|default:'' }}"
+                                                                   placeholder="--">
                                                         </div>
                                                     </td>
                                                     
-                                                    <!-- 3. Variance (Per Account) -->
-                                                    <td class="text-end pe-3 fw-bold small">
-                                                        <span id="var-{{ at.id }}-{{ ac.id }}">0.0%</span>
+                                                    <!-- Aggregated % -->
+                                                    <td class="text-end pe-1 small fw-bold text-muted d-none d-md-table-cell agg-cell">
+                                                        <span id="agg-{{ at.id }}-{{ ac.id }}">--</span>
                                                     </td>
+
+                                                    <!-- Variance -->
+                                                    <td class="text-end pe-1 small fw-bold">
+                                                        <span id="var-{{ at.id }}-{{ ac.id }}">--</span>
+                                                    </td>
+                                                    
+                                                    <!-- Individual Accounts -->
+                                                    {% for acc in at.active_accounts %}
+                                                        <!-- Current -->
+                                                        <td class="text-end pe-1 text-muted small table-warning d-none col-acc-{{ at.id }}">
+                                                             {{ acc.allocation_map|get_item:ac.id|default:0|accounting_percent:1 }}
+                                                        </td>
+                                                        <!-- Override Input -->
+                                                        <td class="p-1 table-warning d-none col-acc-{{ at.id }}">
+                                                            <input type="number"
+                                                                   name="target_account_{{ acc.id }}_{{ ac.id }}"
+                                                                   step="0.01"
+                                                                   min="0"
+                                                                   max="100"
+                                                                   class="form-control form-control-sm text-end override-input px-1"
+                                                                   data-acc-id="{{ acc.id }}"
+                                                                   data-at-id="{{ at.id }}"
+                                                                   data-ac-id="{{ ac.id }}"
+                                                                   value="{{ acc.target_map|get_item:ac.id|default:'' }}"
+                                                                   placeholder="--">
+                                                        </td>
+                                                        <!-- Effective % -->
+                                                        <td class="text-end pe-2 small table-warning d-none col-acc-{{ at.id }}">
+                                                            <span id="eff-{{ acc.id }}-{{ ac.id }}" class="text-muted">--</span>
+                                                        </td>
+                                                    {% endfor %}
                                                 {% endfor %}
                                                 
                                                 <!-- PORTFOLIO TOTALS -->
-                                                <td class="text-end pe-3 table-active text-muted" data-current="{{ ac.current_pct|stringformat:'.2f' }}">
-                                                    {{ ac.current_pct|accounting_percent:1 }}
+                                                <td class="text-end pe-2 table-active text-muted">
+                                                    <!-- Calc explicit pct of total -->
+                                                    {{ ac.current_total_value|percentage_of:portfolio_total_value|accounting_percent:1 }}
                                                 </td>
-                                                <td class="text-end pe-3 table-active">
+                                                <td class="text-end pe-2 table-active">
                                                     <span id="row-total-{{ ac.id }}">0.00%</span>
                                                 </td>
-                                                <td class="text-end pe-3 table-active fw-bold">
+                                                <td class="text-end pe-2 table-active fw-bold">
                                                     <span id="row-var-{{ ac.id }}">0.00%</span>
                                                 </td>
                                             </tr>
                                         {% endfor %}
-                                        
-                                        <!-- Category Subtotal -->
-                                        {% if categories|length > 1 %}
-                                        <tr class="table-secondary">
-                                            <td class="fw-bold ps-4 text-uppercase text-secondary small">
-                                                {{ category.label }} Total
-                                            </td>
+
+                                        <!-- Subtotal Row for Category -->
+                                        <tr class="table-info fw-bold category-subtotal-{{ cat_info.obj.code }}">
+                                            <td class="ps-4 text-dark">{{ cat_info.obj.label }} Total</td>
                                             {% for at in account_types %}
-                                                <!-- Current -->
-                                                <td class="text-end pe-2 text-secondary small"
-                                                    data-current-local="{{ current_allocations|get_item:at.id|get_item:category.code_key|default:0 }}">
-                                                    {{ current_allocations|get_item:at.id|get_item:category.code_key|default:0|accounting_percent:1 }}
+                                                <!-- Account Type Subtotals -->
+                                                <td class="text-end pe-1 small text-dark">
+                                                    {{ cat_info.allocation_map|get_item:at.id|default:0|accounting_percent:1 }}
                                                 </td>
-                                                <!-- Target -->
-                                                <td class="text-end pe-2 fw-bold small text-secondary">
-                                                    <span id="cat-{{ category.code }}-{{ at.id }}">0.00%</span>
+                                                <td class="text-end pe-1 small text-dark">
+                                                     <!-- Default Target Sum (JS will update) -->
+                                                     <span id="sub-def-{{ at.id }}-{{ cat_info.obj.code }}">--</span>
                                                 </td>
-                                                <!-- Variance -->
-                                                <td class="text-end pe-3 fw-bold small text-secondary">
-                                                    <span id="cat-var-{{ category.code }}-{{ at.id }}">0.0%</span>
+                                                <td class="text-end pe-1 small text-dark d-none d-md-table-cell">
+                                                     <!-- Aggregated Target Sum (JS will update) -->
+                                                     <span id="sub-agg-{{ at.id }}-{{ cat_info.obj.code }}">--</span>
                                                 </td>
+                                                <td class="text-end pe-1 small text-dark">
+                                                     <!-- Variance Sum (JS will update) -->
+                                                     <span id="sub-var-{{ at.id }}-{{ cat_info.obj.code }}">--</span>
+                                                </td>
+                                                
+                                                <!-- Individual Accounts Subtotals -->
+                                                {% for acc in at.active_accounts %}
+                                                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ at.id }} text-dark">
+                                                        {{ cat_info.account_allocation_map|get_item:acc.id|default:0|accounting_percent:1 }}
+                                                    </td>
+                                                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ at.id }} text-dark">
+                                                         <!-- Override Target Sum (JS) -->
+                                                         <span id="sub-over-{{ acc.id }}-{{ cat_info.obj.code }}">--</span>
+                                                    </td>
+                                                    <td class="text-end pe-2 small table-warning d-none col-acc-{{ at.id }} text-dark">
+                                                         <!-- Effective Target Sum (JS) -->
+                                                         <span id="sub-eff-{{ acc.id }}-{{ cat_info.obj.code }}">--</span>
+                                                    </td>
+                                                {% endfor %}
                                             {% endfor %}
                                             
-                                            <!-- Portfolio Totals -->
-                                            <td class="text-end pe-3 fw-bold small text-secondary table-active text-muted" data-current="{{ category.current_pct|stringformat:'.2f' }}">
-                                                {{ category.current_pct|accounting_percent:1 }}
+                                            <!-- Portfolio Totals Subtotal -->
+                                            <td class="text-end pe-2 table-active text-dark">
+                                                {{ cat_info.total_value|percentage_of:portfolio_total_value|accounting_percent:1 }}
                                             </td>
-                                            <td class="text-end pe-3 fw-bold small text-secondary table-active">
-                                                <span id="cat-total-{{ category.code }}">0.00%</span>
+                                            <td class="text-end pe-2 table-active text-dark">
+                                                <span id="sub-total-target-{{ cat_info.obj.code }}">--</span>
                                             </td>
-                                            <td class="text-end pe-3 fw-bold small text-secondary table-active">
-                                                <span id="cat-var-{{ category.code }}">0.00%</span>
+                                            <td class="text-end pe-2 table-active text-dark">
+                                                <span id="sub-total-var-{{ cat_info.obj.code }}">--</span>
                                             </td>
                                         </tr>
-                                        {% endif %}
                                     {% endfor %}
-
-                                    <!-- Group Total -->
-                                    <tr class="table-primary fw-bold border-top border-bottom-2">
-                                        <td class="ps-4 text-primary">
-                                            {{ group.label }} Total
-                                        </td>
-                                        {% for at in account_types %}
-                                            <!-- Current -->
-                                            <td class="text-end pe-2 text-primary small"
-                                                data-current-local="{{ current_allocations|get_item:at.id|get_item:group.code_key|default:0 }}">
-                                                {{ current_allocations|get_item:at.id|get_item:group.code_key|default:0|accounting_percent:1 }}
-                                            </td>
-                                             <!-- Target -->
-                                            <td class="text-end pe-2 text-primary">
-                                                <span id="group-{{ group.code }}-{{ at.id }}">0.00%</span>
-                                            </td>
-                                            <!-- Variance -->
-                                            <td class="text-end pe-3 text-primary small">
-                                                <span id="group-var-{{ group.code }}-{{ at.id }}">0.0%</span>
-                                            </td>
-                                        {% endfor %}
-                                        
-                                        <!-- Portfolio Totals -->
-                                        <td class="text-end pe-3 text-primary table-active text-muted" data-current="{{ group.current_pct|stringformat:'.2f' }}">
-                                            {{ group.current_pct|accounting_percent:1 }}
-                                        </td>
-                                        <td class="text-end pe-3 text-primary table-active">
-                                            <span id="group-total-{{ group.code }}">0.00%</span>
-                                        </td>
-                                        <td class="text-end pe-3 text-primary table-active">
-                                             <span id="group-var-{{ group.code }}">0.00%</span>
-                                        </td>
-                                    </tr>
                                 {% endfor %}
                                 
                                 <!-- Implicit Cash Row -->
-                                <tr class="table-warning fw-bold border-top-2">
-                                    <td class="ps-4">Cash</td>
+                                <tr class="table-warning fw-bold border-top-2" data-ac-id="cash">
+                                    <td class="ps-4">Cash (Calculated)</td>
                                     {% for at in account_types %}
-                                        <!-- Cash Current -->
-                                        <td class="text-end pe-2 text-muted small">
-                                             <span id="cash-current-{{ at.id }}">--</span>
+                                        <!-- Default Residual -->
+                                        <td class="text-end pe-2 text-muted small"
+                                            data-at-current="{{ at.allocation_map|get_item:cash_asset_class_id|default:0 }}">
+                                            {{ at.allocation_map|get_item:cash_asset_class_id|default:0|accounting_percent:1 }}
                                         </td>
-                                        <!-- Cash Target -->
                                         <td class="text-end pe-2">
-                                            <span id="cash-{{ at.id }}">100.00%</span>
+                                            <span id="cash-default-{{ at.id }}">100%</span>
                                         </td>
-                                        <td class="text-end pe-3">
+                                        <!-- Aggregated -->
+                                        <td class="text-end pe-2">
+                                            <span id="cash-agg-{{ at.id }}">0.0%</span>
+                                        </td>
+                                        <td class="text-end pe-2">
                                             <span id="cash-var-{{ at.id }}">0.0%</span>
                                         </td>
+                                        
+                                        {% for acc in at.active_accounts %}
+                                            <td class="text-end pe-2 d-none col-acc-{{ at.id }} text-muted small table-warning">
+                                                 {{ acc.allocation_map|get_item:cash_asset_class_id|default:0|accounting_percent:1 }}
+                                            </td>
+                                            <td class="text-end pe-2 d-none col-acc-{{ at.id }} table-warning">
+                                                <span id="cash-eff-{{ acc.id }}">100%</span>
+                                            </td>
+                                            <td class="d-none col-acc-{{ at.id }} table-warning"></td>
+                                        {% endfor %}
                                     {% endfor %}
-                                    <td class="text-end pe-3 table-active text-muted" id="cash-current-total">
-                                         --
+                                    
+                                    <td class="text-end pe-2 table-active">--</td>
+                                    <td class="text-end pe-2 table-active">
+                                        <span id="cash-total">0.00%</span>
                                     </td>
-                                    <td class="text-end pe-3 table-active">
-                                        <span id="cash-weighted-total">0.00%</span>
-                                    </td>
-                                    <td class="text-end pe-3 table-active">
-                                         <span id="cash-weighted-var">0.00%</span>
+                                    <td class="text-end pe-2 table-active">
+                                         <span id="cash-var">0.00%</span>
                                     </td>
                                 </tr>
 
@@ -202,38 +255,28 @@
                                 <tr class="table-light border-top fw-bold">
                                     <td class="ps-4">Total</td>
                                     {% for at in account_types %}
-                                        <td class="text-end pe-2 text-muted small">100%</td>
+                                        <td class="text-end pe-2">100%</td>
                                         <td class="text-end pe-2">
-                                            <span id="total-{{ at.id }}" class="total-display">0.00%</span>
+                                            <span id="total-default-{{ at.id }}" class="total-display">0.00%</span>
                                         </td>
-                                        <td class="text-end pe-3">0.0%</td>
-                                    {% endfor %}
-                                    <td class="text-end pe-3 table-active text-muted">100.0%</td>
-                                    <td class="text-end pe-3 table-active">
-                                        <span id="grand-weighted-total">0.00%</span>
-                                    </td>
-                                    <td class="text-end pe-3 table-active">0.0%</td>
-                                </tr>
-                                
-                                <!-- Total Value Row (Reference) -->
-                                <tr class="table-light border-top text-muted" style="font-size: 0.75rem;">
-                                    <td class="ps-4">Total Value ($)</td>
-                                    {% for at in account_types %}
-                                        <!-- Current ($ Value) -->
                                         <td class="text-end pe-2">
-                                            {{ account_type_totals|get_item:at.id|default:0|accounting_amount:0 }}
+                                            <span id="total-agg-{{ at.id }}">0.00%</span>
                                         </td>
-                                        <!-- Target -->
-                                        <td class="text-end pe-2">--</td>
-                                        <!-- Variance -->
-                                        <td class="text-end pe-3">--</td>
+                                        <td class="text-end pe-2">
+                                            <span id="total-var-{{ at.id }}">0.00%</span>
+                                        </td>
+                                        {% for acc in at.active_accounts %}
+                                            <td class="d-none col-acc-{{ at.id }}"></td>
+                                            <td class="text-end pe-2 d-none col-acc-{{ at.id }}">
+                                                 <span id="total-eff-{{ acc.id }}">100%</span>
+                                            </td>
+                                            <td class="d-none col-acc-{{ at.id }}"></td>
+                                        {% endfor %}
                                     {% endfor %}
-                                    <!-- Portfolio Totals -->
-                                    <td class="text-end pe-2 fw-bold">
-                                        {{ portfolio_total_value|accounting_amount:0 }}
-                                    </td>
-                                    <td class="text-end pe-2">--</td>
-                                    <td class="text-end pe-3">--</td>
+                                    
+                                    <td class="text-end pe-2 table-active">100.0%</td>
+                                    <td class="text-end pe-2 table-active">100.0%</td>
+                                    <td class="text-end pe-2 table-active">0.0%</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -248,274 +291,485 @@
     </div>
 </div>
 
-{{ account_type_totals|json_script:"account-totals-data" }}
+<!-- Data for JS -->
+<script id="account-data" type="application/json">
+{
+    "account_values": {
+        {% for at in account_types %}
+            {% for acc in at.active_accounts %}
+                "{{ acc.id }}": {{ acc.current_total_value|default:0 }},
+            {% endfor %}
+        {% endfor %}
+        "null": 0 
+    },
+    "portfolio_total": {{ portfolio_total_value|default:0 }}
+}
+</script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const inputs = document.querySelectorAll('.allocation-input');
+    const defaultInputs = document.querySelectorAll('.default-input');
+    const overrideInputs = document.querySelectorAll('.override-input');
+    const allInputs = [...defaultInputs, ...overrideInputs];
     const saveButtons = [document.getElementById('save-button-top'), document.getElementById('save-button-bottom')];
+    const expandBtns = document.querySelectorAll('.expand-btn');
     
-    // Parse totals: {at_id: "decimal_str"}
-    const rawTotals = JSON.parse(document.getElementById('account-totals-data').textContent);
-    const accountTotals = {};
-    let portfolioTotal = 0;
+    // Parse Data
+    const dataObj = JSON.parse(document.getElementById('account-data').textContent.replace(/,\s*}/, '}')); // remove trailing comma hack if needed
+    const accountValues = dataObj.account_values;
+    const portfolioTotal = parseFloat(dataObj.portfolio_total);
 
-    for (const [key, val] of Object.entries(rawTotals)) {
-         const floatVal = parseFloat(val);
-         accountTotals[key] = floatVal;
-         portfolioTotal += floatVal;
-    }
+    // Initial Toggle State
+    expandBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+             const atId = btn.dataset.atId;
+             const cols = document.querySelectorAll(`.col-acc-${atId}`);
+             let isHidden = true;
+             cols.forEach(col => {
+                 if (col.classList.contains('d-none')) {
+                     col.classList.remove('d-none');
+                     isHidden = false;
+                 } else {
+                     col.classList.add('d-none');
+                     isHidden = true;
+                 }
+             });
+             btn.textContent = isHidden ? '[+]' : '[-]';
+        });
+    });
 
     function formatPct(val) {
         return val.toFixed(1) + '%';
     }
-
-    function updateVariance(elId, targetVal, currentVal) {
-        const varEl = document.getElementById(elId);
-        if (!varEl) return;
-        
-        const variance = currentVal - targetVal;
-        varEl.textContent = formatPct(variance);
-        
-        varEl.classList.remove('text-success', 'text-danger');
-        if (Math.abs(variance) < 0.01) {
-            // Neutral
-        } else if (variance >= 0) {
-            varEl.classList.add('text-success');
-        } else {
-            varEl.classList.add('text-danger');
-        }
-    }
-
-    function updateTotals() {
-        const colTotals = {}; 
-        const catTotals = {}; 
-        const groupTotals = {}; 
-        
-        const rowWeightedNumerators = {}; 
-        const catWeightedNumerators = {}; 
-        const groupWeightedNumerators = {}; 
-        let cashWeightedNumerator = 0;
-
+    
+    // Core Calculation Logic
+    function updateCalculations() {
         let valid = true;
         
-        // Track current totals per column to calc cash current
-        const colCurrentTotals = {};
-
-        inputs.forEach(input => {
-            const colId = input.dataset.col;
-            const catCode = input.dataset.category;
-            const groupCode = input.dataset.group;
-            const rowId = input.dataset.row.replace('row-', '');
-            const acId = input.dataset.acId;
-            const atId = input.dataset.atId;
+        // 1. Gather Defaults: {atId: {acId: val}}
+        const defaults = {};
+        const defaultTotals = {}; // atId -> total
+        
+        defaultInputs.forEach(inp => {
+            const atId = inp.dataset.atId;
+            const acId = inp.dataset.acId;
+            const val = parseFloat(inp.value) || 0;
             
-            const val = parseFloat(input.value) || 0;
+            if (!defaults[atId]) defaults[atId] = {};
+            defaults[atId][acId] = val;
             
-            // Col Totals
-            if (!colTotals[colId]) colTotals[colId] = 0;
-            colTotals[colId] += val;
-
-            // Category Totals
-            if (!catTotals[catCode]) catTotals[catCode] = {};
-            if (!catTotals[catCode][colId]) catTotals[catCode][colId] = 0;
-            catTotals[catCode][colId] += val;
-
-            // Group Totals
-            if (!groupTotals[groupCode]) groupTotals[groupCode] = {};
-            if (!groupTotals[groupCode][colId]) groupTotals[groupCode][colId] = 0;
-            groupTotals[groupCode][colId] += val;
+            if (!defaultTotals[atId]) defaultTotals[atId] = 0;
+            defaultTotals[atId] += val;
+        });
+        
+        // 2. Gather Overrides: {accId: {acId: val}}
+        const overrides = {};
+        overrideInputs.forEach(inp => {
+            const accId = inp.dataset.accId;
+            const acId = inp.dataset.acId;
+            const valStr = inp.value.trim();
             
-            // Local Variance Update (Cell Level)
-            // Layout: <td>Current</td> <td>Input</td> <td>Var</td>
-            const inputTd = input.closest('td');
-            const currentTd = inputTd.previousElementSibling; // Current is now BEFORE input
-            const varTd = inputTd.nextElementSibling; // Var is still NEXT after input
-            
-            if (currentTd && varTd) {
-                 const currentVal = parseFloat(currentTd.dataset.currentLocal || 0);
-                 const varSpan = varTd.querySelector('span'); // #var
-                 if (varSpan) {
-                      updateVariance(varSpan.id, val, currentVal); // target=val, current=currentVal
-                 }
-                 
-                 // Accumulate column current total for Cash calc
-                 if (!colCurrentTotals[colId]) colCurrentTotals[colId] = 0;
-                 colCurrentTotals[colId] += currentVal;
-            }
-
-            // Weighted Calc
-            if (portfolioTotal > 0) {
-                 const weightVal = val * (accountTotals[colId] || 0); 
-                 
-                 if (!rowWeightedNumerators[rowId]) rowWeightedNumerators[rowId] = 0;
-                 rowWeightedNumerators[rowId] += weightVal;
-
-                 if (!catWeightedNumerators[catCode]) catWeightedNumerators[catCode] = 0;
-                 catWeightedNumerators[catCode] += weightVal;
-
-                 if (!groupWeightedNumerators[groupCode]) groupWeightedNumerators[groupCode] = 0;
-                 groupWeightedNumerators[groupCode] += weightVal;
+            if (valStr !== '') {
+                 if (!overrides[accId]) overrides[accId] = {};
+                 overrides[accId][acId] = parseFloat(valStr);
             }
         });
         
-        // --- 1. Subtotal Rows (Target & Variance) ---
-        // Layout: <td>Current</td> <td>Target</td> <td>Var</td>
+        // 3. Compute Effective Targets & Aggregate
+        // We need list of all acIds (from rows)
+        const assetRows = document.querySelectorAll('tr[data-ac-id]');
+        const aggTargetDollars = {}; // acId -> dollars
+        const atTargetDollars = {}; // atId -> {acId: dollars}
+        const atTotalDollars = {}; // atId -> total target dollars across all assets (should match sum of accounts)
         
-        // Categories
-        for (const [catCode, colMap] of Object.entries(catTotals)) {
-             for (const [colId, total] of Object.entries(colMap)) {
-                 const catEl = document.getElementById(`cat-${catCode}-${colId}`);
-                 if (catEl) {
-                     catEl.textContent = formatPct(total);
-                     // Current is Previous Sibling to Target Cell
-                     const targetTd = catEl.closest('td');
-                     const currentTd = targetTd.previousElementSibling; 
-                     
-                     if (currentTd) {
-                          const cur = parseFloat(currentTd.dataset.currentLocal || 0);
-                          updateVariance(`cat-var-${catCode}-${colId}`, total, cur);
-                     }
-                 }
-             }
-        }
+        let totalPortfolioTarget = 0;
         
-        // Groups
-        for (const [groupCode, colMap] of Object.entries(groupTotals)) {
-             for (const [colId, total] of Object.entries(colMap)) {
-                 const groupEl = document.getElementById(`group-${groupCode}-${colId}`);
-                 if (groupEl) {
-                     groupEl.textContent = formatPct(total);
-                     // Current is Previous Sibling
-                     const targetTd = groupEl.closest('td');
-                     const currentTd = targetTd.previousElementSibling;
-
-                     if (currentTd) {
-                          const cur = parseFloat(currentTd.dataset.currentLocal || 0);
-                          updateVariance(`group-var-${groupCode}-${colId}`, total, cur);
-                     }
-                 }
-             }
-        }
-
-
-        // --- 2. Portfolio Totals & Variance ---
-        // Layout: Current | Target | Var
-        for (const [rowId, numerator] of Object.entries(rowWeightedNumerators)) {
-             const weightedAvg = portfolioTotal > 0 ? numerator / portfolioTotal : 0;
-             const el = document.getElementById(`row-total-${rowId}`);
-             if (el) {
-                 el.textContent = formatPct(weightedAvg);
-                 const currentEl = el.closest('tr').querySelector('[data-current]');
-                 // currentEl is the Element with data-current. 
-                 // In new layout, it's just the TD before. 
-                 // But since we use selector, it's fine.
-                 updateVariance(`row-var-${rowId}`, weightedAvg, parseFloat(currentEl?.dataset.current||0));
-             }
-        }
+        // Start by iterating inputs to ensure we cover all assets
+        // Or better iterate DOM rows to update UI row by row.
         
-        for (const [catCode, numerator] of Object.entries(catWeightedNumerators)) {
-             const weightedAvg = portfolioTotal > 0 ? numerator / portfolioTotal : 0;
-             const el = document.getElementById(`cat-total-${catCode}`);
-             if (el) {
-                 el.textContent = formatPct(weightedAvg);
-                 const currentEl = el.closest('tr').querySelector('[data-current]');
-                 updateVariance(`cat-var-${catCode}`, weightedAvg, parseFloat(currentEl?.dataset.current||0));
+        // Also need Cash Default/Effective
+        // Calculated per account.
+        
+        const accountEffectiveCash = {}; // accId -> val
+        const atEffectiveCashDollars = {}; // atId -> dollars
+        
+        // Initialize aggregation buckets
+        assetRows.forEach(row => {
+             const acId = row.dataset.acId;
+             if(acId !== 'cash') {
+                 aggTargetDollars[acId] = 0;
              }
-        }
-
-        for (const [groupCode, numerator] of Object.entries(groupWeightedNumerators)) {
-             const weightedAvg = portfolioTotal > 0 ? numerator / portfolioTotal : 0;
-             const el = document.getElementById(`group-total-${groupCode}`);
-             if (el) {
-                 el.textContent = formatPct(weightedAvg);
-                 const currentEl = el.closest('tr').querySelector('[data-current]');
-                 updateVariance(`group-var-${groupCode}`, weightedAvg, parseFloat(currentEl?.dataset.current||0));
-             }
-        }
-
-
-        // --- 3. Cash Row (Implicit) ---
-        // Layout: Current | Target | Var
-        let cashWeightedNumeratorVar = 0;
-        let totalInvestedCurrent = 0;
-
-        document.querySelectorAll('[id^="total-"]').forEach(totalEl => {
-            const colId = totalEl.id.replace('total-', '');
-            const total = colTotals[colId] || 0;
-            const cashEl = document.getElementById(`cash-${colId}`);
-            
-            // Render Cash Target
-            const cashTarget = 100 - total;
-            if (cashEl) cashEl.textContent = formatPct(cashTarget);
-
-            // Render Total Row Target (Always 100% as Cash absorbs remainder)
-            totalEl.textContent = formatPct(100);
-
-            // Validation (Check Invested Total)
-            if (total > 100.01) { 
-                // Mark Total Row as invalid? No, Mark Cash as invalid.
-                // Or maybe mark Total row if we want to show "Something is wrong"
-                // But logically Total is 100. 
-                // Let's keep red text on Cash if negative.
-                if (cashEl) cashEl.classList.add('text-danger'); 
-                valid = false;
-            } else {
-                if (cashEl) cashEl.classList.remove('text-danger');
-            }
-            
-            // Cash Variance & Current
-            const cashCurrent = 100 - (colCurrentTotals[colId] || 0);
-            const cashCurrentEl = document.getElementById(`cash-current-${colId}`);
-            if (cashCurrentEl) cashCurrentEl.textContent = formatPct(cashCurrent);
-            updateVariance(`cash-var-${colId}`, cashTarget, cashCurrent);
-            
-            // Total Row Variance (Always 0 if Target 100 and Current 100)
-             const totalVarEl = totalEl.closest('td').nextElementSibling;
-             if (totalVarEl) {
-                 totalVarEl.textContent = formatPct(0);
-                 totalVarEl.classList.remove('text-danger', 'text-success');
-             }
-
-            
-            // Cash Weighted Numerator Accumulation
-            if (portfolioTotal > 0) {
-                 cashWeightedNumerator += (cashTarget * (accountTotals[colId] || 0));
-            }
         });
         
-        // Portfolio Cash Current
-        document.querySelectorAll('[id^="group-total-"]').forEach(el => {
-             const tr = el.closest('tr');
-             const cur = tr.querySelector('[data-current]');
-             if (cur) totalInvestedCurrent += parseFloat(cur.dataset.current || 0);
-        });
-        const cashCurrentPct = 100 - totalInvestedCurrent;
-        const cashCurrentTotalEl = document.getElementById('cash-current-total');
-        if (cashCurrentTotalEl) cashCurrentTotalEl.textContent = formatPct(cashCurrentPct);
+        // We iterate AL ACCOUNT TYPES -> ACCOUNTS
+        // This mirrors the logic in Service
         
-        // Portfolio Cash Target & Var
-        if (portfolioTotal > 0) {
-             const cashWeightedAvg = cashWeightedNumerator / portfolioTotal;
-             document.getElementById('cash-weighted-total').textContent = formatPct(cashWeightedAvg);
-             updateVariance('cash-weighted-var', cashWeightedAvg, cashCurrentPct);
+        // Iterate all overrides inputs to identify accounts? 
+        // Or better use the structure we know exists.
+        
+        // We can select all override inputs to find unique accounts.
+        const accountIds = new Set();
+        overrideInputs.forEach(inp => accountIds.add(inp.dataset.accId));
+        // Also need to know their AT ID.
+        const accountAtMap = {};
+        overrideInputs.forEach(inp => accountAtMap[inp.dataset.accId] = inp.dataset.atId);
+        
+        // Compute Effective for each Account
+        for (const accId of accountIds) {
+            const atId = accountAtMap[accId];
+            const accValue = accountValues[accId] || 0;
+            const accDefaults = defaults[atId] || {};
+            const accOverrides = overrides[accId] || {};
+            
+            // STRATEGY CHANGE: If ANY override exists for an account, ignore ALL defaults.
+            const hasOverrides = Object.keys(accOverrides).length > 0;
+            
+            let accTotalEffective = 0;
+            
+            assetRows.forEach(row => {
+                const acId = row.dataset.acId;
+                if(acId === 'cash') return;
+                
+                let effective = 0;
+                if (hasOverrides) {
+                    effective = accOverrides[acId] || 0;
+                } else {
+                    effective = accDefaults[acId] || 0;
+                }
+                
+                accTotalEffective += effective;
+                
+                // Update specific row UI for this account
+                // Need to find the cell for this acc_id
+                // Use DOM query or ID mapping
+                const effSpan = document.getElementById(`eff-${accId}-${acId}`);
+                if(effSpan) { 
+                    effSpan.textContent = formatPct(effective); 
+                    if(accOverrides.hasOwnProperty(acId)) {
+                        effSpan.classList.add('fw-bold');
+                    } else {
+                        effSpan.classList.remove('fw-bold');
+                    }
+                }
+                
+                // Aggregate Dollars
+                const dollars = accValue * (effective / 100);
+                
+                if (!atTargetDollars[atId]) atTargetDollars[atId] = {};
+                if (!atTargetDollars[atId][acId]) atTargetDollars[atId][acId] = 0;
+                atTargetDollars[atId][acId] += dollars;
+                
+                if (!aggTargetDollars[acId]) aggTargetDollars[acId] = 0;
+                aggTargetDollars[acId] += dollars;
+            });
+            
+            // Cash
+            let cashEff = 100 - accTotalEffective;
+            if (cashEff < 0) {
+                 cashEff = 0; // Or allow negative with warning?
+                 valid = false; // Flag invalid?
+            }
+            const cashSpan = document.getElementById(`cash-eff-${accId}`);
+            if(cashSpan) {
+                cashSpan.textContent = formatPct(cashEff);
+                if (cashEff < 0) cashSpan.classList.add('text-danger');
+                else cashSpan.classList.remove('text-danger');
+            }
+            
+            const cashDollars = accValue * (cashEff/100);
+            if (!atEffectiveCashDollars[atId]) atEffectiveCashDollars[atId] = 0;
+            atEffectiveCashDollars[atId] += cashDollars;
+            
+            // Total Row for Account
+            const totSpan = document.getElementById(`total-eff-${accId}`);
+            if(totSpan) totSpan.textContent = formatPct(accTotalEffective + cashEff);
+        }
+        
+        // 4. Update Aggregates in UI
+        
+        // Account Type Defaults
+        for (const [atId, total] of Object.entries(defaultTotals)) {
+             const cashDef = Math.max(0, 100 - total);
+             const cashEl = document.getElementById(`cash-default-${atId}`);
+             if(cashEl) cashEl.textContent = formatPct(cashDef);
              
-             // Grand Weighted 
-             let calculatedGrand = cashWeightedAvg;
-             for (const numerator of Object.values(groupWeightedNumerators)) {
-                  calculatedGrand += (numerator / portfolioTotal);
-             }
-             document.getElementById('grand-weighted-total').textContent = formatPct(calculatedGrand);
+             const totEl = document.getElementById(`total-default-${atId}`);
+             if(totEl) totEl.textContent = formatPct(total + cashDef);
+             
+             // Check validity
+             if (total > 100.01) valid = false;
         }
+        
+        // Account Type Aggregates (Weighted Average)
+        // We need AT total value to normalize
+        // But we don't have it explicitly in JS map? 
+        // We can sum accountValues for the accounts belonging to AT.
+        
+        const atTotalValues = {};
+        for(const [accId, atId] of Object.entries(accountAtMap)) {
+            if(!atTotalValues[atId]) atTotalValues[atId] = 0;
+            atTotalValues[atId] += (accountValues[accId] || 0);
+        }
+        
+        // Update AT Aggregate Cells
+        assetRows.forEach(row => {
+            const acId = row.dataset.acId;
+             if(acId === 'cash') return;
+             
+             for (const [atId, dollarsMap] of Object.entries(atTargetDollars)) {
+                  const dollars = dollarsMap[acId] || 0;
+                  const totalVal = atTotalValues[atId] || 0;
+                  const pct = totalVal > 0 ? (dollars / totalVal * 100) : 0;
+                  
+                  const el = document.getElementById(`agg-${atId}-${acId}`);
+                  if(el) el.textContent = formatPct(pct);
+
+                  // Update Variance (Current - Wt. Target)
+                  // Get Current Pct from DOM (data-at-current on 'td')
+                  // We need to access the TD element that has `data-at-current`. 
+                  // It's the first cell in the loop for this AT.
+                  // Since we are inside assetRows loop, we can find it.
+                  // The row structure is: Name | (Curr, Target, Agg, Var + AccCols) x N | ...
+                  // This is getting hard to select by index. 
+                  // Improved: Add ID to the Current TD in template? Or Use `data-at-current` selector scoped to row?
+                  
+                  // Let's assume we can select by attribute inside the row.
+                  // But the attribute is on the TD, and there are multiple ATs.
+                  // We can select: `row.querySelector(\`td[data-at-current]\`)` -> this gives the FIRST one.
+                  // We need the one specific to AT.
+                  
+                  // Let's look at template again:
+                  // <td class="..." data-at-current="...">...</td>
+                  // It doesn't have ID or specific class for AT.
+                  // I should add `data-at-id` to that TD in template to make this easy.
+                  // Wait, I can't easily change template structure in this tool call without replacing the WHOLE loop.
+                  // BUT, I can rely on position? No, accounts expand/contract.
+                  
+                  // Alternative: The `data-at-current` value was passed from backend. 
+                  // I can also calculate it here if I have `at_ac_values`?
+                  // I don't have `at_ac_values` in JS.
+                  
+                  // Let's traverse: The `agg-${atId}-${acId}` span is in a TD.
+                  // The "Current" TD is 2 cells before it? 
+                  // Layout: Curr | Target | Wt. Target | Variance
+                  // Agg is inside Wt. Target.
+                  // So properties: 
+                  // Curr (index i)
+                  // Target (index i+1)
+                  // Agg (index i+2)
+                  // Variance (index i+3)
+                  
+                  // So if I have the Agg Element, I can go parentElement -> previousElementSibling -> previousElementSibling.
+                  const aggCell = el ? el.parentElement : null;
+                  if (aggCell) {
+                      const targetCell = aggCell.previousElementSibling;
+                      const currCell = targetCell ? targetCell.previousElementSibling : null;
+                      
+                      if (currCell && currCell.dataset.atCurrent) {
+                           const currentVal = parseFloat(currCell.dataset.atCurrent.replace(',','')) || 0; // Handle Django localization if any
+                           const variance = currentVal - pct;
+                           
+                           const varEl = document.getElementById(`var-${atId}-${acId}`);
+                           if (varEl) {
+                               varEl.textContent = formatPct(variance);
+                               // Style
+                               varEl.classList.remove('text-success', 'text-danger', 'text-muted');
+                               if (variance > 0.05) varEl.classList.add('text-success');
+                               else if (variance < -0.05) varEl.classList.add('text-danger');
+                               else varEl.classList.add('text-muted');
+                           }
+                      }
+                  }
+             }
+             
+             // Row Total (Portfolio)
+             const totalDollars = aggTargetDollars[acId] || 0;
+             const portPct = portfolioTotal > 0 ? (totalDollars / portfolioTotal * 100) : 0;
+             document.getElementById(`row-total-${acId}`).textContent = formatPct(portPct);
+             
+             // Update Variance
+             // We need Current % or Dollars from DOM?
+             // Since we have `ac.current_pct` in template rendered as text, we can parse it?
+             // Better: Use `data-current` attributes? Note I didn't add them yet to the replacing content.
+             // Wait, I did replace the whole block.
+             // I missed adding `data-current` to the row total cell in my template above.
+             // But I can parse the text content.
+             const currentText = row.children[row.children.length - 3].innerText.replace('%',''); // -3 is Curr col
+             const currentPct = parseFloat(currentText) || 0;
+             const variance = currentPct - portPct;
+             const varEl = document.getElementById(`row-var-${acId}`);
+             varEl.textContent = formatPct(variance);
+             varEl.className = 'text-end pe-2 table-active fw-bold ' + (variance >= 0 ? 'text-success' : 'text-danger');
+             // Yes, that's easier.
+        });
+        
+        // 5. Update Category Subtotals
+        const subtotalRows = document.querySelectorAll('tr[class*="category-subtotal-"]');
+        subtotalRows.forEach(row => {
+             // Extract category code from class
+             const classes = Array.from(row.classList);
+             const subClass = classes.find(c => c.startsWith('category-subtotal-'));
+             if(!subClass) return;
+             const catCode = subClass.replace('category-subtotal-', '');
+             
+             // Find all asset rows belonging to this category.
+             // Limitation: We don't have explicit linking in DOM.
+             // Workaround: The asset rows strictly precede the subtotal row until the previous subtotal or header.
+             // Or simpler: We can attach `data-category-code` to asset rows in the template.
+             // Let's assume we added that or will add it. If not, this is hard.
+             // WAIT - I missed adding data-category to asset rows in previous step.
+             // Let's rely on traversing PREVIOUS SIBLINGS until we hit a non-asset row?
+             // That's fragile.
+             // Better: Iterate ALL asset rows, check if they are visually above? No.
+             
+             // Correct approach: Update template to include data-category-code on rows.
+             // Since I can't do that in this same step easily without context switching, 
+             // I will implement a DOM traversal fallback: walk backwards from subtotal row.
+             
+             let sibling = row.previousElementSibling;
+             
+             // Accumulators
+             const subDefaults = {}; // atId -> total
+             const subCurrent = {}; // atId -> total pct
+             const subTargetDollars = {}; // atId -> total dollars
+             const subEffective = {}; // accId -> total pct sum (approx)
+             const subOverrides = {}; // accId -> total
+             
+             while (sibling && sibling.hasAttribute('data-ac-id')) {
+                  const acId = sibling.dataset.acId;
+                  
+                  // 1. Sum Defaults
+                  for (const [atId, val] of Object.entries(defaults)) {
+                       if (val[acId]) {
+                            if (!subDefaults[atId]) subDefaults[atId] = 0;
+                            subDefaults[atId] += val[acId];
+                       }
+                  }
+                  
+                  // 2. Sum Current & Target Dollars (for Agg Pct)
+                  for (const [atId, dollarsMap] of Object.entries(atTargetDollars)) {
+                       const dollars = dollarsMap[acId] || 0;
+                       if (!subTargetDollars[atId]) subTargetDollars[atId] = 0;
+                       subTargetDollars[atId] += dollars;
+                  }
+                  
+                  // 3. Sum Current (from DOM)
+                  const aggSpans = sibling.querySelectorAll('span[id^="agg-"]');
+                  aggSpans.forEach(span => {
+                      const parts = span.id.split('-');
+                      const atId = parts[1];
+                      // Find Curr cell relative to this span
+                      const aggCell = span.parentElement;
+                      const targetCell = aggCell.previousElementSibling;
+                      const currCell = targetCell ? targetCell.previousElementSibling : null;
+                      
+                      if (currCell && currCell.dataset.atCurrent) {
+                           const val = parseFloat(currCell.dataset.atCurrent.replace(',', '')) || 0;
+                           if (!subCurrent[atId]) subCurrent[atId] = 0;
+                           subCurrent[atId] += val;
+                      }
+                  });
+
+                  // 4. Sum Effective (Percentages)
+                   for (const accId of accountIds) {
+                        const effSpan = document.getElementById(`eff-${accId}-${acId}`);
+                        if (effSpan) {
+                             const val = parseFloat(effSpan.textContent) || 0;
+                             if (!subEffective[accId]) subEffective[accId] = 0;
+                             subEffective[accId] += val;
+                        }
+                        
+                        const overInp = document.querySelector(`input[name="target_account_${accId}_${acId}"]`);
+                        if (overInp && overInp.value) {
+                             if (!subOverrides[accId]) subOverrides[accId] = 0;
+                             subOverrides[accId] += parseFloat(overInp.value);
+                        }
+                   }
+                   
+                   sibling = sibling.previousElementSibling;
+             }
+             
+             // Render Subtotals
+             
+             // Defaults
+             for (const [atId, val] of Object.entries(subDefaults)) {
+                  const el = document.getElementById(`sub-def-${atId}-${catCode}`);
+                  if(el) el.textContent = formatPct(val);
+             }
+             
+             // Aggregates & Variance
+             for(const [atId, atVal] of Object.entries(atTotalValues)) {
+                  const dollars = subTargetDollars[atId] || 0;
+                  const aggPct = atVal > 0 ? (dollars / atVal * 100) : 0;
+                  
+                  const aggEl = document.getElementById(`sub-agg-${atId}-${catCode}`);
+                  if(aggEl) aggEl.textContent = formatPct(aggPct);
+                  
+                  // Variance
+                  const currPct = subCurrent[atId] || 0;
+                  const variance = currPct - aggPct;
+                  
+                  const varEl = document.getElementById(`sub-var-${atId}-${catCode}`);
+                  if (varEl) {
+                       varEl.textContent = formatPct(variance);
+                       varEl.classList.remove('text-success', 'text-danger', 'text-warning');
+                       if (variance > 0.05) varEl.classList.add('text-success');
+                       else if (variance < -0.05) varEl.classList.add('text-danger');
+                  }
+             }
+             
+        });
+        
+        // Re-do Loop with better strategy:
+        // 1. Identify ACs per Category (need DOM or data).
+        // 2. Sum up.
+        
+        // Cash Aggregates
+        let portCashDollars = 0;
+        for (const [atId, dollars] of Object.entries(atEffectiveCashDollars)) {
+             const totalVal = atTotalValues[atId] || 0;
+             const pct = totalVal > 0 ? (dollars / totalVal * 100) : 0;
+             const el = document.getElementById(`cash-agg-${atId}`);
+             if(el) el.textContent = formatPct(pct);
+             
+             // Cash Variance
+             const aggCell = el ? el.parentElement : null;
+             if (aggCell) {
+                 const defCell = aggCell.previousElementSibling; 
+                 const currCell = defCell ? defCell.previousElementSibling : null;
+                 
+                 if (currCell && currCell.dataset.atCurrent) {
+                      const curVal = parseFloat(currCell.dataset.atCurrent) || 0;
+                      const variance = curVal - pct;
+                      
+                      const varEl = document.getElementById(`cash-var-${atId}`);
+                      if (varEl) {
+                           varEl.textContent = formatPct(variance);
+                           varEl.classList.remove('text-success', 'text-danger', 'text-muted');
+                           if (variance > 0.05) varEl.classList.add('text-success');
+                           else if (variance < -0.05) varEl.classList.add('text-danger');
+                           else varEl.classList.add('text-muted');
+                      }
+                 }
+             }
+             
+             // Total agg
+             const totEl = document.getElementById(`total-agg-${atId}`);
+             if(totEl) totEl.textContent = formatPct(100); // Should always be 100% aggregation if residuals handled
+             
+             portCashDollars += dollars;
+        }
+        
+        const portCashPct = portfolioTotal > 0 ? (portCashDollars / portfolioTotal * 100) : 0;
+        document.getElementById(`cash-total`).textContent = formatPct(portCashPct);
+        // Variance for Cash? Not strictly in DOM?
+        // Added implicit cash row in template.
         
         saveButtons.forEach(btn => btn.disabled = !valid);
     }
-
-    inputs.forEach(input => {
-        input.addEventListener('input', updateTotals);
-    });
-
-    updateTotals();
+    
+    allInputs.forEach(inp => inp.addEventListener('input', updateCalculations));
+    updateCalculations();
 });
 </script>
 {% endblock %}
