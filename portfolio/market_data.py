@@ -33,7 +33,7 @@ class MarketDataService:
 
         try:
             # Fetch data for all tickers at once
-            data = yf.download(params_tickers, period="1d", progress=False)['Close']
+            data = yf.download(params_tickers, period="1d", progress=False, auto_adjust=True)['Close']
 
             if len(params_tickers) == 1:
                 # If single ticker, 'data' might be a Series or DataFrame depending on yfinance version/args
