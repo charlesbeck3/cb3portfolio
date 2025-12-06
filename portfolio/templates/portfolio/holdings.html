@@ -72,7 +72,19 @@
                                     {% for holding in category_data.holdings %}
                                     <tr class="group-{{ forloop.parentloop.parentloop.counter }}-rows collapse show">
                                         <td>{{ holding.asset_class }}</td>
-                                        <td><strong>{{ holding.ticker }}</strong></td>
+                                        <td>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <strong>{{ holding.ticker }}</strong>
+                                                {% if account %}
+                                                <button type="button" class="btn btn-link btn-sm p-0 text-danger" 
+                                                        data-bs-toggle="modal" data-bs-target="#deleteHoldingModal"
+                                                        data-ticker="{{ holding.ticker }}"
+                                                        title="Remove {{ holding.ticker }}">
+                                                    <i class="bi bi-trash"></i> &times;
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </td>
                                         <td>{{ holding.name }}</td>
                                         
                                         <td class="text-end">{{ holding.current_price|default:"0"|accounting_amount:2 }}</td>
@@ -212,6 +224,46 @@
         </div>
     </div>
 </div>
+{% endif %}
+
+<!-- Delete Holding Modal -->
+{% if account %}
+<div class="modal fade" id="deleteHoldingModal" tabindex="-1" aria-labelledby="deleteHoldingModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteHoldingModalLabel">Remove Position</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" action="{% url 'portfolio:account_holdings' account.id %}">
+                {% csrf_token %}
+                <div class="modal-body">
+                    <p>Are you sure you want to remove <strong id="delete_ticker_display"></strong> from this account?</p>
+                    <input type="hidden" name="delete_ticker" id="delete_ticker_input">
+                    <p class="text-danger small">This action cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Remove</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    var deleteModal = document.getElementById('deleteHoldingModal')
+    deleteModal.addEventListener('show.bs.modal', function (event) {
+        var button = event.relatedTarget
+        var ticker = button.getAttribute('data-ticker')
+        var modalTitle = deleteModal.querySelector('.modal-title')
+        var tickerDisplay = deleteModal.querySelector('#delete_ticker_display')
+        var tickerInput = deleteModal.querySelector('#delete_ticker_input')
+
+        tickerDisplay.textContent = ticker
+        tickerInput.value = ticker
+    })
+</script>
 {% endif %}
 
 {% endblock %}

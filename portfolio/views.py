@@ -101,6 +101,22 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
 
             return redirect('portfolio:account_holdings', account_id=account_id)
 
+        # Check for Delete Holding
+        delete_ticker = request.POST.get('delete_ticker')
+        if delete_ticker:
+            delete_ticker = delete_ticker.strip().upper()
+            try:
+                holding_to_delete = Holding.objects.filter(account=account, security__ticker=delete_ticker).first()
+                if holding_to_delete:
+                    holding_to_delete.delete()
+                    messages.success(request, f"Removed {delete_ticker} from account.")
+                else:
+                    messages.error(request, f"Holding {delete_ticker} not found.")
+            except Exception as e:
+                messages.error(request, f"Error deleting holding: {e}")
+
+            return redirect('portfolio:account_holdings', account_id=account_id)
+
         # Iterate over POST data (Edit Logic)
 
         # Iterate over POST data
