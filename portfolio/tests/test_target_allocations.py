@@ -1,3 +1,4 @@
+import unittest.mock
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -60,7 +61,12 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
     def test_initial_calculation(self) -> None:
         """Verify context data calculations for portfolio totals and maps."""
         url = reverse('portfolio:target_allocations')
-        response = self.client.get(url)
+
+        # Patch get_prices to return stable values matching setUp
+        with unittest.mock.patch('portfolio.services.MarketDataService.get_prices') as mock_prices:
+             mock_prices.return_value = {'VTI': Decimal('100.00'), 'CASH': Decimal('1.00')}
+             response = self.client.get(url)
+
         self.assertEqual(response.status_code, 200)
 
         context = response.context

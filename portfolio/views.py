@@ -12,7 +12,6 @@ from django.views.generic import TemplateView
 from portfolio.models import (
     Account,
     AccountType,
-    AssetCategory,
     AssetClass,
     Holding,
     Security,
@@ -197,227 +196,117 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
             else:
                 defaults_map[t.account_type_id][t.asset_class_id] = t.target_pct
 
-        # 2. Get Current Holdings / Market Values & Build Accounts Hierarchy
-        holdings = Holding.objects.filter(account__user=user).select_related('security__asset_class', 'account__account_type')
+        # 2. Get Summary Data (Reusing shared logic)
+        summary = PortfolioSummaryService.get_holdings_summary(user)
+        context['summary'] = summary
 
-        # We need to calculate percentages for:
-        # a) Account Types (Aggregate)
-        # b) Individual Accounts
+        # We need account_types for columns
+        # The service summary has account_type_grand_totals keys which are codes.
+        # But we need the objects for labels and to attach accounts.
 
-        # Account Values and Aggregation
-        # account_values: account_id -> total_value
-        # account_ac_values: account_id -> ac_id -> value
-        account_values: dict[int, Decimal] = defaultdict(Decimal)
-        account_ac_values: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
-
-        # Account Type Aggregation
-        at_values: dict[int, Decimal] = defaultdict(Decimal) # Total value
-        at_ac_values: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
-
-        for h in holdings:
-            if h.current_price:
-                 val = h.shares * h.current_price
-                 ac_id = h.security.asset_class_id
-                 at_id = h.account.account_type_id
-                 acc_id = h.account.id
-
-                 account_values[acc_id] += val
-                 account_ac_values[acc_id][ac_id] += val
-
-                 at_values[at_id] += val
-                 at_ac_values[at_id][ac_id] += val
-
-        asset_classes = AssetClass.objects.exclude(name='Cash').select_related('category', 'category__parent').all()
-        # Prefetch accounts grouped by type
         account_types_qs = AccountType.objects.filter(accounts__user=user).distinct().order_by('group__sort_order', 'label')
 
         account_types = []
+
+        # We need to compute/attach active_accounts context for the template columns
+        # The service doesn't return full Account objects with their specific "current_total_value" attached in a way the template expects for COLUMNS
+        # (Service aggregates them into the summary structure, but here we need to iterate columns).
+
+        # Let's fetch accounts and attach them to account types as before
+        accounts = Account.objects.filter(user=user).select_related('account_type')
+        account_map = {a.id: a for a in accounts}
+
+        # Calculate Account totals for the header/columns
+        # We can reuse service.get_account_summary or just sum holdings quickly here or use what we had.
+        # Actually, get_holdings_summary calls update_prices.
+        # Let's simple re-fetch holdings to get account totals for the column headers,
+        # OR trust the summary service could provide this?
+        # Service provides 'sidebar_data' which has account totals.
+
+        sidebar_data = PortfolioSummaryService.get_account_summary(user)
+        context['sidebar_data'] = sidebar_data
+
+        # Map account ID to total from sidebar data
+        account_totals = {}
+        for group in sidebar_data['groups'].values():
+            for acc in group['accounts']:
+                account_totals[acc['id']] = acc['total']
+
+        # Also need Account Type totals
+        # Summary has account_type_grand_totals (by code)
+        at_totals = summary.account_type_grand_totals
+
         for at_obj in account_types_qs:
             at: Any = at_obj
-            # Attach accounts to account type for template iteration
-            at_accounts = list(Account.objects.filter(user=user, account_type=at))
-            # Calculate current percentages for each account
-            for acc_obj in at_accounts:
-                acc: Any = acc_obj
-                total = account_values[acc.id]
-                acc.current_total_value = total
-                acc.allocation_map = {}
-                acc.dollar_map = {}
-                if total > 0:
-                     for ac_id, val in account_ac_values[acc.id].items():
-                         acc.allocation_map[ac_id] = (val / total) * 100
-                         acc.dollar_map[ac_id] = val
+            at_accounts = [a for a in accounts if a.account_type_id == at.id]
 
-                # Attach overrides context
+            # Attach context expected by template
+            at.current_total_value = at_totals.get(at.code, Decimal(0))
+            at.target_map = defaults_map.get(at.id, {})
+
+            # Prepare accounts
+            for acc in at_accounts:
+                acc.current_total_value = account_totals.get(acc.id, Decimal(0))
                 acc.target_map = overrides_map.get(acc.id, {})
 
             at.active_accounts = at_accounts
-
-            # Calculate aggregate percentages for account type
-            at_total = at_values[at.id]
-            at.current_total_value = at_total
-            at.allocation_map = {}
-            at.dollar_map = {}
-            if at_total > 0:
-                 for ac_id, val in at_ac_values[at.id].items():
-                     at.allocation_map[ac_id] = (val / at_total) * 100
-                     at.dollar_map[ac_id] = val
-
-            # Attach defaults context
-            at.target_map = defaults_map.get(at.id, {})
-
             account_types.append(at)
 
-        # Build Hierarchical Asset Data (Row Structure)
-        # We reuse the logic but now we don't need detailed calculations in the view
-        # as much as structuring for the recursive table matching index.html style?
-        # Actually target_allocations.html is a grid. Asset Classes (Rows) x Account Types (Cols).
-        # We need to inject Accounts as sub-columns or expandables.
+        # 3. Calculate detailed maps for Accounts and Types
 
-        # Build Hierarchical Asset Data (Row Structure) with Sorting and Subtotals
+        holdings = Holding.objects.filter(account__user=user).select_related('security', 'account').only(
+            'account_id', 'security__asset_class_id', 'shares', 'current_price'
+        )
 
-        def get_group(ac_obj: AssetClass) -> AssetCategory:
-            return ac_obj.category.parent if ac_obj.category.parent else ac_obj.category
+        # account_id -> ac_id -> value
+        account_ac_map: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+        # at_id -> ac_id -> value
+        at_ac_map: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
 
-        # 1. Calculate Totals for Sorting
-        # asset_totals: ac_id -> total_value
-        asset_totals: dict[int, Decimal] = defaultdict(Decimal)
-        # category_totals: category_obj -> total_value
-        category_totals: dict[AssetCategory, Decimal] = defaultdict(Decimal)
+        for h in holdings:
+            if h.current_price:
+                val = h.shares * h.current_price
+                if val > 0:
+                    ac_id = h.security.asset_class_id
+                    acc_id = h.account.id
+                    at_id = account_map[acc_id].account_type_id
 
-        for _, ac_data in at_ac_values.items():
-            for ac_id, val in ac_data.items():
-                asset_totals[ac_id] += val
+                    account_ac_map[acc_id][ac_id] += val
+                    at_ac_map[at_id][ac_id] += val
 
-        # 2. Build Tree
-        tree: dict[AssetCategory, dict[str, Any]] = {}
+        # Now populate maps on objects
+        # Map asset_class_id -> category_code helper
+        ac_id_to_cat = {}
+        for group in summary.groups.values():
+            for cat_code, cat_data in group.categories.items():
+                for _, ac_data in cat_data.asset_classes.items():
+                     if ac_data.id:
+                         ac_id_to_cat[ac_data.id] = cat_code
 
-        for ac_obj in asset_classes:
-            ac: Any = ac_obj
-            group = get_group(ac)
-            category = ac.category
+        for at in account_types:
+             # Populate AT maps
+             at.dollar_map = at_ac_map[at.id]
+             at.allocation_map = {}
+             if at.current_total_value > 0:
+                 for ac_id, val in at.dollar_map.items():
+                     at.allocation_map[ac_id] = (val / at.current_total_value) * 100
 
-            # Populate totals
-            ac_total = asset_totals.get(ac.id, Decimal(0))
-            category_totals[category] += ac_total
-            # Note: We aren't explicitly summing group totals for sorting here but could if needed.
-            # Groups usually have fixed sort order (Investments vs Retirement etc is usually Account Group,
-            # but here it's Asset Group likely by name/order). AssetCategory model has 'ordering'.
+             for acc in at.active_accounts:
+                  acc.dollar_map = account_ac_map[acc.id]
+                  acc.allocation_map = {}
+                  if acc.current_total_value > 0:
+                      for ac_id, val in acc.dollar_map.items():
+                          acc.allocation_map[ac_id] = (val / acc.current_total_value) * 100
 
-            if group not in tree:
-                tree[group] = {'categories': {}, 'total_value': Decimal(0)}
-
-            group_node = tree[group]
-            if category not in group_node['categories']:
-                group_node['categories'][category] = {
-                    'assets': [],
-                    'total_value': Decimal(0),
-                    # Pre-calculate category-level aggregates for the subtotal row
-                    'allocation_map': defaultdict(Decimal), # at_id -> pct sum (approx)
-                    'account_allocation_map': defaultdict(Decimal) # acc_id -> pct sum (approx)
-                }
-
-            # Add asset to category
-            # We attach the total value to the asset object for easy sorting access later
-            ac.current_total_value = ac_total
-            group_node['categories'][category]['assets'].append(ac)
-
-            # Update Node Totals
-            group_node['categories'][category]['total_value'] += ac_total
-            group_node['total_value'] += ac_total
-
-            # 3. Pre-calculate Category Subtotal Percentages (Sum of Constituent Assets)
-            # Iterate through Account Types and Accounts to sum their allocations for this category
-            cat_node = group_node['categories'][category]
-
-            # Account Types
-            for at in account_types:
-                 current_at_val = at_ac_values[at.id].get(ac.id, Decimal(0))
-                 if at.current_total_value > 0:
-                      pct = (current_at_val / at.current_total_value) * 100
-                      cat_node['allocation_map'][at.id] += pct
-
-            # Individual Accounts
-            for at in account_types:
-                 for acc in at.active_accounts:
-                      current_acc_val = account_ac_values[acc.id].get(ac.id, Decimal(0))
-                      if acc.current_total_value > 0:
-                           pct = (current_acc_val / acc.current_total_value) * 100
-                           cat_node['account_allocation_map'][acc.id] += pct
-
-
-        # 4. Sort Tree
-        # Sort Groups (Keep alphabetical or model ordering? Model ordering is safest for Groups)
-        # Using label for now as before, or explicit sort if available.
-
-        hierarchical_data = []
-
-        # Sort Groups (Primary Level) - usually static/alphabetical is fine, or by total value?
-        # Requirement: "Use the same sort descending approach for asset categories and then asset classes"
-        # Let's sort Groups by total value descending too for consistency, or keep label if "Asset Categories" was the specific request.
-        # User said "sort descending approach for asset categories and then asset classes". Implicitly Groups might behave same.
-
-        sorted_groups = sorted(tree.items(), key=lambda x: x[1]['total_value'], reverse=True)
-
-        for group, group_data in sorted_groups:
-             cat_list = []
-
-             # Sort Categories by Total Value Descending
-             sorted_categories = sorted(
-                 group_data['categories'].items(),
-                 key=lambda x: x[1]['total_value'],
-                 reverse=True
-             )
-
-             for category, cat_data in sorted_categories:
-                  # Sort Assets by Total Value Descending
-                  sorted_assets = sorted(
-                      cat_data['assets'],
-                      key=lambda x: x.current_total_value,
-                      reverse=True
-                  )
-
-                  # Pack data for template
-                  # Pack data for template
-                  # We need to recalculate dollar maps for category totals
-                  cat_dollar_map: dict[int, Decimal] = defaultdict(Decimal)
-                  cat_account_dollar_map: dict[int, Decimal] = defaultdict(Decimal)
-
-                  # Re-sum dollars for this category
-                  # Since we already have allocation_map (sums of pcts), we could derive or restate
-                  # But safer to sum dollars
-                  for acc_type in account_types:
-                        # sum over assets in this category
-                        for asset_obj in cat_data['assets']:
-                             val = at_ac_values[acc_type.id].get(asset_obj.id, Decimal(0))
-                             cat_dollar_map[acc_type.id] += val
-
-                        for acc_obj in acc_type.active_accounts:
-                             for asset_obj in cat_data['assets']:
-                                  v = account_ac_values[acc_obj.id].get(asset_obj.id, Decimal(0))
-                                  cat_account_dollar_map[acc_obj.id] += v
-
-                  cat_info = {
-                      'obj': category,
-                      'total_value': cat_data['total_value'],
-                      'allocation_map': cat_data['allocation_map'],
-                      'account_allocation_map': cat_data['account_allocation_map'],
-                      'dollar_map': cat_dollar_map,
-                      'account_dollar_map': cat_account_dollar_map,
-                  }
-
-                  cat_list.append((cat_info, sorted_assets))
-
-             hierarchical_data.append((group, cat_list))
+                  # Populate category map
+                  acc.category_map = defaultdict(Decimal)
+                  for ac_id, val in acc.dollar_map.items():
+                       cat_code = ac_id_to_cat.get(ac_id)
+                       if cat_code:
+                            acc.category_map[cat_code] += val
 
         context['account_types'] = account_types
-        context['hierarchical_data'] = hierarchical_data
-
-        # Calculate Portfolio Total
-        portfolio_total = sum(at_values.values())
-        context['at_values'] = at_values
-        context['portfolio_total_value'] = portfolio_total
-        context['sidebar_data'] = PortfolioSummaryService.get_account_summary(user)
+        context['portfolio_total_value'] = summary.grand_total
 
         # Pass defaults map for calculating inherited values in JS if needed
         # {at_id: {ac_id: pct}}

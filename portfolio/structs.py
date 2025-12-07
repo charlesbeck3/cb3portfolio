@@ -12,6 +12,7 @@ class AccountTypeData:
 
 @dataclass
 class AssetClassEntry:
+    id: int | None = None
     account_types: dict[str, AccountTypeData] = field(default_factory=lambda: defaultdict(AccountTypeData))
     total: Decimal = Decimal('0.00')
     target_total: Decimal = Decimal('0.00')

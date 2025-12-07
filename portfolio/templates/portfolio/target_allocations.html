@@ -79,70 +79,80 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for group, categories in hierarchical_data %}
+                                {% for group_code, group_data in summary.groups.items %}
                                     <!-- Groups -->
-                                    {% for cat_info, assets in categories %}
+                                    {% for category_code, cat_data in group_data.categories.items %}
                                          <!-- Assets -->
-                                         {% for ac in assets %}
-                                            <tr data-ac-id="{{ ac.id }}" data-category-code="{{ cat_info.obj.code }}">
-                                                <td class="ps-4">{{ ac.name }}</td>
+                                         {% for ac_name, ac_data in cat_data.asset_classes.items %}
+                                            <tr data-ac-id="{{ ac_data.id }}" data-category-code="{{ category_code }}">
+                                                <td class="ps-4">{{ ac_name }}</td>
                                                 {% for at in account_types %}
                                                     <!-- 1. Account Type Columns -->
                                                     <!-- Current -->
+                                                    {% with at_data=ac_data.account_types|get_item:at.code %}
                                                     <td class="text-end pe-1 text-muted small" 
-                                                        data-at-current="{{ at.allocation_map|get_item:ac.id|default:0 }}">
-                                                        {{ at.allocation_map|get_item:ac.id|default:0|accounting_percent:1 }}
+                                                        data-at-current="{{ at_data.current|default:0 }}">
+                                                        {% if at.current_total_value > 0 %}
+                                                            {{ at_data.current|percentage_of:at.current_total_value|accounting_percent:1 }}
+                                                        {% else %}
+                                                            0.0%
+                                                        {% endif %}
                                                     </td>
+                                                    {% endwith %}
 
                                                     <!-- Default Input -->
                                                     <td class="p-1">
                                                         <div class="input-group input-group-sm">
                                                             <input type="number" 
-                                                                   name="target_{{ at.id }}_{{ ac.id }}" 
+                                                                   name="target_{{ at.id }}_{{ ac_data.id }}" 
                                                                    step="0.01" 
                                                                    min="0" 
                                                                    max="100" 
                                                                    class="form-control form-control-sm text-end default-input px-1"
                                                                    data-at-id="{{ at.id }}"
-                                                                   data-ac-id="{{ ac.id }}"
-                                                                   value="{{ at.target_map|get_item:ac.id|default:'' }}"
+                                                                   data-ac-id="{{ ac_data.id }}"
+                                                                   value="{{ at.target_map|get_item:ac_data.id|default:'' }}"
                                                                    placeholder="--">
                                                         </div>
                                                     </td>
                                                     
                                                     <!-- Aggregated % -->
                                                     <td class="text-end pe-1 small fw-bold text-muted d-none d-md-table-cell agg-cell">
-                                                        <span id="agg-{{ at.id }}-{{ ac.id }}">--</span>
+                                                        <span id="agg-{{ at.id }}-{{ ac_data.id }}">--</span>
                                                     </td>
 
                                                     <!-- Variance -->
                                                     <td class="text-end pe-1 small fw-bold">
-                                                        <span id="var-{{ at.id }}-{{ ac.id }}">--</span>
+                                                        <span id="var-{{ at.id }}-{{ ac_data.id }}">--</span>
                                                     </td>
                                                     
                                                     <!-- Individual Accounts -->
                                                     {% for acc in at.active_accounts %}
                                                         <!-- Current -->
                                                         <td class="text-end pe-1 text-muted small table-warning d-none col-acc-{{ at.id }}">
-                                                             {{ acc.allocation_map|get_item:ac.id|default:0|accounting_percent:1 }}
+                                                             {% if acc.current_total_value > 0 %}
+                                                                {{ acc.dollar_map|get_item:ac_data.id|default:0|percentage_of:acc.current_total_value|accounting_percent:1 }}
+                                                             {% else %}
+                                                                0.0%
+                                                             {% endif %}
                                                         </td>
                                                         <!-- Override Input -->
                                                         <td class="p-1 table-warning d-none col-acc-{{ at.id }}">
                                                             <input type="number"
-                                                                   name="target_account_{{ acc.id }}_{{ ac.id }}"
+                                                                   name="target_account_{{ acc.id }}_{{ ac_data.id }}"
                                                                    step="0.01"
                                                                    min="0"
                                                                    max="100"
                                                                    class="form-control form-control-sm text-end override-input px-1"
                                                                    data-acc-id="{{ acc.id }}"
                                                                    data-at-id="{{ at.id }}"
-                                                                   data-ac-id="{{ ac.id }}"
-                                                                   value="{{ acc.target_map|get_item:ac.id|default:'' }}"
+                                                                   data-ac-id="{{ ac_data.id }}"
+                                                                   value="{{ acc.target_map|get_item:ac_data.id|default:'' }}"
                                                                    placeholder="--">
                                                         </td>
                                                         <!-- Effective % -->
                                                         <td class="text-end pe-2 small table-warning d-none col-acc-{{ at.id }}">
-                                                            <span id="eff-{{ acc.id }}-{{ ac.id }}" class="text-muted">--</span>
+                                                            <span id="eff-{{ acc.id }}-{{ ac_data.id }}" class="text-muted">--</span>
                                                         </td>
                                                     {% endfor %}
                                                 {% endfor %}
@@ -150,67 +160,79 @@
                                                 <!-- PORTFOLIO TOTALS -->
                                                 <td class="text-end pe-2 table-active text-muted">
                                                     <!-- Calc explicit pct of total -->
-                                                    {{ ac.current_total_value|percentage_of:portfolio_total_value|accounting_percent:1 }}
+                                                    {{ ac_data.total|percentage_of:portfolio_total_value|accounting_percent:1 }}
                                                 </td>
                                                 <td class="text-end pe-2 table-active">
-                                                    <span id="row-total-{{ ac.id }}">0.00%</span>
+                                                    <span id="row-total-{{ ac_data.id }}">0.00%</span>
                                                 </td>
                                                 <td class="text-end pe-2 table-active fw-bold">
-                                                    <span id="row-var-{{ ac.id }}">0.00%</span>
+                                                    <span id="row-var-{{ ac_data.id }}">0.00%</span>
                                                 </td>
                                             </tr>
                                         {% endfor %}
 
                                         <!-- Subtotal Row for Category -->
-                                        <tr class="table-info fw-bold category-subtotal-{{ cat_info.obj.code }}">
-                                            <td class="ps-4 text-dark">{{ cat_info.obj.label }} Total</td>
+                                        {% with category_label=summary.category_labels|get_item:category_code %}
+                                        <tr class="table-info fw-bold category-subtotal-{{ category_code }}">
+                                            <td class="ps-4 text-dark">{{ category_label|default:category_code }} Total</td>
                                             {% for at in account_types %}
                                                 <!-- Account Type Subtotals -->
                                                 <td class="text-end pe-1 small text-dark">
-                                                    <span id="sub-curr-{{ at.id }}-{{ cat_info.obj.code }}">
-                                                        {{ cat_info.allocation_map|get_item:at.id|default:0|accounting_percent:1 }}
+                                                    <span id="sub-curr-{{ at.id }}-{{ category_code }}">
+                                                        {% with at_data=cat_data.account_type_totals|get_item:at.code %}
+                                                            {% if at.current_total_value > 0 %}
+                                                                {{ at_data|percentage_of:at.current_total_value|accounting_percent:1 }}
+                                                            {% else %}
+                                                                0.0%
+                                                            {% endif %}
+                                                        {% endwith %}
                                                     </span>
                                                 </td>
                                                 <td class="text-end pe-1 small text-dark">
                                                      <!-- Default Target Sum (JS will update) -->
-                                                     <span id="sub-def-{{ at.id }}-{{ cat_info.obj.code }}">--</span>
+                                                     <span id="sub-def-{{ at.id }}-{{ category_code }}">--</span>
                                                 </td>
                                                 <td class="text-end pe-1 small text-dark d-none d-md-table-cell">
                                                      <!-- Aggregated Target Sum (JS will update) -->
-                                                     <span id="sub-agg-{{ at.id }}-{{ cat_info.obj.code }}">--</span>
+                                                     <span id="sub-agg-{{ at.id }}-{{ category_code }}">--</span>
                                                 </td>
                                                 <td class="text-end pe-1 small text-dark">
                                                      <!-- Variance Sum (JS will update) -->
-                                                     <span id="sub-var-{{ at.id }}-{{ cat_info.obj.code }}">--</span>
+                                                     <span id="sub-var-{{ at.id }}-{{ category_code }}">--</span>
                                                 </td>
                                                 
                                                 <!-- Individual Accounts Subtotals -->
                                                 {% for acc in at.active_accounts %}
                                                     <td class="text-end pe-1 small table-warning d-none col-acc-{{ at.id }} text-dark">
-                                                        {{ cat_info.account_allocation_map|get_item:acc.id|default:0|accounting_percent:1 }}
+                                                        {% if acc.current_total_value > 0 %}
+                                                           {{ acc.category_map|get_item:category_code|default:0|percentage_of:acc.current_total_value|accounting_percent:1 }}
+                                                        {% else %}
+                                                           0.0%
+                                                        {% endif %}
                                                     </td>
                                                     <td class="text-end pe-1 small table-warning d-none col-acc-{{ at.id }} text-dark">
                                                          <!-- Override Target Sum (JS) -->
-                                                         <span id="sub-over-{{ acc.id }}-{{ cat_info.obj.code }}">--</span>
+                                                         <span id="sub-over-{{ acc.id }}-{{ category_code }}">--</span>
                                                     </td>
                                                     <td class="text-end pe-2 small table-warning d-none col-acc-{{ at.id }} text-dark">
                                                          <!-- Effective Target Sum (JS) -->
-                                                         <span id="sub-eff-{{ acc.id }}-{{ cat_info.obj.code }}">--</span>
+                                                         <span id="sub-eff-{{ acc.id }}-{{ category_code }}">--</span>
                                                     </td>
                                                 {% endfor %}
                                             {% endfor %}
                                             
                                             <!-- Portfolio Totals Subtotal -->
                                             <td class="text-end pe-2 table-active text-dark">
-                                                <span id="sub-total-curr-{{ cat_info.obj.code }}">{{ cat_info.total_value|percentage_of:portfolio_total_value|accounting_percent:1 }}</span>
+                                                <span id="sub-total-curr-{{ category_code }}">{{ cat_data.total|percentage_of:portfolio_total_value|accounting_percent:1 }}</span>
                                             </td>
                                             <td class="text-end pe-2 table-active text-dark">
-                                                <span id="sub-total-target-{{ cat_info.obj.code }}">--</span>
+                                                <span id="sub-total-target-{{ category_code }}">--</span>
                                             </td>
                                             <td class="text-end pe-2 table-active text-dark">
-                                                <span id="sub-total-var-{{ cat_info.obj.code }}">--</span>
+                                                <span id="sub-total-var-{{ category_code }}">--</span>
                                             </td>
                                         </tr>
+                                        {% endwith %}
                                     {% endfor %}
                                 {% endfor %}
                                 
@@ -352,106 +374,110 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for group, categories in hierarchical_data %}
-                                    {% for cat_info, assets in categories %}
-                                         {% for ac in assets %}
-                                            <tr data-ac-id="{{ ac.id }}" data-category-code="{{ cat_info.obj.code }}">
-                                                <td class="ps-4">{{ ac.name }}</td>
+                                {% for group_code, group_data in summary.groups.items %}
+                                    {% for category_code, cat_data in group_data.categories.items %}
+                                         {% for ac_name, ac_data in cat_data.asset_classes.items %}
+                                            <tr data-ac-id="{{ ac_data.id }}" data-category-code="{{ category_code }}">
+                                                <td class="ps-4">{{ ac_name }}</td>
                                                 {% for at in account_types %}
                                                     <!-- AT Columns -->
                                                     <!-- Current $ -->
                                                     <td class="text-end pe-1 text-muted small">
-                                                        {{ at.dollar_map|get_item:ac.id|default:0|accounting_amount:0 }}
+                                                        {{ at.dollar_map|get_item:ac_data.id|default:0|accounting_amount:0 }}
                                                     </td>
                                                     <!-- Target $ (Derived from Default Input) -->
                                                     <td class="text-end pe-1 small text-muted">
-                                                        <span id="money-def-{{ at.id }}-{{ ac.id }}">--</span>
+                                                        <span id="money-def-{{ at.id }}-{{ ac_data.id }}">--</span>
                                                     </td>
                                                     <!-- Aggregated Target $ -->
                                                     <td class="text-end pe-1 small fw-bold text-muted d-none d-md-table-cell">
-                                                        <span id="money-agg-{{ at.id }}-{{ ac.id }}">--</span>
+                                                        <span id="money-agg-{{ at.id }}-{{ ac_data.id }}">--</span>
                                                     </td>
                                                     <!-- Variance $ -->
                                                     <td class="text-end pe-1 small fw-bold">
-                                                        <span id="money-var-{{ at.id }}-{{ ac.id }}">--</span>
+                                                        <span id="money-var-{{ at.id }}-{{ ac_data.id }}">--</span>
                                                     </td>
                                                     
                                                     <!-- Account Columns -->
                                                     {% for acc in at.active_accounts %}
                                                         <!-- Current $ -->
                                                         <td class="text-end pe-1 text-muted small table-warning d-none col-acc-{{ at.id }}">
-                                                             {{ acc.dollar_map|get_item:ac.id|default:0|accounting_amount:0 }}
+                                                             {{ acc.dollar_map|get_item:ac_data.id|default:0|accounting_amount:0 }}
                                                         </td>
                                                         <!-- Target $ (Calculated) -->
                                                         <td class="text-end pe-1 small table-warning d-none col-acc-{{ at.id }}">
-                                                            <span id="money-target-{{ acc.id }}-{{ ac.id }}">--</span>
+                                                            <span id="money-target-{{ acc.id }}-{{ ac_data.id }}">--</span>
                                                         </td>
                                                         <!-- Variance $ -->
                                                         <td class="text-end pe-1 small table-warning d-none col-acc-{{ at.id }}">
-                                                            <span id="money-var-{{ acc.id }}-{{ ac.id }}">--</span>
+                                                            <span id="money-var-{{ acc.id }}-{{ ac_data.id }}">--</span>
                                                         </td>
                                                     {% endfor %}
                                                 {% endfor %}
                                                 
                                                 <!-- Portfolio Totals -->
                                                 <td class="text-end pe-2 table-active text-muted">
-                                                    {{ ac.current_total_value|accounting_amount:0 }}
+                                                    {{ ac_data.total|accounting_amount:0 }}
                                                 </td>
                                                 <td class="text-end pe-2 table-active">
-                                                    <span id="money-row-total-{{ ac.id }}">--</span>
+                                                    <span id="money-row-total-{{ ac_data.id }}">--</span>
                                                 </td>
                                                 <td class="text-end pe-2 table-active fw-bold">
-                                                    <span id="money-row-var-{{ ac.id }}">--</span>
+                                                    <span id="money-row-var-{{ ac_data.id }}">--</span>
                                                 </td>
                                             </tr>
                                          {% endfor %}
 
                                         <!-- Category Subtotal Row -->
-                                        <tr class="table-info fw-bold category-subtotal-{{ cat_info.obj.code }}">
-                                            <td class="ps-4 text-dark">{{ cat_info.obj.label }} Total</td>
+                                        {% with category_label=summary.category_labels|get_item:category_code %}
+                                        <tr class="table-info fw-bold category-subtotal-{{ category_code }}">
+                                            <td class="ps-4 text-dark">{{ category_label|default:category_code }} Total</td>
                                             {% for at in account_types %}
                                                 <!-- Current $ -->
                                                 <td class="text-end pe-1 small text-dark">
-                                                    {{ cat_info.dollar_map|get_item:at.id|default:0|accounting_amount:0 }}
+                                                    {% with at_data=cat_data.account_type_totals|get_item:at.code %}
+                                                        {{ at_data|default:0|accounting_amount:0 }}
+                                                    {% endwith %}
                                                 </td>
                                                 <!-- Target $ -->
                                                 <td class="text-end pe-1 small text-dark">
-                                                    <span id="money-sub-def-{{ at.id }}-{{ cat_info.obj.code }}">--</span>
+                                                    <span id="money-sub-def-{{ at.id }}-{{ category_code }}">--</span>
                                                 </td>
                                                 <!-- Agg Target $ -->
                                                 <td class="text-end pe-1 small text-dark d-none d-md-table-cell">
-                                                    <span id="money-sub-agg-{{ at.id }}-{{ cat_info.obj.code }}">--</span>
+                                                    <span id="money-sub-agg-{{ at.id }}-{{ category_code }}">--</span>
                                                 </td>
                                                 <!-- Variance $ -->
                                                 <td class="text-end pe-1 small text-dark">
-                                                    <span id="money-sub-var-{{ at.id }}-{{ cat_info.obj.code }}">--</span>
+                                                    <span id="money-sub-var-{{ at.id }}-{{ category_code }}">--</span>
                                                 </td>
                                                 
                                                 <!-- Account Subtotals -->
                                                 {% for acc in at.active_accounts %}
                                                     <td class="text-end pe-1 small table-warning d-none col-acc-{{ at.id }} text-dark">
-                                                        {{ cat_info.account_dollar_map|get_item:acc.id|default:0|accounting_amount:0 }}
+                                                        {{ acc.category_map|get_item:category_code|default:0|accounting_amount:0 }}
                                                     </td>
                                                     <td class="text-end pe-1 small table-warning d-none col-acc-{{ at.id }} text-dark">
-                                                        <span id="money-sub-target-{{ acc.id }}-{{ cat_info.obj.code }}">--</span>
+                                                        <span id="money-sub-target-{{ acc.id }}-{{ category_code }}">--</span>
                                                     </td>
                                                     <td class="text-end pe-1 small table-warning d-none col-acc-{{ at.id }} text-dark">
-                                                        <span id="money-sub-var-{{ acc.id }}-{{ cat_info.obj.code }}">--</span>
+                                                        <span id="money-sub-var-{{ acc.id }}-{{ category_code }}">--</span>
                                                     </td>
                                                 {% endfor %}
                                             {% endfor %}
                                             
                                             <!-- Portfolio Totals -->
                                             <td class="text-end pe-2 table-active text-dark">
-                                                {{ cat_info.total_value|accounting_amount:0 }}
+                                                {{ cat_data.total|accounting_amount:0 }}
                                             </td>
                                             <td class="text-end pe-2 table-active text-dark">
-                                                <span id="money-sub-total-target-{{ cat_info.obj.code }}">--</span>
+                                                <span id="money-sub-total-target-{{ category_code }}">--</span>
                                             </td>
                                             <td class="text-end pe-2 table-active text-dark">
-                                                <span id="money-sub-total-var-{{ cat_info.obj.code }}">--</span>
+                                                <span id="money-sub-total-var-{{ category_code }}">--</span>
                                             </td>
                                         </tr>
+                                        {% endwith %}
                                     {% endfor %}
                                 {% endfor %}
                                 
@@ -499,7 +525,7 @@
                                 <tr class="table-light border-top fw-bold">
                                     <td class="ps-4">Total</td>
                                      {% for at in account_types %}
-                                        <td class="text-end pe-2">{{ at.active_accounts|length|yesno:" ,," }}{{ at_values|get_item:at.id|default:0|accounting_amount:0 }}</td>
+                                        <td class="text-end pe-2">{{ at.active_accounts|length|yesno:" ,," }}{{ at.current_total_value|default:0|accounting_amount:0 }}</td>
                                         <td class="text-end pe-2">
                                             <span id="money-total-default-{{ at.id }}">--</span>
                                         </td>

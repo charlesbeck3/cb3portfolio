@@ -114,7 +114,8 @@ class PortfolioSummaryService:
                   # Initialize category... (done by defaultdict in PortfolioSummary but we need to ensure labels)
                   pass
              # Initialize asset class slot
-             _ = summary.categories[cat_code].asset_classes[ac.name]
+             ac_entry = summary.categories[cat_code].asset_classes[ac.name]
+             ac_entry.id = ac.id
 
         # 2. Aggregate Holdings into Summary + Track Account Totals
         account_totals: dict[int, Decimal] = defaultdict(Decimal)
@@ -175,6 +176,8 @@ class PortfolioSummaryService:
 
             # Update specific asset class entry
             ac_entry = summary.categories[category_code].asset_classes[asset_class_name]
+            if ac_entry.id is None:
+                ac_entry.id = asset_class.id
             ac_entry.account_types[account_type_code].current += value
             ac_entry.total += value
 
