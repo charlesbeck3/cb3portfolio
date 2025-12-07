@@ -155,11 +155,14 @@ document.addEventListener('DOMContentLoaded', function() {
             const acId = inp.dataset.acId;
             const val = parseFloat(inp.value) || 0;
             
-            if (!defaults[atId]) defaults[atId] = {};
-            defaults[atId][acId] = val;
-            
-            if (!defaultTotals[atId]) defaultTotals[atId] = 0;
-            defaultTotals[atId] += val;
+            // Only store non-zero values to avoid overwriting server-rendered targets
+            if (val > 0) {
+                if (!defaults[atId]) defaults[atId] = {};
+                defaults[atId][acId] = val;
+                
+                if (!defaultTotals[atId]) defaultTotals[atId] = 0;
+                defaultTotals[atId] += val;
+            }
         });
         
         // 2. Gather Overrides: {accId: {acId: val}}
@@ -369,34 +372,28 @@ document.addEventListener('DOMContentLoaded', function() {
                   const el = document.getElementById(`agg-${atId}-${acId}`);
                   if(el) el.innerHTML = formatPct(pct);
 
-                  // Variance %
-                  // ... existing logic ...
-                  const aggCell = el ? el.parentElement : null;
-                  if (aggCell) {
-                      const targetCell = aggCell.previousElementSibling;
-                      const currCell = targetCell ? targetCell.previousElementSibling : null;
-                      if (currCell && currCell.dataset.atCurrent) {
-                           const currentVal = parseAccounting(currCell.dataset.atCurrent);
-                           const variance = currentVal - pct;
-                           const varEl = document.getElementById(`var-${atId}-${acId}`);
-                           if (varEl) {
-                               varEl.innerHTML = formatPct(variance);
-                               varEl.className = 'text-end pe-1 small fw-bold ' + 
-                                   (variance > 0.05 ? 'text-success' : (variance < -0.05 ? 'text-danger' : 'text-muted'));
-                           }
-                      }
-                  }
+                  // Note: Variance is now pre-calculated in the service layer
+                  // and rendered directly in the template. No need to recalculate here.
                   
                   // MONEY TABLE UPDATES
                   // Target $ (Derived from Default Input)
-                  const defPct = parseFloat(defaults[atId][acId]) || 0;
-                  const defDollars = totalVal * (defPct / 100);
-                  
-                  if (!atTotalTargetDefaultFromPct[atId]) atTotalTargetDefaultFromPct[atId] = 0;
-                  atTotalTargetDefaultFromPct[atId] += defDollars;
-                  
-                  const moneyDefEl = document.getElementById(`money-def-${atId}-${acId}`);
-                  if (moneyDefEl) moneyDefEl.innerHTML = formatMoney(defDollars);
+                  // Only update if we have a default percentage for this combination
+                  if (defaults[atId] && defaults[atId][acId] !== undefined) {
+                      const defPct = parseFloat(defaults[atId][acId]) || 0;
+                      const defDollars = totalVal * (defPct / 100);
+                      
+                      // Accumulate to subtotal
+                      if (!atTotalTargetDefaultFromPct[atId]) atTotalTargetDefaultFromPct[atId] = 0;
+                      atTotalTargetDefaultFromPct[atId] += defDollars;
+                      
+                      // Update the DOM element
+                      const moneyDefEl = document.getElementById(`money-def-${atId}-${acId}`);
+                      if (moneyDefEl) {
+                          moneyDefEl.innerHTML = formatMoney(defDollars);
+                          // Ensure visibility
+                          moneyDefEl.classList.remove('text-muted'); 
+                      }
+                  }
                   
                   // Aggregated Target $
                   if (!atTotalAggDollars[atId]) atTotalAggDollars[atId] = 0;

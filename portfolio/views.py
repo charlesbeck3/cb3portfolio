@@ -25,17 +25,115 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
+        user = self.request.user
+        assert user.is_authenticated
 
-        # Get summary data
-        context['summary'] = PortfolioSummaryService.get_holdings_summary(self.request.user)
-        context['sidebar_data'] = PortfolioSummaryService.get_account_summary(self.request.user)
+        # 1. Get Targets (needed for displaying target values even in read-only)
+        targets = TargetAllocation.objects.filter(user=user).select_related('account_type', 'asset_class', 'account')
 
-        # Add account types for the "Add Account" modal/form if needed,
-        # or just passing them for display.
-        # Previously: (code, label) for code, label in Account.ACCOUNT_TYPES
-        # Now: Use AccountType model
-        assert self.request.user.is_authenticated
-        context['account_types'] = AccountType.objects.filter(accounts__user=self.request.user).distinct().values_list('code', 'label').order_by('label')
+        # Structure:
+        # defaults: at_id -> ac_id -> pct
+        # overrides: account_id -> ac_id -> pct
+        defaults_map: dict[int, dict[int, Decimal]] = defaultdict(dict)
+        overrides_map: dict[int, dict[int, Decimal]] = defaultdict(dict)
+
+        for t in targets:
+            if t.account_id:
+                overrides_map[t.account_id][t.asset_class_id] = t.target_pct
+            else:
+                defaults_map[t.account_type_id][t.asset_class_id] = t.target_pct
+
+        # 2. Get Summary Data
+        summary = PortfolioSummaryService.get_holdings_summary(user)
+        context['summary'] = summary
+
+        # Sidebar data
+        sidebar_data = PortfolioSummaryService.get_account_summary(user)
+        context['sidebar_data'] = sidebar_data
+
+        # Map account ID to total from sidebar data
+        account_totals = {}
+        for group in sidebar_data['groups'].values():
+            for acc in group['accounts']:
+                account_totals[acc['id']] = acc['total']
+
+        # 3. Build Account Types with rich context
+        account_types_qs = AccountType.objects.filter(accounts__user=user).distinct().order_by('group__sort_order', 'label')
+
+        accounts = Account.objects.filter(user=user).select_related('account_type')
+        account_map = {a.id: a for a in accounts}
+
+        # Account Type Grand Totals from service
+        at_totals = summary.account_type_grand_totals
+
+        rich_account_types = []
+        for at_obj in account_types_qs:
+            at: Any = at_obj
+            at_accounts = [a for a in accounts if a.account_type_id == at.id]
+
+            # Attach context expected by template
+            at.current_total_value = at_totals.get(at.code, Decimal(0))
+            at.target_map = defaults_map.get(at.id, {})
+
+            # Prepare accounts
+            for acc in at_accounts:
+                acc.current_total_value = account_totals.get(acc.id, Decimal(0))  # type: ignore
+                acc.target_map = overrides_map.get(acc.id, {})  # type: ignore
+
+            at.active_accounts = at_accounts
+            rich_account_types.append(at)
+
+        context['account_types'] = rich_account_types
+
+        # 4. Calculate detailed maps for Accounts and Types (Dollar values from Holdings)
+        holdings = Holding.objects.filter(account__user=user).select_related('security', 'account').only(
+            'account_id', 'security__asset_class_id', 'shares', 'current_price'
+        )
+
+        # account_id -> ac_id -> value
+        account_ac_map: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+        # at_id -> ac_id -> value
+        at_ac_map: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+
+        for h in holdings:
+            if h.current_price:
+                val = h.shares * h.current_price
+                if val > 0:
+                    ac_id = h.security.asset_class_id
+                    acc_id = h.account.id
+                    at_id = account_map[acc_id].account_type_id
+
+                    account_ac_map[acc_id][ac_id] += val
+                    at_ac_map[at_id][ac_id] += val
+
+        # Now populate maps on objects
+        # Map asset_class_id -> category_code helper
+        # (This might be useful if we want to cross-reference categories, but template uses ac_data hierarchy)
+
+        for at in rich_account_types:
+             # Populate AT maps
+             at.dollar_map = at_ac_map[at.id]
+             at.allocation_map = {}
+             if at.current_total_value > 0:
+                 for ac_id, val in at.dollar_map.items():
+                     at.allocation_map[ac_id] = (val / at.current_total_value) * 100
+
+             for acc in at.active_accounts:
+                  acc.dollar_map = account_ac_map[acc.id]
+                  acc.allocation_map = {}
+                  if acc.current_total_value > 0:
+                      for ac_id, val in acc.dollar_map.items():
+                          acc.allocation_map[ac_id] = (val / acc.current_total_value) * 100
+
+        # 5. Populate Cash Maps explicitly?
+        # The holdings loop handles the "Cash" Asset Class IF it exists as a holding.
+        # But our template logic for "Cash (Calculated)" often relies on `cash_asset_class_id`.
+
+        cash_ac = AssetClass.objects.filter(name='Cash').first()
+        context['cash_asset_class_id'] = cash_ac.id if cash_ac else None
+
+        # Calculate 'Portfolio Total Value' for template usage
+        context['portfolio_total_value'] = summary.grand_total
 
         return context
 
@@ -236,6 +334,9 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         # Summary has account_type_grand_totals (by code)
         at_totals = summary.account_type_grand_totals
 
+        # Map of AccountType.id -> total value, used by frontend JS for Wt. Target calcs
+        at_values: dict[int, Decimal] = {}
+
         for at_obj in account_types_qs:
             at: Any = at_obj
             at_accounts = [a for a in accounts if a.account_type_id == at.id]
@@ -244,10 +345,13 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
             at.current_total_value = at_totals.get(at.code, Decimal(0))
             at.target_map = defaults_map.get(at.id, {})
 
+            # Expose totals by AccountType.id for JS (target_allocations.html -> at_values JSON)
+            at_values[at.id] = at.current_total_value
+
             # Prepare accounts
             for acc in at_accounts:
-                acc.current_total_value = account_totals.get(acc.id, Decimal(0))
-                acc.target_map = overrides_map.get(acc.id, {})
+                acc.current_total_value = account_totals.get(acc.id, Decimal(0))  # type: ignore
+                acc.target_map = overrides_map.get(acc.id, {})  # type: ignore
 
             at.active_accounts = at_accounts
             account_types.append(at)
@@ -301,12 +405,15 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                   # Populate category map
                   acc.category_map = defaultdict(Decimal)
                   for ac_id, val in acc.dollar_map.items():
-                       cat_code = ac_id_to_cat.get(ac_id)
-                       if cat_code:
-                            acc.category_map[cat_code] += val
+                       holding_cat_code = ac_id_to_cat.get(ac_id)
+                       if holding_cat_code:
+                            acc.category_map[holding_cat_code] += val
 
         context['account_types'] = account_types
         context['portfolio_total_value'] = summary.grand_total
+
+        # Pass per-account-type totals for JS Wt. Target calculations
+        context['at_values'] = at_values
 
         # Pass defaults map for calculating inherited values in JS if needed
         # {at_id: {ac_id: pct}}

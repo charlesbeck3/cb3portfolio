@@ -5,9 +5,14 @@ from decimal import Decimal
 
 @dataclass
 class AccountTypeData:
+    # Dollar amounts
     current: Decimal = Decimal('0.00')
     target: Decimal = Decimal('0.00')
     variance: Decimal = Decimal('0.00')
+    # Pre-calculated percentages (of account type total)
+    current_pct: Decimal = Decimal('0.00')
+    target_pct: Decimal = Decimal('0.00')
+    variance_pct: Decimal = Decimal('0.00')
 
 
 @dataclass
@@ -28,6 +33,13 @@ class CategoryEntry:
     account_type_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    # Pre-calculated percentages for account types (of account type total)
+    account_type_current_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_target_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_variance_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_target_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_variance_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
 
 
 @dataclass
@@ -40,6 +52,13 @@ class GroupEntry:
     account_type_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    # Pre-calculated percentages for account types (of account type total)
+    account_type_current_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_target_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_variance_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_target_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_variance_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     asset_class_count: int = 0
 
 
@@ -53,6 +72,13 @@ class PortfolioSummary:
     account_type_grand_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_grand_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_grand_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    # Pre-calculated percentages for account types (of account type total)
+    account_type_grand_current_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_grand_target_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_grand_variance_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_grand_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_grand_target_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_grand_variance_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_type_percentages: dict[str, Decimal] = field(default_factory=dict)
     category_labels: dict[str, str] = field(default_factory=dict)
     group_labels: dict[str, str] = field(default_factory=dict)

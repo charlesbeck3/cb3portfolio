@@ -130,7 +130,10 @@ class PortfolioSummaryService:
             user, summary, category_group_map, account_totals, account_type_map
         )
 
-        # 4. Sort and Organize
+        # 4. Calculate Percentages (for all account type aggregations)
+        PortfolioSummaryService._calculate_percentages(summary)
+
+        # 5. Sort and Organize
         PortfolioSummaryService._sort_and_organize_summary(summary, category_group_map)
 
         return summary
@@ -185,6 +188,7 @@ class PortfolioSummaryService:
             cat_entry = summary.categories[category_code]
             cat_entry.total += value
             cat_entry.account_type_totals[account_type_code] += value
+            cat_entry.account_totals[holding.account_id] += value
 
             group_code = category_group_map.get(category_code, category_code)
             group_entry = summary.groups[group_code]
@@ -194,10 +198,12 @@ class PortfolioSummaryService:
 
             group_entry.total += value
             group_entry.account_type_totals[account_type_code] += value
+            group_entry.account_totals[holding.account_id] += value
 
             # Update grand totals
             summary.grand_total += value
             summary.account_type_grand_totals[account_type_code] += value
+            summary.account_grand_totals[holding.account_id] += value
 
     @staticmethod
     def _calculate_targets_and_variances(
@@ -268,16 +274,19 @@ class PortfolioSummaryService:
 
                         # Update Category
                         cat_data.account_type_target_totals[at_code] += target_dollars
+                        cat_data.account_target_totals[account_id] += target_dollars
                         cat_data.target_total += target_dollars
 
                         # Update Group
                         group_code = category_group_map.get(cat_code, cat_code)
                         group_entry = summary.groups[group_code]
                         group_entry.account_type_target_totals[at_code] += target_dollars
+                        group_entry.account_target_totals[account_id] += target_dollars
                         group_entry.target_total += target_dollars
 
                         # Update Grand Total
                         summary.account_type_grand_target_totals[at_code] += target_dollars
+                        summary.account_grand_target_totals[account_id] += target_dollars
                         summary.grand_target_total += target_dollars
 
                         found = True
@@ -305,6 +314,10 @@ class PortfolioSummaryService:
                 cat_data.account_type_variance_totals[at_code] = (
                     cat_data.account_type_totals[at_code] - cat_data.account_type_target_totals[at_code]
                 )
+            for acc_id in cat_data.account_totals:
+                cat_data.account_variance_totals[acc_id] = (
+                    cat_data.account_totals[acc_id] - cat_data.account_target_totals[acc_id]
+                )
             cat_data.variance_total = cat_data.total - cat_data.target_total
 
             group_code = category_group_map.get(cat_code, cat_code)
@@ -313,13 +326,85 @@ class PortfolioSummaryService:
                 group_entry.account_type_variance_totals[at_code] = (
                     group_entry.account_type_totals[at_code] - group_entry.account_type_target_totals[at_code]
                 )
+            for acc_id in group_entry.account_totals:
+                group_entry.account_variance_totals[acc_id] = (
+                    group_entry.account_totals[acc_id] - group_entry.account_target_totals[acc_id]
+                )
             group_entry.variance_total = group_entry.total - group_entry.target_total
 
         for at_code in summary.account_type_grand_totals:
             summary.account_type_grand_variance_totals[at_code] = (
                 summary.account_type_grand_totals[at_code] - summary.account_type_grand_target_totals[at_code]
             )
+        for acc_id in summary.account_grand_totals:
+            summary.account_grand_variance_totals[acc_id] = (
+                summary.account_grand_totals[acc_id] - summary.account_grand_target_totals[acc_id]
+            )
         summary.grand_variance_total = summary.grand_total - summary.grand_target_total
+
+    @staticmethod
+    def _calculate_percentages(summary: PortfolioSummary) -> None:
+        """
+        Calculate all percentage values for account type aggregations.
+        This pre-calculates percentages so templates don't need to do division.
+        """
+        # Helper function to calculate percentage safely
+        def calc_pct(value: Decimal, total: Decimal) -> Decimal:
+            if total == 0:
+                return Decimal('0')
+            return (value / total) * Decimal('100')
+
+        # 1. Calculate percentages for asset class rows (AccountTypeData)
+        for cat_data in summary.categories.values():
+            for ac_data in cat_data.asset_classes.values():
+                for at_code, at_data in ac_data.account_types.items():
+                    at_total = summary.account_type_grand_totals.get(at_code, Decimal('0'))
+                    at_data.current_pct = calc_pct(at_data.current, at_total)
+                    at_data.target_pct = calc_pct(at_data.target, at_total)
+                    at_data.variance_pct = at_data.current_pct - at_data.target_pct
+
+        # 2. Calculate percentages for category subtotals
+        for cat_data in summary.categories.values():
+            for at_code in cat_data.account_type_totals:
+                at_total = summary.account_type_grand_totals.get(at_code, Decimal('0'))
+                cat_data.account_type_current_pct[at_code] = calc_pct(
+                    cat_data.account_type_totals[at_code], at_total
+                )
+                cat_data.account_type_target_pct[at_code] = calc_pct(
+                    cat_data.account_type_target_totals[at_code], at_total
+                )
+                cat_data.account_type_variance_pct[at_code] = (
+                    cat_data.account_type_current_pct[at_code] -
+                    cat_data.account_type_target_pct[at_code]
+                )
+
+        # 3. Calculate percentages for group totals
+        for group_data in summary.groups.values():
+            for at_code in group_data.account_type_totals:
+                at_total = summary.account_type_grand_totals.get(at_code, Decimal('0'))
+                group_data.account_type_current_pct[at_code] = calc_pct(
+                    group_data.account_type_totals[at_code], at_total
+                )
+                group_data.account_type_target_pct[at_code] = calc_pct(
+                    group_data.account_type_target_totals[at_code], at_total
+                )
+                group_data.account_type_variance_pct[at_code] = (
+                    group_data.account_type_current_pct[at_code] -
+                    group_data.account_type_target_pct[at_code]
+                )
+
+        # 4. Calculate percentages for grand totals
+        for at_code in summary.account_type_grand_totals:
+            at_total = summary.account_type_grand_totals[at_code]
+            # For grand totals, current% should always be 100% (current / current)
+            summary.account_type_grand_current_pct[at_code] = Decimal('100')
+            summary.account_type_grand_target_pct[at_code] = calc_pct(
+                summary.account_type_grand_target_totals[at_code], at_total
+            )
+            summary.account_type_grand_variance_pct[at_code] = (
+                summary.account_type_grand_current_pct[at_code] -
+                summary.account_type_grand_target_pct[at_code]
+            )
 
     @staticmethod
     def _sort_and_organize_summary(summary: PortfolioSummary, category_group_map: dict[str, str]) -> None:
