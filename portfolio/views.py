@@ -242,19 +242,26 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                 total = account_values[acc.id]
                 acc.current_total_value = total
                 acc.allocation_map = {}
+                acc.dollar_map = {}
                 if total > 0:
                      for ac_id, val in account_ac_values[acc.id].items():
                          acc.allocation_map[ac_id] = (val / total) * 100
+                         acc.dollar_map[ac_id] = val
 
                 # Attach overrides context
                 acc.target_map = overrides_map.get(acc.id, {})
 
             at.active_accounts = at_accounts
-            at.current_total_value = at_values[at.id]
+
+            # Calculate aggregate percentages for account type
+            at_total = at_values[at.id]
+            at.current_total_value = at_total
             at.allocation_map = {}
-            if at.current_total_value > 0:
-                for ac_id, val in at_ac_values[at.id].items():
-                    at.allocation_map[ac_id] = (val / at.current_total_value) * 100
+            at.dollar_map = {}
+            if at_total > 0:
+                 for ac_id, val in at_ac_values[at.id].items():
+                     at.allocation_map[ac_id] = (val / at_total) * 100
+                     at.dollar_map[ac_id] = val
 
             # Attach defaults context
             at.target_map = defaults_map.get(at.id, {})
@@ -371,11 +378,32 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                   )
 
                   # Pack data for template
+                  # Pack data for template
+                  # We need to recalculate dollar maps for category totals
+                  cat_dollar_map: dict[int, Decimal] = defaultdict(Decimal)
+                  cat_account_dollar_map: dict[int, Decimal] = defaultdict(Decimal)
+
+                  # Re-sum dollars for this category
+                  # Since we already have allocation_map (sums of pcts), we could derive or restate
+                  # But safer to sum dollars
+                  for acc_type in account_types:
+                        # sum over assets in this category
+                        for asset_obj in cat_data['assets']:
+                             val = at_ac_values[acc_type.id].get(asset_obj.id, Decimal(0))
+                             cat_dollar_map[acc_type.id] += val
+
+                        for acc_obj in acc_type.active_accounts:
+                             for asset_obj in cat_data['assets']:
+                                  v = account_ac_values[acc_obj.id].get(asset_obj.id, Decimal(0))
+                                  cat_account_dollar_map[acc_obj.id] += v
+
                   cat_info = {
                       'obj': category,
                       'total_value': cat_data['total_value'],
                       'allocation_map': cat_data['allocation_map'],
-                      'account_allocation_map': cat_data['account_allocation_map']
+                      'account_allocation_map': cat_data['account_allocation_map'],
+                      'dollar_map': cat_dollar_map,
+                      'account_dollar_map': cat_account_dollar_map,
                   }
 
                   cat_list.append((cat_info, sorted_assets))
@@ -387,6 +415,7 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
 
         # Calculate Portfolio Total
         portfolio_total = sum(at_values.values())
+        context['at_values'] = at_values
         context['portfolio_total_value'] = portfolio_total
         context['sidebar_data'] = PortfolioSummaryService.get_account_summary(user)
 
@@ -609,7 +638,6 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
 
                 # Delete stale defaults?
                 # (Asset classes not in save list? We iterates all non-cash + cash, so should be fine)
-                # But if asset classes were removed from system? (Unlikely)
 
                 # Save Overrides
                 # Logic: We have a map of overrides explicitly set or auto-calculated (cash).

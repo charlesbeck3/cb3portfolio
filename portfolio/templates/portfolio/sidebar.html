@@ -36,11 +36,9 @@
                                 <div class="text-success small fw-bold">
                                     ${{ account.total|floatformat:0|intcomma }}
                                 </div>
-                                {% if account.absolute_deviation_pct > 0 %}
                                 <div class="text-muted small" style="font-size: 0.75em;" title="Absolute Deviation vs Target">
-                                    dev: {{ account.absolute_deviation_pct|accounting_percent:1 }}
+                                    drift: {{ account.absolute_deviation_pct|accounting_percent:1 }}
                                 </div>
-                                {% endif %}
                             </div>
                         </li>
                         </a>
