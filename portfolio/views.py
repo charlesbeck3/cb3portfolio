@@ -313,11 +313,9 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         context['defaults_map'] = defaults_map
 
         # Add Cash Asset ID for template lookups
-        try:
-             cash_ac = AssetClass.objects.get(name='Cash')
-             context['cash_asset_class_id'] = cash_ac.id
-        except AssetClass.DoesNotExist:
-             context['cash_asset_class_id'] = None
+        # Get Cash Asset Class ID for template logic
+        cash_ac = AssetClass.objects.filter(name='Cash').first()
+        context['cash_asset_class_id'] = cash_ac.id if cash_ac else None
 
         return context
 
