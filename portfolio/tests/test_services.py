@@ -6,6 +6,9 @@ from django.test import TestCase
 
 from portfolio.models import (
     Account,
+    AccountGroup,
+    AccountType,
+    AssetCategory,
     AssetClass,
     Holding,
     Institution,
@@ -318,3 +321,182 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         self.assertEqual(roth_account['total'], Decimal('100.00'))
         self.assertEqual(roth_account['absolute_deviation'], Decimal('20.00'))
         self.assertEqual(roth_account['absolute_deviation_pct'], Decimal('20.00'))
+
+
+class VTargetSubtotalTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(username="wt_user", password="password")
+        self.institution = Institution.objects.create(name="Test Bank")
+
+        # Categories and groups mirroring US Equities
+        self.cat_us_eq, _ = AssetCategory.objects.get_or_create(code="US_EQUITIES", label="US Equities")
+
+        # Simple account type and account (WF S&P analogue)
+        self.group_equities = AccountGroup.objects.create(name="Equities", sort_order=1)
+        self.at_taxable = AccountType.objects.create(
+            code="WF_SAP_TYPE",
+            label="WF S&P Type",
+            group=self.group_equities,
+            tax_treatment="TAXABLE",
+        )
+
+        self.account_wf = Account.objects.create(
+            user=self.user,
+            name="WF S&P",
+            account_type=self.at_taxable,
+            institution=self.institution,
+        )
+
+        # Asset class: US Equities
+        self.ac_us_equities = AssetClass.objects.create(name="US Equities", category=self.cat_us_eq)
+
+        # Security and holding: 69,983 current value
+        self.sec_us = Security.objects.create(
+            ticker="USEQ",
+            name="US Equities Fund",
+            asset_class=self.ac_us_equities,
+        )
+
+        Holding.objects.create(
+            account=self.account_wf,
+            security=self.sec_us,
+            shares=Decimal("69983.00"),
+            current_price=Decimal("1.00"),
+        )
+
+        # Override target: 100% US Equities for this account
+        TargetAllocation.objects.create(
+            user=self.user,
+            account_type=self.at_taxable,
+            account=self.account_wf,
+            asset_class=self.ac_us_equities,
+            target_pct=Decimal("100.00"),
+        )
+
+    def test_us_equities_category_vtarget_is_current_minus_target(self) -> None:
+        """For an account fully invested in its override target, vTarget dollars should be zero at both row and category subtotal level."""
+
+        summary = PortfolioSummaryService.get_holdings_summary(self.user)
+
+        # Locate US Equities category and asset class
+        us_cat = summary.categories["US_EQUITIES"]
+        ac_entry = us_cat.asset_classes["US Equities"]
+
+        # Current and target dollars at asset-class level for this account type
+        at_code = self.at_taxable.code
+        at_data = ac_entry.account_types[at_code]
+
+        self.assertEqual(at_data.current, Decimal("69983.00"))
+        self.assertEqual(at_data.target, Decimal("69983.00"))
+        self.assertEqual(at_data.variance, Decimal("0.00"))
+
+        # Per-account target dollars via account_asset_targets map
+        ac_id = ac_entry.id
+        assert ac_id is not None
+        acct_targets_for_account = summary.account_asset_targets[self.account_wf.id]
+        self.assertEqual(acct_targets_for_account[ac_id], Decimal("69983.00"))
+
+        # Category-level per-account totals should be consistent
+        cat_curr = us_cat.account_totals[self.account_wf.id]
+        cat_target = us_cat.account_target_totals[self.account_wf.id]
+        self.assertEqual(cat_curr, Decimal("69983.00"))
+        self.assertEqual(cat_target, Decimal("69983.00"))
+        self.assertEqual(cat_curr - cat_target, Decimal("0.00"))
+
+        # And pre-calculated category variance for this account should match the same subtraction
+        self.assertEqual(
+            us_cat.account_variance_totals[self.account_wf.id],
+            cat_curr - cat_target,
+        )
+
+
+class CashVTargetTests(TestCase):
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(username="cash_test_user", password="password")
+        self.institution = Institution.objects.create(name="Test Bank")
+
+        # Cash category
+        self.cat_cash, _ = AssetCategory.objects.get_or_create(code="CASH", label="Cash")
+
+        # Account type and account (WF Cash analogue)
+        self.group_cash = AccountGroup.objects.create(name="Cash", sort_order=1)
+        self.at_cash = AccountType.objects.create(
+            code="WF_CASH_TYPE",
+            label="WF Cash Type",
+            group=self.group_cash,
+            tax_treatment="TAXABLE",
+        )
+
+        self.account_wf_cash = Account.objects.create(
+            user=self.user,
+            name="WF Cash Account",
+            account_type=self.at_cash,
+            institution=self.institution,
+        )
+
+        # Cash asset class
+        self.ac_cash = AssetClass.objects.create(name="Cash", category=self.cat_cash)
+
+        # Security and holding: $50,000 cash equivalent
+        self.sec_cash = Security.objects.create(
+            ticker="CASH",
+            name="Cash Fund",
+            asset_class=self.ac_cash,
+        )
+
+        Holding.objects.create(
+            account=self.account_wf_cash,
+            security=self.sec_cash,
+            shares=Decimal("50000.00"),
+            current_price=Decimal("1.00"),
+        )
+
+        # Override target: 100% Cash for this account
+        TargetAllocation.objects.create(
+            user=self.user,
+            account_type=self.at_cash,
+            account=self.account_wf_cash,
+            asset_class=self.ac_cash,
+            target_pct=Decimal("100.00"),
+        )
+
+    def test_cash_vtarget_is_current_minus_target(self) -> None:
+        """For a cash account with 100% allocation, vTarget should be 0% when current and target are both 100%."""
+
+        summary = PortfolioSummaryService.get_holdings_summary(self.user)
+
+        # Locate Cash asset class
+        cash_cat = summary.categories["CASH"]
+        cash_ac_entry = cash_cat.asset_classes["Cash"]
+
+        # Current and target percentages at asset-class level for this account type
+        at_code = self.at_cash.code
+        at_data = cash_ac_entry.account_types[at_code]
+
+        self.assertEqual(at_data.current_pct, Decimal("100.00"))
+        self.assertEqual(at_data.target_pct, Decimal("100.00"))
+        self.assertEqual(at_data.variance_pct, Decimal("0.00"))
+
+        # Current and target dollars at asset-class level for this account type
+        self.assertEqual(at_data.current, Decimal("50000.00"))
+        self.assertEqual(at_data.target, Decimal("50000.00"))
+        self.assertEqual(at_data.variance, Decimal("0.00"))
+
+        # Per-account target dollars via account_asset_targets map
+        ac_id = cash_ac_entry.id
+        assert ac_id is not None
+        acct_targets_for_account = summary.account_asset_targets[self.account_wf_cash.id]
+        self.assertEqual(acct_targets_for_account[ac_id], Decimal("50000.00"))
+
+        # Category-level per-account totals should be consistent
+        cat_curr = cash_cat.account_totals[self.account_wf_cash.id]
+        cat_target = cash_cat.account_target_totals[self.account_wf_cash.id]
+        self.assertEqual(cat_curr, Decimal("50000.00"))
+        self.assertEqual(cat_target, Decimal("50000.00"))
+        self.assertEqual(cat_curr - cat_target, Decimal("0.00"))
+
+        # And pre-calculated category variance for this account should match the same subtraction
+        self.assertEqual(
+            cash_cat.account_variance_totals[self.account_wf_cash.id],
+            cat_curr - cat_target,
+        )

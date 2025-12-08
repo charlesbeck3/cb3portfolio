@@ -79,6 +79,10 @@ class PortfolioSummary:
     account_grand_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_grand_target_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_grand_variance_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    # Per-account, per-asset-class target dollars (account_id -> asset_class_id -> target $)
+    account_asset_targets: dict[int, dict[int, Decimal]] = field(
+        default_factory=lambda: defaultdict(lambda: defaultdict(Decimal))
+    )
     account_type_percentages: dict[str, Decimal] = field(default_factory=dict)
     category_labels: dict[str, str] = field(default_factory=dict)
     group_labels: dict[str, str] = field(default_factory=dict)

@@ -33,11 +33,11 @@
                 <th scope="col" class="text-center small border-top-0 text-muted" style="width: 70px; min-width: 70px;">Wt. Target</th>
                 <th scope="col" class="text-center small border-top-0 text-muted" style="width: 70px; min-width: 70px;">Variance</th>
                 
-                <!-- Individual Accounts Sub-headers -->
+                <!-- Individual Accounts Sub-headers (Current, Target, vTarget) -->
                 {% for acc in at.active_accounts %}
                     <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ at.id }}" style="width: 60px; min-width: 60px;">Curr</th>
-                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ at.id }}" style="width: 90px; min-width: 90px;">{% if mode == 'percent' %}Override{% else %}Target{% endif %}</th>
-                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ at.id }}" style="width: 70px; min-width: 70px;">{% if mode == 'percent' %}Eff{% else %}Var{% endif %}</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ at.id }}" style="width: 90px; min-width: 90px;">Target</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ at.id }}" style="width: 70px; min-width: 70px;">vTarget</th>
                 {% endfor %}
             {% endfor %}
             
@@ -138,7 +138,16 @@
                             <!-- Individual Accounts -->
                             {% for acc in at.active_accounts %}
                                 <!-- Current -->
-                                <td class="text-end pe-1 text-muted small table-warning d-none col-acc-{{ at.id }}">
+                                <td class="text-end pe-1 text-muted small table-warning d-none col-acc-{{ at.id }}"
+                                    {% if mode == 'percent' %}
+                                        {% with curr_val=acc.dollar_map|get_item:ac_data.id|default:0 %}
+                                            {% if acc.current_total_value > 0 %}
+                                                data-acc-current-pct="{{ curr_val|percentage_of:acc.current_total_value }}"
+                                            {% else %}
+                                                data-acc-current-pct="0"
+                                            {% endif %}
+                                        {% endwith %}
+                                    {% endif %}>
                                      {% if mode == 'percent' %}
                                          {% if acc.current_total_value > 0 %}
                                             {{ acc.dollar_map|get_item:ac_data.id|default:0|percentage_of:acc.current_total_value|accounting_percent:1 }}
@@ -168,13 +177,27 @@
                                             {{ acc.target_map|get_item:ac_data.id|default:0|accounting_percent:1 }}
                                         {% endif %}
                                     {% else %}
-                                         <span id="{{ id_prefix }}target-{{ acc.id }}-{{ ac_data.id }}">--</span>
+                                        {% with tgt_map=summary.account_asset_targets|get_item:acc.id %}
+                                            {% with tgt=tgt_map|get_item:ac_data.id %}
+                                                {{ tgt|default:0|accounting_amount:0 }}
+                                            {% endwith %}
+                                        {% endwith %}
                                     {% endif %}
                                 </td>
-                                <!-- Effective % / Variance $ -->
+                                <!-- vTarget: Variance from Target (Current - Target) -->
                                 <td class="text-end pe-2 small table-warning d-none col-acc-{{ at.id }}">
-                                    <span id="{{ id_prefix }}{% if mode == 'percent' %}eff{% else %}var{% endif %}-{{ acc.id }}-{{ ac_data.id }}" 
-                                          class="{% if mode == 'percent' %}text-muted{% endif %}">--</span>
+                                    {% if mode == 'percent' %}
+                                        <span id="{{ id_prefix }}var-{{ acc.id }}-{{ ac_data.id }}" 
+                                              class="text-muted">--</span>
+                                    {% else %}
+                                        {% with curr_val=acc.dollar_map|get_item:ac_data.id|default:0 %}
+                                            {% with tgt_map=summary.account_asset_targets|get_item:acc.id %}
+                                                {% with tgt=tgt_map|get_item:ac_data.id|default:0 %}
+                                                    {{ curr_val|subtract:tgt|accounting_amount:0 }}
+                                                {% endwith %}
+                                            {% endwith %}
+                                        {% endwith %}
+                                    {% endif %}
                                 </td>
                             {% endfor %}
                         {% endfor %}
@@ -261,12 +284,16 @@
                              </span>
                         </td>
                         <td class="text-end pe-1 small text-dark">
-                             <!-- Variance Sum -->
+                             <!-- Variance Sum: Current - Target for this Account Type and Category -->
                              <span id="{{ id_prefix }}sub-var-{{ at.id }}-{{ category_code }}">
                                 {% if mode == 'percent' %}
                                     {{ cat_data.account_type_variance_pct|get_item:at.code|accounting_percent:1 }}
                                 {% else %}
-                                    {{ cat_data.account_type_variance_totals|get_item:at.code|default:0|accounting_amount:0 }}
+                                    {% with cur_val=cat_data.account_type_totals|get_item:at.code|default:0 %}
+                                        {% with tgt_val=cat_data.account_type_target_totals|get_item:at.code|default:0 %}
+                                            {{ cur_val|subtract:tgt_val|accounting_amount:0 }}
+                                        {% endwith %}
+                                    {% endwith %}
                                 {% endif %}
                              </span>
                         </td>
@@ -303,19 +330,23 @@
                                  </span>
                             </td>
                             <td class="text-end pe-2 small table-warning d-none col-acc-{{ at.id }} text-dark">
-                                 <!-- Effective/Var Sum -->
+                                 <!-- Effective/Var Sum: Current - Target for this Account and Category -->
                                  <span id="{{ id_prefix }}sub-{% if mode == 'percent' %}eff{% else %}var{% endif %}-{{ acc.id }}-{{ category_code }}">
-                                     {% with acc_var=cat_data.account_variance_totals|get_item:acc.id %}
-                                        {% if mode == 'percent' %}
+                                     {% if mode == 'percent' %}
+                                         {% with acc_var=cat_data.account_variance_totals|get_item:acc.id %}
                                              {% if acc.current_total_value > 0 %}
                                                 {{ acc_var|default:0|percentage_of:acc.current_total_value|accounting_percent:1 }}
                                              {% else %}
                                                 0.0%
                                              {% endif %}
-                                        {% else %}
-                                             {{ acc_var|default:0|accounting_amount:0 }}
-                                        {% endif %}
-                                     {% endwith %}
+                                         {% endwith %}
+                                     {% else %}
+                                         {% with acc_val=cat_data.account_totals|get_item:acc.id|default:0 %}
+                                             {% with acc_target=cat_data.account_target_totals|get_item:acc.id|default:0 %}
+                                                 {{ acc_val|subtract:acc_target|accounting_amount:0 }}
+                                             {% endwith %}
+                                         {% endwith %}
+                                     {% endif %}
                                  </span>
                             </td>
                         {% endfor %}
@@ -343,7 +374,7 @@
                              {% if mode == 'percent' %}
                                 {{ cat_data.variance_total|percentage_of:portfolio_total_value|accounting_percent:1 }}
                             {% else %}
-                                {{ cat_data.variance_total|accounting_amount:0 }}
+                                {{ cat_data.total|subtract:cat_data.target_total|accounting_amount:0 }}
                             {% endif %}
                         </span>
                     </td>
@@ -411,7 +442,11 @@
                                 {% if mode == 'percent' %}
                                     {{ group_data.account_type_variance_pct|get_item:at.code|accounting_percent:1 }}
                                 {% else %}
-                                    {{ group_data.account_type_variance_totals|get_item:at.code|default:0|accounting_amount:0 }}
+                                    {% with cur_val=group_data.account_type_totals|get_item:at.code|default:0 %}
+                                        {% with tgt_val=group_data.account_type_target_totals|get_item:at.code|default:0 %}
+                                            {{ cur_val|subtract:tgt_val|accounting_amount:0 }}
+                                        {% endwith %}
+                                    {% endwith %}
                                 {% endif %}
                             </span>
                     </td>
@@ -448,17 +483,21 @@
                         </td>
                         <td class="text-end pe-2 small table-warning d-none col-acc-{{ at.id }} text-dark">
                                 <span id="{{ id_prefix }}grp-{% if mode == 'percent' %}eff{% else %}var{% endif %}-{{ acc.id }}-{{ group_code }}">
-                                     {% with acc_var=group_data.account_variance_totals|get_item:acc.id %}
-                                        {% if mode == 'percent' %}
+                                     {% if mode == 'percent' %}
+                                         {% with acc_var=group_data.account_variance_totals|get_item:acc.id %}
                                              {% if acc.current_total_value > 0 %}
                                                 {{ acc_var|default:0|percentage_of:acc.current_total_value|accounting_percent:1 }}
                                              {% else %}
                                                 0.0%
                                              {% endif %}
-                                        {% else %}
-                                             {{ acc_var|default:0|accounting_amount:0 }}
-                                        {% endif %}
-                                     {% endwith %}
+                                         {% endwith %}
+                                     {% else %}
+                                         {% with acc_val=group_data.account_totals|get_item:acc.id|default:0 %}
+                                             {% with acc_target=group_data.account_target_totals|get_item:acc.id|default:0 %}
+                                                 {{ acc_val|subtract:acc_target|accounting_amount:0 }}
+                                             {% endwith %}
+                                         {% endwith %}
+                                     {% endif %}
                                 </span>
                         </td>
                     {% endfor %}
@@ -486,7 +525,7 @@
                         {% if mode == 'percent' %}
                             {{ group_data.variance_total|percentage_of:portfolio_total_value|accounting_percent:1 }}
                         {% else %}
-                            {{ group_data.variance_total|accounting_amount:0 }}
+                            {{ group_data.total|subtract:group_data.target_total|accounting_amount:0 }}
                         {% endif %}
                     </span>
                 </td>
@@ -563,7 +602,7 @@
                     <!-- CASH: Current (Calculated from Holdings) -->
                     <td class="text-end pe-2 d-none col-acc-{{ at.id }} text-muted small table-warning">
                          {% if mode == 'percent' %}
-                             {{ acc.allocation_map|get_item:cash_asset_class_id|default:0|accounting_percent:1 }}
+                             <span data-acc-current-pct="{{ acc.allocation_map|get_item:cash_asset_class_id|default:0 }}">{{ acc.allocation_map|get_item:cash_asset_class_id|default:0|accounting_percent:1 }}</span>
                          {% else %}
                              {{ acc.dollar_map|get_item:cash_asset_class_id|default:0|accounting_amount:0 }}
                          {% endif %}
@@ -588,14 +627,32 @@
                                  {{ acc.target_map|get_item:cash_asset_class_id|default:0|accounting_percent:1 }}
                              {% endif %}
                         {% else %}
-                             <span id="{{ id_prefix }}cash-target-{{ acc.id }}">--</span>
+                             {% with tgt_map=summary.account_asset_targets|get_item:acc.id %}
+                                 {% with tgt=tgt_map|get_item:cash_asset_class_id %}
+                                     {{ tgt|default:0|accounting_amount:0 }}
+                                 {% endwith %}
+                             {% endwith %}
                         {% endif %}
                     </td>
 
                     <!-- CASH: Effective / Var -->
                     <td class="text-end pe-2 d-none col-acc-{{ at.id }} table-warning">
                         <span id="{{ id_prefix }}cash-{% if mode == 'percent' %}eff{% else %}var{% endif %}-{{ acc.id }}">
-                            {% if mode == 'percent' %}100%{% else %}--{% endif %}
+                            {% if mode == 'percent' %}
+                                {% with cur_pct=acc.allocation_map|get_item:cash_asset_class_id|default:0 %}
+                                    {% with tgt_pct=acc.target_map|get_item:cash_asset_class_id|default:0 %}
+                                        {{ cur_pct|subtract:tgt_pct|accounting_percent:1 }}
+                                    {% endwith %}
+                                {% endwith %}
+                            {% else %}
+                                {% with cur_val=acc.dollar_map|get_item:cash_asset_class_id|default:0 %}
+                                    {% with tgt_map=summary.account_asset_targets|get_item:acc.id %}
+                                        {% with tgt_val=tgt_map|get_item:cash_asset_class_id|default:0 %}
+                                            {{ cur_val|subtract:tgt_val|accounting_amount:0 }}
+                                        {% endwith %}
+                                    {% endwith %}
+                                {% endwith %}
+                            {% endif %}
                         </span>
                     </td>
                 {% endfor %}

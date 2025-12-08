@@ -186,20 +186,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Let's use specific selector for the first table rows to drive logic
         const primaryAssetRows = document.querySelectorAll('#allocations-table tr[data-ac-id]');
         
-        const aggTargetDollars = {}; // acId -> dollars
-        const atTargetDollars = {}; // atId -> {acId: dollars}
-        const atTotalDollars = {}; // atId -> total target dollars
-        
-        // Tracking for Total Row Dollars
-        const atTotalTargetDefaultFromPct = {}; // atId -> sum(AT Total * DefPct)
-        const atTotalAggDollars = {}; // atId -> sum(aggDollars)
-        
-        const accountEffectiveCash = {}; // accId -> val
-        const atEffectiveCashDollars = {}; // atId -> dollars
-        
-        // To help with Money Table Var calculation:
-        // We need Current Dollar Values. We don't have them in JS dataObj except implicitly via server templated columns.
-        // We can grab them from DOM (2nd table current columns).
+        const aggTargetDollars = {}; // acId -> dollars (percent-table only)
+        const atTargetDollars = {}; // atId -> {acId: dollars} (percent-table only)
         
         const accountIds = new Set();
         overrideInputs.forEach(inp => accountIds.add(inp.dataset.accId));
@@ -237,12 +225,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 accTotalEffectiveNonCash += effective;
                 
-                // Update UI for Account Effective (%)
-                const effSpan = document.getElementById(`eff-${accId}-${acId}`);
-                if(effSpan) { 
-                    effSpan.innerHTML = formatPct(effective);  
-                    if(hasOverrides && accOverrides.hasOwnProperty(acId)) effSpan.classList.add('fw-bold'); 
-                    else effSpan.classList.remove('fw-bold');
+                // Update UI for per-account vTarget (Current - Target) in percent table
+                const pctVarSpan = document.getElementById(`var-${accId}-${acId}`);
+                if (pctVarSpan) {
+                    const varTd = pctVarSpan.parentElement;
+                    const targetTd = varTd ? varTd.previousElementSibling : null;
+                    const currTd = targetTd ? targetTd.previousElementSibling : null;
+                    if (currTd) {
+                        const currentAttr = currTd.getAttribute('data-acc-current-pct');
+                        const currentPct = parseFloat(currentAttr || '0');
+                        const variance = currentPct - effective;
+                        pctVarSpan.innerHTML = formatPct(variance);
+                        pctVarSpan.className = variance >= 0 ? 'text-success' : 'text-danger';
+                    }
                 }
                 
                 // Aggregate Dollars
@@ -255,23 +250,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (!aggTargetDollars[acId]) aggTargetDollars[acId] = 0;
                 aggTargetDollars[acId] += dollars;
                 
-                // --- MONEY TABLE ACCOUNT UPDATES ---
-                const moneyTargetEl = document.getElementById(`money-target-${accId}-${acId}`);
-                if (moneyTargetEl) moneyTargetEl.innerHTML = formatMoney(dollars);
-                
-                const moneyVarEl = document.getElementById(`money-var-${accId}-${acId}`);
-                if (moneyVarEl) {
-                    // Find Current $ from DOM sibling
-                    const parentTd = moneyVarEl.parentElement;
-                    const targetTd = parentTd.previousElementSibling;
-                    const currTd = targetTd ? targetTd.previousElementSibling : null;
-                    if (currTd) {
-                        const currVal = parseAccounting(currTd.innerText);
-                        const v = currVal - dollars;
-                        moneyVarEl.innerHTML = formatMoney(v);
-                        moneyVarEl.className = (v >= 0 ? 'text-success' : 'text-danger');
-                    }
-                }
             });
             
             // Process Cash
@@ -299,41 +277,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 else cashSpan.classList.remove('text-danger');
             }
             
-            const cashDollars = accValue * (cashEff/100);
-            if (!atEffectiveCashDollars[atId]) atEffectiveCashDollars[atId] = 0;
-            atEffectiveCashDollars[atId] += cashDollars;
-            
-            // Money Table Cash
-            const moneyCashTarget = document.getElementById(`money-cash-target-${accId}`);
-            if (moneyCashTarget) moneyCashTarget.innerHTML = formatMoney(cashDollars);
-            
-            const moneyCashVar = document.getElementById(`money-cash-var-${accId}`);
-            if (moneyCashVar) {
-                 const pTd = moneyCashVar.parentElement;
-                 const tTd = pTd.previousElementSibling;
-                 const cTd = tTd ? tTd.previousElementSibling : null;
-                 if (cTd) {
-                      const cVal = parseAccounting(cTd.innerText);
-                      const v = cVal - cashDollars;
-                      moneyCashVar.innerHTML = formatMoney(v);
-                      moneyCashVar.className = (v >= 0 ? 'text-success' : 'text-danger');
-                 }
+            // Update cash variance (Current - Target) in percent table
+            const cashVarSpan = document.getElementById(`cash-var-${accId}`);
+            if (cashVarSpan) {
+                // Find the cash current cell by looking for the cell with data-acc-current-pct attribute in the cash row
+                const cashRow = cashVarSpan.closest('tr');
+                const cashCurrentCell = cashRow.querySelector('[data-acc-current-pct]');
+                if (cashCurrentCell) {
+                    const cashCurrentPct = parseFloat(cashCurrentCell.getAttribute('data-acc-current-pct') || '0');
+                    const cashVariance = cashCurrentPct - cashEff;
+                    cashVarSpan.innerHTML = formatPct(cashVariance);
+                    cashVarSpan.className = cashVariance >= 0 ? 'text-success' : 'text-danger';
+                }
             }
             
             // Total Row for Account
             const totSpan = document.getElementById(`total-eff-${accId}`);
             if(totSpan) totSpan.innerHTML = formatPct(accTotalEffectiveNonCash + cashEff);
             
-            // Money Table Total
-            const moneyTotalTarget = document.getElementById(`money-total-target-${accId}`);
-            if (moneyTotalTarget) {
-                 // Sum of all dollars calculated above + cash dollars
-                 // Or just Account Value * (Total Pct/100) ? 
-                 // If total pct != 100, then target total != account value.
-                 const totalAlloc = accTotalEffectiveNonCash + cashEff;
-                 const totalDol = accValue * (totalAlloc / 100);
-                 moneyTotalTarget.innerHTML = formatMoney(totalDol);
-            }
         }
         
         // 4. Update Aggregates (Account Types & Portfolio)
@@ -352,7 +313,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         const atTotalValues = dataObj.at_values;
         
-        // Track Category Totals
+        // Track Category Totals (percent table only)
         const categoryTargets = {}; 
         const atCategoryTargets = {}; 
         
@@ -375,49 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
                   // Note: Variance is now pre-calculated in the service layer
                   // and rendered directly in the template. No need to recalculate here.
                   
-                  // MONEY TABLE UPDATES
-                  // Target $ (Derived from Default Input)
-                  // Only update if we have a default percentage for this combination
-                  if (defaults[atId] && defaults[atId][acId] !== undefined) {
-                      const defPct = parseFloat(defaults[atId][acId]) || 0;
-                      const defDollars = totalVal * (defPct / 100);
-                      
-                      // Accumulate to subtotal
-                      if (!atTotalTargetDefaultFromPct[atId]) atTotalTargetDefaultFromPct[atId] = 0;
-                      atTotalTargetDefaultFromPct[atId] += defDollars;
-                      
-                      // Update the DOM element
-                      const moneyDefEl = document.getElementById(`money-def-${atId}-${acId}`);
-                      if (moneyDefEl) {
-                          moneyDefEl.innerHTML = formatMoney(defDollars);
-                          // Ensure visibility
-                          moneyDefEl.classList.remove('text-muted'); 
-                      }
-                  }
-                  
-                  // Aggregated Target $
-                  if (!atTotalAggDollars[atId]) atTotalAggDollars[atId] = 0;
-                  atTotalAggDollars[atId] += dollars;
-                  
-                  const moneyAggEl = document.getElementById(`money-agg-${atId}-${acId}`);
-                  if (moneyAggEl) moneyAggEl.innerHTML = formatMoney(dollars);
-                  
-                  // Variance $ (Current - Aggregated Target $)
-                  const moneyVarEl = document.getElementById(`money-var-${atId}-${acId}`);
-                  if (moneyVarEl) {
-                       // Get Current from DOM
-                       const pTd = moneyVarEl.parentElement;
-                       const aggTd = pTd.previousElementSibling;
-                       const defTd = aggTd ? aggTd.previousElementSibling : null;
-                       const curTd = defTd ? defTd.previousElementSibling : null;
-                       
-                       if (curTd) {
-                            const curVal = parseAccounting(curTd.innerText);
-                            const v = curVal - dollars;
-                            moneyVarEl.innerHTML = formatMoney(v);
-                            moneyVarEl.className = (v >= 0 ? 'text-success' : 'text-danger');
-                       }
-                  }
+                  // Money-table cells are now rendered from backend; no JS updates here.
 
                   // Accumulate Category
                   if (catCode) {
@@ -432,24 +351,6 @@ document.addEventListener('DOMContentLoaded', function() {
              const portPct = portfolioTotal > 0 ? (totalDollars / portfolioTotal * 100) : 0;
              document.getElementById(`row-total-${acId}`).innerHTML = formatPct(portPct);
              
-             // Money Table Portfolio Total
-             // Target $
-             const monRowTot = document.getElementById(`money-row-total-${acId}`);
-             if (monRowTot) monRowTot.innerHTML = formatMoney(totalDollars);
-             
-             // Variance $
-             const monRowVar = document.getElementById(`money-row-var-${acId}`);
-             if (monRowVar) {
-                  const pTd = monRowVar.parentElement;
-                  const tTd = pTd.previousElementSibling;
-                  const cTd = tTd ? tTd.previousElementSibling : null;
-                   if (cTd) {
-                        const cVal = parseAccounting(cTd.innerText);
-                        const v = cVal - totalDollars;
-                        monRowVar.innerHTML = formatMoney(v);
-                        monRowVar.className = (v >= 0 ? 'text-success' : 'text-danger');
-                   }
-             }
              
              // Pct Variance Logic (Existing) ...
               const portTotalCell = document.getElementById(`row-total-${acId}`).parentElement;
@@ -481,23 +382,7 @@ document.addEventListener('DOMContentLoaded', function() {
              const catTargetPct = portfolioTotal > 0 ? (catDollars / portfolioTotal * 100) : 0;
              document.getElementById(`sub-total-target-${catCode}`).innerHTML = formatPct(catTargetPct);
              
-             // Money Table Category
-             document.getElementById(`money-sub-total-target-${catCode}`).innerHTML = formatMoney(catDollars);
-             
-             // Variance $
-             const monSubVar = document.getElementById(`money-sub-total-var-${catCode}`);
-             if (monSubVar) {
-                 // Traverse DOM to find Current
-                 const pTd = monSubVar.parentElement;
-                 const tTd = pTd.previousElementSibling;
-                 const cTd = tTd ? tTd.previousElementSibling : null;
-                 if (cTd) {
-                      const cVal = parseAccounting(cTd.innerText);
-                      const v = cVal - catDollars;
-                      monSubVar.innerHTML = formatMoney(v);
-                      monSubVar.className = (v >= 0 ? 'text-success' : 'text-danger');
-                 }
-             }
+             // Money-table category cells are rendered from backend; no JS updates here.
 
              // AT Subtotals
              for (const atId of Object.keys(defaultTotals)) {
@@ -509,27 +394,9 @@ document.addEventListener('DOMContentLoaded', function() {
                   const aggEl = document.getElementById(`sub-agg-${atId}-${catCode}`);
                   if (aggEl) aggEl.innerHTML = formatPct(wtPct);
                   
-                  // Money Table Updates
-                  // Target $ (Default) -> Default % * AT Total
-                  // Need default sum for category?
-                  // ... logic omitted for brevity, but let's just do agg target $
-                  const monSubAgg = document.getElementById(`money-sub-agg-${atId}-${catCode}`);
-                  if (monSubAgg) monSubAgg.innerHTML = formatMoney(targDollars);
+                  // Money Table Target cells are rendered from backend; no JS updates here.
                   
-                  // Variance $
-                  const monSubVarAt = document.getElementById(`money-sub-var-${atId}-${catCode}`);
-                  if (monSubVarAt) {
-                      const pTd = monSubVarAt.parentElement;
-                      const aTd = pTd.previousElementSibling; // agg
-                      const dTd = aTd ? aTd.previousElementSibling : null; // def
-                      const cTd = dTd ? dTd.previousElementSibling : null; // cur
-                      if (cTd) {
-                           const cVal = parseAccounting(cTd.innerText);
-                           const v = cVal - targDollars;
-                           monSubVarAt.innerHTML = formatMoney(v);
-                           monSubVarAt.className = (v >= 0 ? 'text-success' : 'text-danger');
-                      }
-                  }
+                  // Money Table Variance cells are rendered from backend; no JS updates here.
              }
              
              // Account Subtotals (Money Table)
@@ -544,83 +411,7 @@ document.addEventListener('DOMContentLoaded', function() {
              }
         });
         
-        // 6. Cash Row Totals (Money)
-        let portCashDollars = 0;
-        for (const [atId, dollars] of Object.entries(atEffectiveCashDollars)) {
-             portCashDollars += dollars;
-             // AT Cash Target $
-             const monCashAgg = document.getElementById(`money-cash-agg-${atId}`);
-             if (monCashAgg) monCashAgg.innerHTML = formatMoney(dollars);
-             
-             // AT Cash Var $
-             const monCashVar = document.getElementById(`money-cash-var-${atId}`);
-             if (monCashVar) {
-                 const pTd = monCashVar.parentElement;
-                 const aTd = pTd.previousElementSibling;
-                 const dTd = aTd ? aTd.previousElementSibling : null; // def
-                 const cTd = dTd ? dTd.previousElementSibling : null; // cur
-                     if (cTd) {
-                          const cVal = parseAccounting(cTd.innerText);
-                          const v = cVal - dollars;
-                          monCashVar.innerHTML = formatMoney(v);
-                          monCashVar.className = (v >= 0 ? 'text-success' : 'text-danger');
-                     }
-                 }
-                 
-                 // Default Cash Target $
-                 const totalVal = atTotalValues[atId] || 0;
-                 const defTotal = defaultTotals[atId] || 0;
-                 const cashDefPct = Math.max(0, 100 - defTotal);
-                 const cashDefDol = totalVal * (cashDefPct / 100);
-                 
-                 // Add Cash to Total Default tracking
-                 if (!atTotalTargetDefaultFromPct[atId]) atTotalTargetDefaultFromPct[atId] = 0;
-                 atTotalTargetDefaultFromPct[atId] += cashDefDol;
-                 
-                 // Add Cash to Total Agg tracking
-                 if (!atTotalAggDollars[atId]) atTotalAggDollars[atId] = 0;
-                 atTotalAggDollars[atId] += dollars;
-    
-                 const monCashDef = document.getElementById(`money-cash-default-${atId}`);
-                 if (monCashDef) monCashDef.innerHTML = formatMoney(cashDefDol);
-                 
-                 // --- Update AT Total Row Cells ---
-                 // Default Total $
-                 const monTotDef = document.getElementById(`money-total-default-${atId}`);
-                 if (monTotDef) monTotDef.innerHTML = formatMoney(atTotalTargetDefaultFromPct[atId]);
-                 
-                 // Agg Total $
-                 const monTotAgg = document.getElementById(`money-total-agg-${atId}`);
-                 if (monTotAgg) monTotAgg.innerHTML = formatMoney(atTotalAggDollars[atId]);
-                 
-                 // Var Total $ (Current - Agg)
-                 // Need Current Total
-                 // Since Agg Total should equal Current Total ideally (or sum of effective targets)
-                 // If Current != Target, Variance exists.
-                 // We can just calculate Variance = Current Total - Agg Total
-                 const currentTotal = atTotalValues[atId] || 0;
-                 const varTotal = currentTotal - atTotalAggDollars[atId];
-                 const monTotVar = document.getElementById(`money-total-var-${atId}`);
-                 if (monTotVar) {
-                     monTotVar.innerHTML = formatMoney(varTotal);
-                     monTotVar.className = (Math.abs(varTotal) < 1 ? 'text-muted' : (varTotal >= 0 ? 'text-success' : 'text-danger'));
-                 }
-             }
-        
-        // Grand Total
-        document.getElementById(`money-cash-total`).innerHTML = formatMoney(portCashDollars);
-        
-        const monGrandTarget = document.getElementById(`money-grand-total-target`);
-        // Sum of all target dollars = Portfolio Total (if allocation is 100%)
-        // Actually it's sum of Account Value * (Account Effective Pct / 100)
-        // If 100%, it matches account value.
-        // Let's sum it up.
-        let grandTargetDol = 0;
-        for(const dol of Object.values(atTargetDollars)) {
-             for(const d of Object.values(dol)) grandTargetDol += d;
-        }
-        grandTargetDol += portCashDollars;
-        if(monGrandTarget) monGrandTarget.innerHTML = formatMoney(grandTargetDol);
+        // 6. Cash and money-table grand totals are rendered from backend; no JS updates here.
 
         saveButtons.forEach(btn => btn.disabled = !valid);
     }

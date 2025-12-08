@@ -272,6 +272,10 @@ class PortfolioSummaryService:
                         ac_data.account_types[at_code].target += target_dollars
                         ac_data.target_total += target_dollars
 
+                        # Track per-account, per-asset-class target dollars
+                        if ac_data.id is not None:
+                            summary.account_asset_targets[account_id][ac_data.id] += target_dollars
+
                         # Update Category
                         cat_data.account_type_target_totals[at_code] += target_dollars
                         cat_data.account_target_totals[account_id] += target_dollars
