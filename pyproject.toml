@@ -9,9 +9,6 @@ authors = [
 ]
 dependencies = [
     "django>=5.1,<5.2",
-    "cvxpy>=1.5,<2.0",
-    "numpy>=2.0,<3.0",
-    "pandas>=2.2,<3.0",
     "python-dotenv>=1.0,<2.0",
     "yfinance>=0.2.66",
 ]
