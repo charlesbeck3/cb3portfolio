@@ -16,16 +16,6 @@ dependencies = [
     "yfinance>=0.2.66",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "django-debug-toolbar>=4.4",
-    "ruff>=0.7",
-    "mypy>=1.13",
-    "django-stubs>=5.1",
-    "pre-commit>=4.0",
-    "coverage>=7.0",
-]
-
 [tool.mypy]
 python_version = "3.12"
 plugins = ["mypy_django_plugin.main"]
@@ -49,6 +39,12 @@ dev = [
     "playwright>=1.56.0",
     "pytest-django>=4.11.1",
     "pytest-playwright>=0.7.2",
+    "django-debug-toolbar>=4.4",
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "django-stubs>=5.1",
+    "pre-commit>=4.0",
+    "coverage>=7.0",
 ]
 
 [tool.hatch.build.targets.wheel]
