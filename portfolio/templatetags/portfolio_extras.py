@@ -28,10 +28,10 @@ def percentage_of(value: Any, total: Any) -> Decimal:
         val_d = Decimal(str(value))
         tot_d = Decimal(str(total))
         if tot_d == 0:
-            return Decimal('0')
-        return (val_d / tot_d) * Decimal('100')
+            return Decimal("0")
+        return (val_d / tot_d) * Decimal("100")
     except (ValueError, TypeError, InvalidOperation):
-        return Decimal('0')
+        return Decimal("0")
 
 
 @register.filter
@@ -45,14 +45,14 @@ def subtract(value: Any, arg: Any) -> Decimal:
         arg_d = Decimal(str(arg))
         return val_d - arg_d
     except (ValueError, TypeError, InvalidOperation):
-        return Decimal('0')
+        return Decimal("0")
 
 
-def _format_accounting(value: Any, decimals: int = 0, prefix: str = '', suffix: str = '') -> str:
+def _format_accounting(value: Any, decimals: int = 0, prefix: str = "", suffix: str = "") -> str:
     try:
         val_f = float(str(value))
     except (ValueError, TypeError):
-        return '-'
+        return "-"
 
     is_negative = val_f < 0
     abs_val = abs(val_f)
@@ -68,7 +68,9 @@ def _format_accounting(value: Any, decimals: int = 0, prefix: str = '', suffix: 
         return f"({result})"
     else:
         # Use invisible parentheses for alignment
-        return mark_safe(f'<span style="visibility: hidden">(</span>{result}<span style="visibility: hidden">)</span>')
+        return mark_safe(
+            f'<span style="visibility: hidden">(</span>{result}<span style="visibility: hidden">)</span>'
+        )
 
 
 @register.filter
@@ -76,7 +78,7 @@ def accounting_amount(value: Any, decimals: int = 0) -> str:
     """
     Format currency in accounting style: (1,234.00) for negative, 1,234.00 for positive (aligned).
     """
-    return _format_accounting(value, decimals, prefix='$')
+    return _format_accounting(value, decimals, prefix="$")
 
 
 @register.filter
@@ -92,4 +94,4 @@ def accounting_percent(value: Any, decimals: int = 1) -> str:
     """
     Format percent in accounting style: (12.5%).
     """
-    return _format_accounting(value, decimals, suffix='%')
+    return _format_accounting(value, decimals, suffix="%")

@@ -26,9 +26,7 @@ class AssetClassTests(TestCase, PortfolioTestMixin):
         # Use category created in mixin
         us_equities = self.cat_us_eq
         ac = AssetClass.objects.create(
-            name="US Stocks",
-            category=us_equities,
-            expected_return=Decimal("0.08")
+            name="US Stocks", category=us_equities, expected_return=Decimal("0.08")
         )
         self.assertEqual(ac.name, "US Stocks")
         self.assertEqual(ac.expected_return, Decimal("0.08"))
@@ -62,19 +60,21 @@ class AccountTests(TestCase, PortfolioTestMixin):
         # This is fine as long as we don't save.
 
         roth = Account(account_type=self.type_roth)
-        self.assertEqual(roth.tax_treatment, 'TAX_FREE')
+        self.assertEqual(roth.tax_treatment, "TAX_FREE")
 
         trad = Account(account_type=self.type_trad)
-        self.assertEqual(trad.tax_treatment, 'TAX_DEFERRED')
+        self.assertEqual(trad.tax_treatment, "TAX_DEFERRED")
 
         k401 = Account(account_type=self.type_401k)
-        self.assertEqual(k401.tax_treatment, 'TAX_DEFERRED')
+        self.assertEqual(k401.tax_treatment, "TAX_DEFERRED")
 
         taxable = Account(account_type=self.type_taxable)
-        self.assertEqual(taxable.tax_treatment, 'TAXABLE')
+        self.assertEqual(taxable.tax_treatment, "TAXABLE")
 
 
-class SecurityTests(TestCase, PortfolioTestMixin): # Added mixin just in case, though not strictly needed if not using AccountType
+class SecurityTests(
+    TestCase, PortfolioTestMixin
+):  # Added mixin just in case, though not strictly needed if not using AccountType
     def setUp(self) -> None:
         self.setup_portfolio_data()
         self.asset_class = AssetClass.objects.create(
@@ -85,17 +85,15 @@ class SecurityTests(TestCase, PortfolioTestMixin): # Added mixin just in case, t
     def test_create_security(self) -> None:
         """Test creating a security."""
         security = Security.objects.create(
-            ticker="VTI",
-            name="Vanguard Total Stock Market ETF",
-            asset_class=self.asset_class
+            ticker="VTI", name="Vanguard Total Stock Market ETF", asset_class=self.asset_class
         )
         self.assertEqual(security.ticker, "VTI")
         self.assertEqual(str(security), "VTI - Vanguard Total Stock Market ETF")
 
 
-class HoldingTests(TestCase, PortfolioTestMixin): # Inherit from PortfolioTestMixin
+class HoldingTests(TestCase, PortfolioTestMixin):  # Inherit from PortfolioTestMixin
     def setUp(self) -> None:
-        self.setup_portfolio_data() # Call setup_portfolio_data()
+        self.setup_portfolio_data()  # Call setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         # self.institution = Institution.objects.create(name="Vanguard") # Removed, as it's in mixin
         self.asset_class = AssetClass.objects.create(
@@ -105,13 +103,11 @@ class HoldingTests(TestCase, PortfolioTestMixin): # Inherit from PortfolioTestMi
         self.account = Account.objects.create(
             user=self.user,
             name="Roth IRA",
-            account_type=self.type_roth, # Replaced string with model instance
+            account_type=self.type_roth,  # Replaced string with model instance
             institution=self.institution,
         )
         self.security = Security.objects.create(
-            ticker="VTI",
-            name="Vanguard Total Stock Market ETF",
-            asset_class=self.asset_class
+            ticker="VTI", name="Vanguard Total Stock Market ETF", asset_class=self.asset_class
         )
 
     def test_create_holding(self) -> None:
@@ -120,7 +116,7 @@ class HoldingTests(TestCase, PortfolioTestMixin): # Inherit from PortfolioTestMi
             account=self.account,
             security=self.security,
             shares=Decimal("10.5000"),
-            current_price=Decimal("210.00")
+            current_price=Decimal("210.00"),
         )
         self.assertEqual(holding.shares, Decimal("10.5000"))
         self.assertEqual(str(holding), "VTI in Roth IRA (10.5000 shares)")
@@ -141,11 +137,14 @@ class TargetAllocationTests(TestCase, PortfolioTestMixin):
             user=self.user,
             account_type=self.type_roth,
             asset_class=self.asset_class,
-            target_pct=Decimal("40.00")
+            target_pct=Decimal("40.00"),
         )
         self.assertEqual(target.target_pct, Decimal("40.00"))
         # Using f-string to match new str logic if needed, but simple string also works provided type label is correct
-        self.assertEqual(str(target), f"{self.user.username} - {self.type_roth.label} (Default) - {self.asset_class.name}: 40.00%")
+        self.assertEqual(
+            str(target),
+            f"{self.user.username} - {self.type_roth.label} (Default) - {self.asset_class.name}: 40.00%",
+        )
 
     def test_target_allocation_isolation(self) -> None:
         """Test that different users can have their own allocations."""
@@ -154,7 +153,7 @@ class TargetAllocationTests(TestCase, PortfolioTestMixin):
             user=self.user,
             account_type=self.type_roth,
             asset_class=self.asset_class,
-            target_pct=Decimal("40.00")
+            target_pct=Decimal("40.00"),
         )
 
         # User 2 allocation (same account type/asset class, different user)
@@ -163,7 +162,7 @@ class TargetAllocationTests(TestCase, PortfolioTestMixin):
             user=user2,
             account_type=self.type_roth,
             asset_class=self.asset_class,
-            target_pct=Decimal("60.00")
+            target_pct=Decimal("60.00"),
         )
 
         self.assertEqual(TargetAllocation.objects.count(), 2)
@@ -186,9 +185,7 @@ class RebalancingRecommendationTests(TestCase, PortfolioTestMixin):
             institution=self.institution,
         )
         self.security = Security.objects.create(
-            ticker="VTI",
-            name="Vanguard Total Stock Market ETF",
-            asset_class=self.asset_class
+            ticker="VTI", name="Vanguard Total Stock Market ETF", asset_class=self.asset_class
         )
 
     def test_create_recommendation(self) -> None:
@@ -199,7 +196,7 @@ class RebalancingRecommendationTests(TestCase, PortfolioTestMixin):
             action="BUY",
             shares=Decimal("10.00"),
             estimated_amount=Decimal("1600.00"),
-            reason="Underweight"
+            reason="Underweight",
         )
         self.assertEqual(rec.action, "BUY")
         self.assertEqual(str(rec), "BUY 10.00 VTI in Roth IRA")

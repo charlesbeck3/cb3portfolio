@@ -21,7 +21,7 @@ from portfolio.services import PortfolioSummaryService
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):
-    template_name = 'portfolio/index.html'
+    template_name = "portfolio/index.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
@@ -29,7 +29,9 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         assert user.is_authenticated
 
         # 1. Get Targets (needed for displaying target values even in read-only)
-        targets = TargetAllocation.objects.filter(user=user).select_related('account_type', 'asset_class', 'account')
+        targets = TargetAllocation.objects.filter(user=user).select_related(
+            "account_type", "asset_class", "account"
+        )
 
         # Structure:
         # defaults: at_id -> ac_id -> pct
@@ -45,22 +47,26 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 
         # 2. Get Summary Data
         summary = PortfolioSummaryService.get_holdings_summary(user)
-        context['summary'] = summary
+        context["summary"] = summary
 
         # Sidebar data
         sidebar_data = PortfolioSummaryService.get_account_summary(user)
-        context['sidebar_data'] = sidebar_data
+        context["sidebar_data"] = sidebar_data
 
         # Map account ID to total from sidebar data
         account_totals = {}
-        for group in sidebar_data['groups'].values():
-            for acc in group['accounts']:
-                account_totals[acc['id']] = acc['total']
+        for group in sidebar_data["groups"].values():
+            for acc in group["accounts"]:
+                account_totals[acc["id"]] = acc["total"]
 
         # 3. Build Account Types with rich context
-        account_types_qs = AccountType.objects.filter(accounts__user=user).distinct().order_by('group__sort_order', 'label')
+        account_types_qs = (
+            AccountType.objects.filter(accounts__user=user)
+            .distinct()
+            .order_by("group__sort_order", "label")
+        )
 
-        accounts = Account.objects.filter(user=user).select_related('account_type')
+        accounts = Account.objects.filter(user=user).select_related("account_type")
         account_map = {a.id: a for a in accounts}
 
         # Account Type Grand Totals from service
@@ -83,11 +89,13 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             at.active_accounts = at_accounts
             rich_account_types.append(at)
 
-        context['account_types'] = rich_account_types
+        context["account_types"] = rich_account_types
 
         # 4. Calculate detailed maps for Accounts and Types (Dollar values from Holdings)
-        holdings = Holding.objects.filter(account__user=user).select_related('security', 'account').only(
-            'account_id', 'security__asset_class_id', 'shares', 'current_price'
+        holdings = (
+            Holding.objects.filter(account__user=user)
+            .select_related("security", "account")
+            .only("account_id", "security__asset_class_id", "shares", "current_price")
         )
 
         # account_id -> ac_id -> value
@@ -111,70 +119,72 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         # (This might be useful if we want to cross-reference categories, but template uses ac_data hierarchy)
 
         for at in rich_account_types:
-             # Populate AT maps
-             at.dollar_map = at_ac_map[at.id]
-             at.allocation_map = {}
-             if at.current_total_value > 0:
-                 for ac_id, val in at.dollar_map.items():
-                     at.allocation_map[ac_id] = (val / at.current_total_value) * 100
+            # Populate AT maps
+            at.dollar_map = at_ac_map[at.id]
+            at.allocation_map = {}
+            if at.current_total_value > 0:
+                for ac_id, val in at.dollar_map.items():
+                    at.allocation_map[ac_id] = (val / at.current_total_value) * 100
 
-             for acc in at.active_accounts:
-                  acc.dollar_map = account_ac_map[acc.id]
-                  acc.allocation_map = {}
-                  if acc.current_total_value > 0:
-                      for ac_id, val in acc.dollar_map.items():
-                          acc.allocation_map[ac_id] = (val / acc.current_total_value) * 100
+            for acc in at.active_accounts:
+                acc.dollar_map = account_ac_map[acc.id]
+                acc.allocation_map = {}
+                if acc.current_total_value > 0:
+                    for ac_id, val in acc.dollar_map.items():
+                        acc.allocation_map[ac_id] = (val / acc.current_total_value) * 100
 
         # 5. Populate Cash Maps explicitly?
         # The holdings loop handles the "Cash" Asset Class IF it exists as a holding.
         # But our template logic for "Cash (Calculated)" often relies on `cash_asset_class_id`.
 
-        cash_ac = AssetClass.objects.filter(name='Cash').first()
-        context['cash_asset_class_id'] = cash_ac.id if cash_ac else None
+        cash_ac = AssetClass.objects.filter(name="Cash").first()
+        context["cash_asset_class_id"] = cash_ac.id if cash_ac else None
 
         # Calculate 'Portfolio Total Value' for template usage
-        context['portfolio_total_value'] = summary.grand_total
+        context["portfolio_total_value"] = summary.grand_total
 
         return context
 
 
 class HoldingsView(LoginRequiredMixin, TemplateView):
-    template_name = 'portfolio/holdings.html'
+    template_name = "portfolio/holdings.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        account_id = kwargs.get('account_id')
+        account_id = kwargs.get("account_id")
 
-        context.update(PortfolioSummaryService.get_holdings_by_category(self.request.user, account_id))
-        context['sidebar_data'] = PortfolioSummaryService.get_account_summary(self.request.user)
+        context.update(
+            PortfolioSummaryService.get_holdings_by_category(self.request.user, account_id)
+        )
+        context["sidebar_data"] = PortfolioSummaryService.get_account_summary(self.request.user)
 
         if account_id and self.request.user.is_authenticated:
-                 with contextlib.suppress(Account.DoesNotExist):
-                     context['account'] = Account.objects.get(id=account_id, user=self.request.user)
-                     # Pass securities for the "Add Holding" modal
-                     context['securities'] = Security.objects.all().order_by('ticker')
+            with contextlib.suppress(Account.DoesNotExist):
+                context["account"] = Account.objects.get(id=account_id, user=self.request.user)
+                # Pass securities for the "Add Holding" modal
+                context["securities"] = Security.objects.all().order_by("ticker")
 
         return context
 
     def post(self, request: Any, **kwargs: Any) -> Any:
-        account_id = kwargs.get('account_id')
+        account_id = kwargs.get("account_id")
         if not account_id:
             messages.error(request, "Can only edit holdings for a specific account.")
-            return redirect('portfolio:holdings')
+            return redirect("portfolio:holdings")
 
         try:
             account = Account.objects.get(id=account_id, user=request.user)
         except Account.DoesNotExist:
             messages.error(request, "Account not found.")
-            return redirect('portfolio:holdings')
+            return redirect("portfolio:holdings")
 
         # Track updates
         updates_count = 0
 
         # Check for Add Holding
-        security_id = request.POST.get('security_id')
+        security_id = request.POST.get("security_id")
         if security_id:
-            initial_shares_str = request.POST.get('initial_shares', '0')
+            initial_shares_str = request.POST.get("initial_shares", "0")
             try:
                 initial_shares = Decimal(initial_shares_str)
                 if initial_shares > 0:
@@ -182,13 +192,14 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
 
                     # Create or Get Holding
                     holding, created = Holding.objects.get_or_create(
-                        account=account,
-                        security=security,
-                        defaults={'shares': initial_shares}
+                        account=account, security=security, defaults={"shares": initial_shares}
                     )
 
                     if not created:
-                        messages.warning(request, f"Holding for {security.ticker} already exists. Please edit shares instead.")
+                        messages.warning(
+                            request,
+                            f"Holding for {security.ticker} already exists. Please edit shares instead.",
+                        )
                     else:
                         messages.success(request, f"Added {security.ticker} to account.")
             except Security.DoesNotExist:
@@ -196,14 +207,16 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
             except Exception as e:
                 messages.error(request, f"Error adding holding: {e}")
 
-            return redirect('portfolio:account_holdings', account_id=account_id)
+            return redirect("portfolio:account_holdings", account_id=account_id)
 
         # Check for Delete Holding
-        delete_ticker = request.POST.get('delete_ticker')
+        delete_ticker = request.POST.get("delete_ticker")
         if delete_ticker:
             delete_ticker = delete_ticker.strip().upper()
             try:
-                holding_to_delete = Holding.objects.filter(account=account, security__ticker=delete_ticker).first()
+                holding_to_delete = Holding.objects.filter(
+                    account=account, security__ticker=delete_ticker
+                ).first()
                 if holding_to_delete:
                     holding_to_delete.delete()
                     messages.success(request, f"Removed {delete_ticker} from account.")
@@ -212,7 +225,7 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
             except Exception as e:
                 messages.error(request, f"Error deleting holding: {e}")
 
-            return redirect('portfolio:account_holdings', account_id=account_id)
+            return redirect("portfolio:account_holdings", account_id=account_id)
 
         # Iterate over POST data (Edit Logic)
 
@@ -221,8 +234,8 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
             if not value:
                 continue
 
-            if key.startswith('shares_'):
-                ticker = key.replace('shares_', '')
+            if key.startswith("shares_"):
+                ticker = key.replace("shares_", "")
                 try:
                     shares = Decimal(value)
                     # Find holding
@@ -236,7 +249,9 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
                     # Ah, 'get_or_create' returns (Holding, bool), so 'holding' there is 'Holding'.
                     # Here 'first()' returns 'Holding | None'.
                     # So we should use a different variable name to avoid confusion.
-                    target_holding = Holding.objects.filter(account=account, security__ticker=ticker).first()
+                    target_holding = Holding.objects.filter(
+                        account=account, security__ticker=ticker
+                    ).first()
                     if target_holding:
                         target_holding.shares = shares
                         target_holding.save()
@@ -249,11 +264,11 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
         else:
             messages.info(request, "No changes saved.")
 
-        return redirect('portfolio:account_holdings', account_id=account_id)
+        return redirect("portfolio:account_holdings", account_id=account_id)
 
 
 class AllocationsView(LoginRequiredMixin, TemplateView):
-    template_name = 'portfolio/allocations.html'
+    template_name = "portfolio/allocations.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
@@ -263,12 +278,12 @@ class AllocationsView(LoginRequiredMixin, TemplateView):
         # Let's reuse the logic from TargetAllocationView ideally, but for now
         # let's just pass summary.
 
-        context['sidebar_data'] = PortfolioSummaryService.get_account_summary(self.request.user)
+        context["sidebar_data"] = PortfolioSummaryService.get_account_summary(self.request.user)
         return context
 
 
 class TargetAllocationView(LoginRequiredMixin, TemplateView):
-    template_name = 'portfolio/target_allocations.html'
+    template_name = "portfolio/target_allocations.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
@@ -280,7 +295,9 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         user = cast(Any, user)
 
         # 1. Get Targets
-        targets = TargetAllocation.objects.filter(user=user).select_related('account_type', 'asset_class', 'account')
+        targets = TargetAllocation.objects.filter(user=user).select_related(
+            "account_type", "asset_class", "account"
+        )
 
         # Structure:
         # defaults: at_id -> ac_id -> pct
@@ -296,13 +313,17 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
 
         # 2. Get Summary Data (Reusing shared logic)
         summary = PortfolioSummaryService.get_holdings_summary(user)
-        context['summary'] = summary
+        context["summary"] = summary
 
         # We need account_types for columns
         # The service summary has account_type_grand_totals keys which are codes.
         # But we need the objects for labels and to attach accounts.
 
-        account_types_qs = AccountType.objects.filter(accounts__user=user).distinct().order_by('group__sort_order', 'label')
+        account_types_qs = (
+            AccountType.objects.filter(accounts__user=user)
+            .distinct()
+            .order_by("group__sort_order", "label")
+        )
 
         account_types = []
 
@@ -311,7 +332,7 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         # (Service aggregates them into the summary structure, but here we need to iterate columns).
 
         # Let's fetch accounts and attach them to account types as before
-        accounts = Account.objects.filter(user=user).select_related('account_type')
+        accounts = Account.objects.filter(user=user).select_related("account_type")
         account_map = {a.id: a for a in accounts}
 
         # Calculate Account totals for the header/columns
@@ -322,13 +343,13 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         # Service provides 'sidebar_data' which has account totals.
 
         sidebar_data = PortfolioSummaryService.get_account_summary(user)
-        context['sidebar_data'] = sidebar_data
+        context["sidebar_data"] = sidebar_data
 
         # Map account ID to total from sidebar data
         account_totals = {}
-        for group in sidebar_data['groups'].values():
-            for acc in group['accounts']:
-                account_totals[acc['id']] = acc['total']
+        for group in sidebar_data["groups"].values():
+            for acc in group["accounts"]:
+                account_totals[acc["id"]] = acc["total"]
 
         # Also need Account Type totals
         # Summary has account_type_grand_totals (by code)
@@ -358,8 +379,10 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
 
         # 3. Calculate detailed maps for Accounts and Types
 
-        holdings = Holding.objects.filter(account__user=user).select_related('security', 'account').only(
-            'account_id', 'security__asset_class_id', 'shares', 'current_price'
+        holdings = (
+            Holding.objects.filter(account__user=user)
+            .select_related("security", "account")
+            .only("account_id", "security__asset_class_id", "shares", "current_price")
         )
 
         # account_id -> ac_id -> value
@@ -384,65 +407,64 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         for group in summary.groups.values():
             for cat_code, cat_data in group.categories.items():
                 for _, ac_data in cat_data.asset_classes.items():
-                     if ac_data.id:
-                         ac_id_to_cat[ac_data.id] = cat_code
+                    if ac_data.id:
+                        ac_id_to_cat[ac_data.id] = cat_code
 
         for at in account_types:
-             # Populate AT maps
-             at.dollar_map = at_ac_map[at.id]
-             at.allocation_map = {}
-             if at.current_total_value > 0:
-                 for ac_id, val in at.dollar_map.items():
-                     at.allocation_map[ac_id] = (val / at.current_total_value) * 100
+            # Populate AT maps
+            at.dollar_map = at_ac_map[at.id]
+            at.allocation_map = {}
+            if at.current_total_value > 0:
+                for ac_id, val in at.dollar_map.items():
+                    at.allocation_map[ac_id] = (val / at.current_total_value) * 100
 
-             for acc in at.active_accounts:
-                  acc.dollar_map = account_ac_map[acc.id]
-                  acc.allocation_map = {}
-                  if acc.current_total_value > 0:
-                      for ac_id, val in acc.dollar_map.items():
-                          acc.allocation_map[ac_id] = (val / acc.current_total_value) * 100
+            for acc in at.active_accounts:
+                acc.dollar_map = account_ac_map[acc.id]
+                acc.allocation_map = {}
+                if acc.current_total_value > 0:
+                    for ac_id, val in acc.dollar_map.items():
+                        acc.allocation_map[ac_id] = (val / acc.current_total_value) * 100
 
-                  # Populate category map
-                  acc.category_map = defaultdict(Decimal)
-                  for ac_id, val in acc.dollar_map.items():
-                       holding_cat_code = ac_id_to_cat.get(ac_id)
-                       if holding_cat_code:
-                            acc.category_map[holding_cat_code] += val
+                # Populate category map
+                acc.category_map = defaultdict(Decimal)
+                for ac_id, val in acc.dollar_map.items():
+                    holding_cat_code = ac_id_to_cat.get(ac_id)
+                    if holding_cat_code:
+                        acc.category_map[holding_cat_code] += val
 
-        context['account_types'] = account_types
-        context['portfolio_total_value'] = summary.grand_total
+        context["account_types"] = account_types
+        context["portfolio_total_value"] = summary.grand_total
 
         # Pass per-account-type totals for JS Wt. Target calculations
-        context['at_values'] = at_values
+        context["at_values"] = at_values
 
         # Pass defaults map for calculating inherited values in JS if needed
         # {at_id: {ac_id: pct}}
-        context['defaults_map'] = defaults_map
+        context["defaults_map"] = defaults_map
 
         # Add Cash Asset ID for template lookups
         # Get Cash Asset Class ID for template logic
-        cash_ac = AssetClass.objects.filter(name='Cash').first()
-        context['cash_asset_class_id'] = cash_ac.id if cash_ac else None
+        cash_ac = AssetClass.objects.filter(name="Cash").first()
+        context["cash_asset_class_id"] = cash_ac.id if cash_ac else None
 
         return context
 
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Any:
         user = request.user
         if not user.is_authenticated:
-            return redirect('login')
+            return redirect("login")
 
-        user = cast(Any, user) # Cast for ORM
+        user = cast(Any, user)  # Cast for ORM
 
         account_types = AccountType.objects.filter(accounts__user=user).distinct()
 
         try:
-            cash_ac = AssetClass.objects.get(name='Cash')
+            cash_ac = AssetClass.objects.get(name="Cash")
         except AssetClass.DoesNotExist:
-             messages.error(request, "Cash asset class not found.")
-             return redirect('portfolio:target_allocations')
+            messages.error(request, "Cash asset class not found.")
+            return redirect("portfolio:target_allocations")
 
-        input_asset_classes = list(AssetClass.objects.exclude(name='Cash').all())
-
+        input_asset_classes = list(AssetClass.objects.exclude(name="Cash").all())
 
         # We need to process inputs for:
         # 1. Defaults (Account Type level): target_{at_id}_{ac_id}
@@ -460,19 +482,19 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
 
         # 1. Process Account Types (Defaults)
         for at in account_types:
-            total_pct = Decimal('0.00')
+            total_pct = Decimal("0.00")
             for ac in input_asset_classes:
                 input_key = f"target_{at.id}_{ac.id}"
-                val_str = request.POST.get(input_key, '').strip()
+                val_str = request.POST.get(input_key, "").strip()
 
                 # Defaults must have value? Or if empty assume 0?
                 # Let's assume empty = 0 for defaults to simplify
-                val = Decimal('0.00')
+                val = Decimal("0.00")
                 if val_str:
                     try:
                         val = Decimal(val_str)
                     except ValueError:
-                         errors.append(f"Invalid value for {at.label} - {ac.name}")
+                        errors.append(f"Invalid value for {at.label} - {ac.name}")
 
                 if val < 0:
                     errors.append(f"Negative allocation for {at.label}")
@@ -481,12 +503,12 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                 total_pct += val
 
             # Cash Residual
-            cash_residual = Decimal('100.00') - total_pct
+            cash_residual = Decimal("100.00") - total_pct
             if cash_residual < 0:
-                 # Allow slight tolerance?
-                 if cash_residual < Decimal('-0.01'):
-                      errors.append(f"Total allocation for {at.label} exceeds 100% ({total_pct}%)")
-                 cash_residual = Decimal('0.00')
+                # Allow slight tolerance?
+                if cash_residual < Decimal("-0.01"):
+                    errors.append(f"Total allocation for {at.label} exceeds 100% ({total_pct}%)")
+                cash_residual = Decimal("0.00")
 
             default_updates[at.id][cash_ac.id] = cash_residual
 
@@ -532,7 +554,7 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
             # Check Standard Assets
             for ac in input_asset_classes:
                 input_key = f"target_account_{acc.id}_{ac.id}"
-                val_str = request.POST.get(input_key, '').strip()
+                val_str = request.POST.get(input_key, "").strip()
                 if val_str:
                     has_explicit_input = True
                     break
@@ -540,7 +562,7 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
             # Check Cash
             if not has_explicit_input:
                 cash_input_key = f"target_account_{acc.id}_{cash_ac.id}"
-                if request.POST.get(cash_input_key, '').strip():
+                if request.POST.get(cash_input_key, "").strip():
                     has_explicit_input = True
 
             if has_explicit_input:
@@ -550,7 +572,7 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                 # Process Standard Assets
                 for ac in input_asset_classes:
                     input_key = f"target_account_{acc.id}_{ac.id}"
-                    val_str = request.POST.get(input_key, '').strip()
+                    val_str = request.POST.get(input_key, "").strip()
 
                     if val_str:
                         try:
@@ -563,11 +585,11 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                         # Explicitly 0 if not provided in Full Override Mode
                         # We don't need to save 0 explicitly if we clean up old overrides correctly.
                         # But for effective calculation, it's 0.
-                        effective_values[ac.id] = Decimal('0.00')
+                        effective_values[ac.id] = Decimal("0.00")
 
                 # Process Cash
                 cash_input_key = f"target_account_{acc.id}_{cash_ac.id}"
-                cash_val_str = request.POST.get(cash_input_key, '').strip()
+                cash_val_str = request.POST.get(cash_input_key, "").strip()
 
                 total_standard = sum(effective_values.values())
 
@@ -576,22 +598,22 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                         cash_val = Decimal(cash_val_str)
                         override_updates[acc.id][cash_ac.id] = cash_val
                         # Validation: Sum should be close to 100
-                        if abs(total_standard + cash_val - Decimal('100.00')) > Decimal('0.1'):
-                             # Warning or Error? Let's just warn but save.
-                             # Actually UI shows warning.
-                             pass
+                        if abs(total_standard + cash_val - Decimal("100.00")) > Decimal("0.1"):
+                            # Warning or Error? Let's just warn but save.
+                            # Actually UI shows warning.
+                            pass
                     except ValueError:
-                         errors.append(f"Invalid value for {acc.name} - Cash")
+                        errors.append(f"Invalid value for {acc.name} - Cash")
                 else:
                     # Implicit Residual Cash in Full Override Mode
                     # If user just said "Stocks 60", Cash is 40.
-                    cash_residual = Decimal('100.00') - total_standard
+                    cash_residual = Decimal("100.00") - total_standard
                     if cash_residual < 0:
-                         # Over-allocated?
-                         pass
+                        # Over-allocated?
+                        pass
                     # We save this residual explicitly as an override because we are in Full Override mode
                     # and we want to lock it in vs defaults.
-                    override_updates[acc.id][cash_ac.id] = max(Decimal('0.00'), cash_residual)
+                    override_updates[acc.id][cash_ac.id] = max(Decimal("0.00"), cash_residual)
 
             else:
                 # No Override Mode - Account follows Defaults purely.
@@ -602,33 +624,35 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         if errors:
             for err in errors:
                 messages.error(request, err)
-            return redirect('portfolio:target_allocations')
+            return redirect("portfolio:target_allocations")
 
         # 3. Persist
         try:
             with transaction.atomic():
                 # save defaults
                 current_defaults = TargetAllocation.objects.filter(user=user, account__isnull=True)
-                default_map_obj = {(t.account_type_id, t.asset_class_id): t for t in current_defaults}
+                default_map_obj = {
+                    (t.account_type_id, t.asset_class_id): t for t in current_defaults
+                }
 
                 for at_id, ac_map in default_updates.items():
                     for ac_id, val in ac_map.items():
-                         lookup = (at_id, ac_id)
-                         if val >= 0: # Should be true
-                              if lookup in default_map_obj:
-                                   obj = default_map_obj[lookup]
-                                   if obj.target_pct != val:
-                                        obj.target_pct = val
-                                        obj.save()
-                                   # Remove from map to track processed
-                                   del default_map_obj[lookup]
-                              else:
-                                   TargetAllocation.objects.create(
-                                        user=user,
-                                        account_type_id=at_id,
-                                        asset_class_id=ac_id,
-                                        target_pct=val
-                                   )
+                        lookup = (at_id, ac_id)
+                        if val >= 0:  # Should be true
+                            if lookup in default_map_obj:
+                                obj = default_map_obj[lookup]
+                                if obj.target_pct != val:
+                                    obj.target_pct = val
+                                    obj.save()
+                                # Remove from map to track processed
+                                del default_map_obj[lookup]
+                            else:
+                                TargetAllocation.objects.create(
+                                    user=user,
+                                    account_type_id=at_id,
+                                    asset_class_id=ac_id,
+                                    target_pct=val,
+                                )
 
                 # Delete stale defaults?
                 # (Asset classes not in save list? We iterates all non-cash + cash, so should be fine)
@@ -637,29 +661,35 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                 # Logic: We have a map of overrides explicitly set or auto-calculated (cash).
                 # All other existing overrides for this account/asset that are NOT in map should be DELETED (reset to default).
 
-                current_overrides = TargetAllocation.objects.filter(user=user, account__isnull=False)
-                override_obj_map = {(cast(int, t.account_id), t.asset_class_id): t for t in current_overrides}
+                current_overrides = TargetAllocation.objects.filter(
+                    user=user, account__isnull=False
+                )
+                override_obj_map = {
+                    (cast(int, t.account_id), t.asset_class_id): t for t in current_overrides
+                }
 
                 processed_overrides = set()
 
                 for acc_id, ac_map in override_updates.items():
                     for ac_id, val in ac_map.items():
-                         lookup = (acc_id, ac_id)
-                         processed_overrides.add(lookup)
+                        lookup = (acc_id, ac_id)
+                        processed_overrides.add(lookup)
 
-                         if lookup in override_obj_map:
-                              obj = override_obj_map[lookup]
-                              if obj.target_pct != val:
-                                   obj.target_pct = val
-                                   obj.save()
-                         else:
-                              TargetAllocation.objects.create(
-                                   user=user,
-                                   account_type_id=Account.objects.get(id=acc_id).account_type_id, # Optimization possible
-                                   account_id=acc_id,
-                                   asset_class_id=ac_id,
-                                   target_pct=val
-                              )
+                        if lookup in override_obj_map:
+                            obj = override_obj_map[lookup]
+                            if obj.target_pct != val:
+                                obj.target_pct = val
+                                obj.save()
+                        else:
+                            TargetAllocation.objects.create(
+                                user=user,
+                                account_type_id=Account.objects.get(
+                                    id=acc_id
+                                ).account_type_id,  # Optimization possible
+                                account_id=acc_id,
+                                asset_class_id=ac_id,
+                                target_pct=val,
+                            )
 
                 # Delete Unused Overrides (keys in DB but not in our update map)
                 # Note: We iterated ALL accounts. If an account had overrides before but now map is empty (user cleared inputs),
@@ -667,13 +697,12 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
                 # So we iterate all existing overrides and check if they are in processed list.
 
                 for lookup, obj in override_obj_map.items():
-                     if lookup not in processed_overrides:
-                          obj.delete()
+                    if lookup not in processed_overrides:
+                        obj.delete()
 
             messages.success(request, "Allocations updated.")
-            return redirect('portfolio:target_allocations')
+            return redirect("portfolio:target_allocations")
 
         except Exception as e:
             messages.error(request, f"Error saving targets: {e}")
-            return redirect('portfolio:target_allocations')
-
+            return redirect("portfolio:target_allocations")

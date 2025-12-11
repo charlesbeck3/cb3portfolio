@@ -6,59 +6,87 @@ from decimal import Decimal
 @dataclass
 class AccountTypeData:
     # Dollar amounts
-    current: Decimal = Decimal('0.00')
-    target: Decimal = Decimal('0.00')
-    variance: Decimal = Decimal('0.00')
+    current: Decimal = Decimal("0.00")
+    target: Decimal = Decimal("0.00")
+    variance: Decimal = Decimal("0.00")
     # Pre-calculated percentages (of account type total)
-    current_pct: Decimal = Decimal('0.00')
-    target_pct: Decimal = Decimal('0.00')
-    variance_pct: Decimal = Decimal('0.00')
+    current_pct: Decimal = Decimal("0.00")
+    target_pct: Decimal = Decimal("0.00")
+    variance_pct: Decimal = Decimal("0.00")
 
 
 @dataclass
 class AssetClassEntry:
     id: int | None = None
-    account_types: dict[str, AccountTypeData] = field(default_factory=lambda: defaultdict(AccountTypeData))
-    total: Decimal = Decimal('0.00')
-    target_total: Decimal = Decimal('0.00')
-    variance_total: Decimal = Decimal('0.00')
+    account_types: dict[str, AccountTypeData] = field(
+        default_factory=lambda: defaultdict(AccountTypeData)
+    )
+    total: Decimal = Decimal("0.00")
+    target_total: Decimal = Decimal("0.00")
+    variance_total: Decimal = Decimal("0.00")
 
 
 @dataclass
 class CategoryEntry:
-    asset_classes: dict[str, AssetClassEntry] = field(default_factory=lambda: defaultdict(AssetClassEntry))
-    total: Decimal = Decimal('0.00')
-    target_total: Decimal = Decimal('0.00')
-    variance_total: Decimal = Decimal('0.00')
+    asset_classes: dict[str, AssetClassEntry] = field(
+        default_factory=lambda: defaultdict(AssetClassEntry)
+    )
+    total: Decimal = Decimal("0.00")
+    target_total: Decimal = Decimal("0.00")
+    variance_total: Decimal = Decimal("0.00")
     account_type_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_target_totals: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_type_variance_totals: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
     # Pre-calculated percentages for account types (of account type total)
-    account_type_current_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_target_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_variance_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_current_pct: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_type_target_pct: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_type_variance_pct: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
     account_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_target_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_variance_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_variance_totals: dict[int, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
 
 
 @dataclass
 class GroupEntry:
-    label: str = ''
+    label: str = ""
     categories: OrderedDict[str, CategoryEntry] = field(default_factory=OrderedDict)
-    total: Decimal = Decimal('0.00')
-    target_total: Decimal = Decimal('0.00')
-    variance_total: Decimal = Decimal('0.00')
+    total: Decimal = Decimal("0.00")
+    target_total: Decimal = Decimal("0.00")
+    variance_total: Decimal = Decimal("0.00")
     account_type_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_target_totals: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_type_variance_totals: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
     # Pre-calculated percentages for account types (of account type total)
-    account_type_current_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_target_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_variance_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_current_pct: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_type_target_pct: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_type_variance_pct: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
     account_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
     account_target_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_variance_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_variance_totals: dict[int, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
     asset_class_count: int = 0
 
 
@@ -66,19 +94,35 @@ class GroupEntry:
 class PortfolioSummary:
     categories: dict[str, CategoryEntry] = field(default_factory=lambda: defaultdict(CategoryEntry))
     groups: dict[str, GroupEntry] = field(default_factory=lambda: defaultdict(GroupEntry))
-    grand_total: Decimal = Decimal('0.00')
-    grand_target_total: Decimal = Decimal('0.00')
-    grand_variance_total: Decimal = Decimal('0.00')
-    account_type_grand_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_grand_target_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_grand_variance_totals: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    grand_total: Decimal = Decimal("0.00")
+    grand_target_total: Decimal = Decimal("0.00")
+    grand_variance_total: Decimal = Decimal("0.00")
+    account_type_grand_totals: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_type_grand_target_totals: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_type_grand_variance_totals: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
     # Pre-calculated percentages for account types (of account type total)
-    account_type_grand_current_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_grand_target_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_type_grand_variance_pct: dict[str, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_type_grand_current_pct: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_type_grand_target_pct: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_type_grand_variance_pct: dict[str, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
     account_grand_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_grand_target_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
-    account_grand_variance_totals: dict[int, Decimal] = field(default_factory=lambda: defaultdict(Decimal))
+    account_grand_target_totals: dict[int, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
+    account_grand_variance_totals: dict[int, Decimal] = field(
+        default_factory=lambda: defaultdict(Decimal)
+    )
     # Per-account, per-asset-class target dollars (account_id -> asset_class_id -> target $)
     account_asset_targets: dict[int, dict[int, Decimal]] = field(
         default_factory=lambda: defaultdict(lambda: defaultdict(Decimal))
@@ -94,48 +138,48 @@ class AggregatedHolding:
     name: str
     asset_class: str
     category_code: str
-    shares: Decimal = Decimal('0.00')
+    shares: Decimal = Decimal("0.00")
     current_price: Decimal | None = None
-    value: Decimal = Decimal('0.00')  # Current Value
-    current_allocation: Decimal = Decimal('0.00')
-    target_value: Decimal = Decimal('0.00')
-    target_allocation: Decimal = Decimal('0.00')
-    target_shares: Decimal = Decimal('0.00')
-    value_variance: Decimal = Decimal('0.00')
-    allocation_variance: Decimal = Decimal('0.00')
-    shares_variance: Decimal = Decimal('0.00')
+    value: Decimal = Decimal("0.00")  # Current Value
+    current_allocation: Decimal = Decimal("0.00")
+    target_value: Decimal = Decimal("0.00")
+    target_allocation: Decimal = Decimal("0.00")
+    target_shares: Decimal = Decimal("0.00")
+    value_variance: Decimal = Decimal("0.00")
+    allocation_variance: Decimal = Decimal("0.00")
+    shares_variance: Decimal = Decimal("0.00")
 
 
 @dataclass
 class HoldingsCategory:
     label: str
-    total: Decimal = Decimal('0.00')
-    total_target_value: Decimal = Decimal('0.00')
-    total_value_variance: Decimal = Decimal('0.00')
-    total_current_allocation: Decimal = Decimal('0.00')
-    total_target_allocation: Decimal = Decimal('0.00')
-    total_allocation_variance: Decimal = Decimal('0.00')
+    total: Decimal = Decimal("0.00")
+    total_target_value: Decimal = Decimal("0.00")
+    total_value_variance: Decimal = Decimal("0.00")
+    total_current_allocation: Decimal = Decimal("0.00")
+    total_target_allocation: Decimal = Decimal("0.00")
+    total_allocation_variance: Decimal = Decimal("0.00")
     holdings: list[AggregatedHolding] = field(default_factory=list)
 
 
 @dataclass
 class HoldingsGroup:
     label: str
-    total: Decimal = Decimal('0.00')
-    total_target_value: Decimal = Decimal('0.00')
-    total_value_variance: Decimal = Decimal('0.00')
-    total_current_allocation: Decimal = Decimal('0.00')
-    total_target_allocation: Decimal = Decimal('0.00')
-    total_allocation_variance: Decimal = Decimal('0.00')
+    total: Decimal = Decimal("0.00")
+    total_target_value: Decimal = Decimal("0.00")
+    total_value_variance: Decimal = Decimal("0.00")
+    total_current_allocation: Decimal = Decimal("0.00")
+    total_target_allocation: Decimal = Decimal("0.00")
+    total_allocation_variance: Decimal = Decimal("0.00")
     categories: OrderedDict[str, HoldingsCategory] = field(default_factory=OrderedDict)
 
 
 @dataclass
 class HoldingsSummary:
-    grand_total: Decimal = Decimal('0.00')
-    grand_target_value: Decimal = Decimal('0.00')
-    grand_value_variance: Decimal = Decimal('0.00')
-    grand_current_allocation: Decimal = Decimal('0.00')
-    grand_target_allocation: Decimal = Decimal('0.00')
-    grand_allocation_variance: Decimal = Decimal('0.00')
+    grand_total: Decimal = Decimal("0.00")
+    grand_target_value: Decimal = Decimal("0.00")
+    grand_value_variance: Decimal = Decimal("0.00")
+    grand_current_allocation: Decimal = Decimal("0.00")
+    grand_target_allocation: Decimal = Decimal("0.00")
+    grand_allocation_variance: Decimal = Decimal("0.00")
     holding_groups: OrderedDict[str, HoldingsGroup] = field(default_factory=OrderedDict)
