@@ -17,7 +17,7 @@ from portfolio.models import (
 )
 from portfolio.services import PortfolioSummaryService
 
-from .base import PortfolioTestMixin
+from ..base import PortfolioTestMixin
 
 User = get_user_model()
 

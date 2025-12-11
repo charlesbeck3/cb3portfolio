@@ -9,6 +9,8 @@ from django.db import transaction
 from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
+from portfolio.forms import TargetAllocationForm
+from portfolio.mixins import PortfolioContextMixin
 from portfolio.models import (
     Account,
     AccountType,
@@ -17,10 +19,9 @@ from portfolio.models import (
     Security,
     TargetAllocation,
 )
-from portfolio.services import PortfolioSummaryService
 
 
-class DashboardView(LoginRequiredMixin, TemplateView):
+class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
     template_name = "portfolio/index.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
@@ -45,12 +46,15 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             else:
                 defaults_map[t.account_type_id][t.asset_class_id] = t.target_pct
 
-        # 2. Get Summary Data
-        summary = PortfolioSummaryService.get_holdings_summary(user)
+        # 2. Get Summary Data via shared services
+        services = self.get_portfolio_services()
+        summary_service = services["summary"]
+
+        summary = summary_service.get_holdings_summary(user)
         context["summary"] = summary
 
         # Sidebar data
-        sidebar_data = PortfolioSummaryService.get_account_summary(user)
+        sidebar_data = summary_service.get_account_summary(user)
         context["sidebar_data"] = sidebar_data
 
         # Map account ID to total from sidebar data
@@ -146,17 +150,21 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         return context
 
 
-class HoldingsView(LoginRequiredMixin, TemplateView):
+class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
     template_name = "portfolio/holdings.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
         account_id = kwargs.get("account_id")
 
-        context.update(
-            PortfolioSummaryService.get_holdings_by_category(self.request.user, account_id)
-        )
-        context["sidebar_data"] = PortfolioSummaryService.get_account_summary(self.request.user)
+        user = self.request.user
+        assert user.is_authenticated
+
+        services = self.get_portfolio_services()
+        summary_service = services["summary"]
+
+        context.update(summary_service.get_holdings_by_category(user, account_id))
+        context.update(self.get_sidebar_context(user))
 
         if account_id and self.request.user.is_authenticated:
             with contextlib.suppress(Account.DoesNotExist):
@@ -267,22 +275,21 @@ class HoldingsView(LoginRequiredMixin, TemplateView):
         return redirect("portfolio:account_holdings", account_id=account_id)
 
 
-class AllocationsView(LoginRequiredMixin, TemplateView):
+class AllocationsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
     template_name = "portfolio/allocations.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
 
-        # We can reuse the hierarchical structure builder or just pass raw assets
-        # For the read-only view, maybe listing by category is enough.
-        # Let's reuse the logic from TargetAllocationView ideally, but for now
-        # let's just pass summary.
+        user = self.request.user
+        assert user.is_authenticated
 
-        context["sidebar_data"] = PortfolioSummaryService.get_account_summary(self.request.user)
+        # Allocations view currently only needs sidebar data; delegate to mixin.
+        context.update(self.get_sidebar_context(user))
         return context
 
 
-class TargetAllocationView(LoginRequiredMixin, TemplateView):
+class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
     template_name = "portfolio/target_allocations.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
@@ -311,8 +318,11 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
             else:
                 defaults_map[t.account_type_id][t.asset_class_id] = t.target_pct
 
-        # 2. Get Summary Data (Reusing shared logic)
-        summary = PortfolioSummaryService.get_holdings_summary(user)
+        # 2. Get Summary Data via shared services
+        services = self.get_portfolio_services()
+        summary_service = services["summary"]
+
+        summary = summary_service.get_holdings_summary(user)
         context["summary"] = summary
 
         # We need account_types for columns
@@ -336,13 +346,9 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         account_map = {a.id: a for a in accounts}
 
         # Calculate Account totals for the header/columns
-        # We can reuse service.get_account_summary or just sum holdings quickly here or use what we had.
-        # Actually, get_holdings_summary calls update_prices.
-        # Let's simple re-fetch holdings to get account totals for the column headers,
-        # OR trust the summary service could provide this?
         # Service provides 'sidebar_data' which has account totals.
 
-        sidebar_data = PortfolioSummaryService.get_account_summary(user)
+        sidebar_data = summary_service.get_account_summary(user)
         context["sidebar_data"] = sidebar_data
 
         # Map account ID to total from sidebar data
@@ -466,6 +472,19 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
 
         input_asset_classes = list(AssetClass.objects.exclude(name="Cash").all())
 
+        # Use a form to parse default (account-type) target inputs
+        form = TargetAllocationForm(
+            request.POST or None,
+            account_types=account_types,
+            asset_classes=input_asset_classes,
+        )
+
+        if not form.is_valid():
+            for field, field_errors in form.errors.items():
+                for err in field_errors:
+                    messages.error(request, f"{field}: {err}")
+            return redirect("portfolio:target_allocations")
+
         # We need to process inputs for:
         # 1. Defaults (Account Type level): target_{at_id}_{ac_id}
         # 2. Overrides (Account level): target_account_{acc_id}_{ac_id}
@@ -477,25 +496,20 @@ class TargetAllocationView(LoginRequiredMixin, TemplateView):
         default_updates: dict[int, dict[int, Decimal]] = defaultdict(dict)
         override_updates: dict[int, dict[int, Decimal]] = defaultdict(dict)
 
-        # Validation Errors
+        # Validation Errors (for overrides and cross-field checks)
         errors = []
 
-        # 1. Process Account Types (Defaults)
+        # 1. Process Account Types (Defaults) using parsed form data
+        parsed_defaults = form.get_parsed_targets()
+
         for at in account_types:
             total_pct = Decimal("0.00")
+            at_defaults = parsed_defaults.get(at.id, {})
+
             for ac in input_asset_classes:
-                input_key = f"target_{at.id}_{ac.id}"
-                val_str = request.POST.get(input_key, "").strip()
+                val = at_defaults.get(ac.id, Decimal("0.00"))
 
-                # Defaults must have value? Or if empty assume 0?
-                # Let's assume empty = 0 for defaults to simplify
-                val = Decimal("0.00")
-                if val_str:
-                    try:
-                        val = Decimal(val_str)
-                    except ValueError:
-                        errors.append(f"Invalid value for {at.label} - {ac.name}")
-
+                # Mirror previous safeguards: disallow negatives
                 if val < 0:
                     errors.append(f"Negative allocation for {at.label}")
 
