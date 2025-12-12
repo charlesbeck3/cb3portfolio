@@ -122,6 +122,46 @@ class Account(models.Model):
     def tax_treatment(self) -> str:
         return self.account_type.tax_treatment
 
+    # ===== Aggregate Methods =====
+
+    def total_value(self) -> Decimal:
+        """Calculate total market value of all holdings in this account."""
+
+        total = Decimal("0.00")
+        for holding in self.holdings.all():
+            total += holding.market_value
+        return total
+
+    def holdings_by_asset_class(self) -> dict[str, Decimal]:
+        """Group holdings by asset class name and sum market values."""
+
+        result: dict[str, Decimal] = {}
+        for holding in self.holdings.select_related("security__asset_class").all():
+            ac_name = holding.security.asset_class.name
+            result[ac_name] = result.get(ac_name, Decimal("0.00")) + holding.market_value
+        return result
+
+    def calculate_deviation(self, targets: dict[str, Decimal]) -> Decimal:
+        """Calculate sum of absolute deviations from target allocation.
+
+        Args:
+            targets: Mapping of asset class name to target percentage (0-100).
+        """
+
+        account_total = self.total_value()
+        holdings_by_ac = self.holdings_by_asset_class()
+
+        total_deviation = Decimal("0.00")
+        all_asset_classes = set(targets.keys()) | set(holdings_by_ac.keys())
+
+        for ac_name in all_asset_classes:
+            actual = holdings_by_ac.get(ac_name, Decimal("0.00"))
+            target_pct = targets.get(ac_name, Decimal("0.00"))
+            target_value = account_total * target_pct / Decimal("100")
+            total_deviation += abs(actual - target_value)
+
+        return total_deviation
+
 
 class TargetAllocation(models.Model):
     """Target allocation for a specific account type and asset class."""
@@ -172,6 +212,36 @@ class TargetAllocation(models.Model):
             return f"{self.user.username} - {self.account.name} (Override) - {self.asset_class.name}: {self.target_pct}%"
         return f"{self.user.username} - {self.account_type} (Default) - {self.asset_class.name}: {self.target_pct}%"
 
+    # ===== Domain Methods =====
+
+    def target_value_for(self, account_total: Decimal) -> Decimal:
+        """Calculate the target dollar amount for a given account total."""
+
+        return account_total * self.target_pct / Decimal("100")
+
+    def variance_for(self, current_value: Decimal, account_total: Decimal) -> Decimal:
+        """Calculate variance between current and target values."""
+
+        target_value = self.target_value_for(account_total)
+        return current_value - target_value
+
+    def variance_pct_for(self, current_value: Decimal, account_total: Decimal) -> Decimal:
+        """Calculate variance as a percentage of account total."""
+
+        if account_total == 0:
+            return Decimal("0.00")
+        target_value = self.target_value_for(account_total)
+        return (current_value - target_value) / account_total * Decimal("100")
+
+    @classmethod
+    def validate_allocation_set(cls, allocations: list["TargetAllocation"]) -> tuple[bool, str]:
+        """Validate that a set of allocations does not exceed 100%."""
+
+        total = sum((a.target_pct for a in allocations), Decimal("0.00"))
+        if total > Decimal("100.00"):
+            return False, f"Allocations sum to {total}%, which exceeds 100%"
+        return True, ""
+
 
 class Security(models.Model):
     """Individual investment security (e.g., VTI, BND)."""
@@ -213,6 +283,44 @@ class Holding(models.Model):
 
     def __str__(self) -> str:
         return f"{self.security.ticker} in {self.account.name} ({self.shares} shares)"
+
+    # ===== Domain Methods =====
+
+    @property
+    def market_value(self) -> Decimal:
+        """Current market value of this holding.
+
+        Returns 0.00 when no current price is set.
+        """
+
+        if self.current_price is None:
+            return Decimal("0.00")
+        return self.shares * self.current_price
+
+    @property
+    def has_price(self) -> bool:
+        """Whether this holding has a current price set."""
+
+        return self.current_price is not None
+
+    def update_price(self, new_price: Decimal) -> None:
+        """Update the holding's current price and persist the change."""
+
+        self.current_price = new_price
+        self.save(update_fields=["current_price"])
+
+    def calculate_target_value(self, account_total: Decimal, target_pct: Decimal) -> Decimal:
+        """Calculate target dollar value for this holding.
+
+        Target percentage is expressed on a 0-100 scale.
+        """
+
+        return account_total * target_pct / Decimal("100")
+
+    def calculate_variance(self, target_value: Decimal) -> Decimal:
+        """Calculate variance from target (positive = overweight)."""
+
+        return self.market_value - target_value
 
 
 class RebalancingRecommendation(models.Model):

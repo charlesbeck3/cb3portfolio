@@ -71,6 +71,121 @@ class AccountTests(TestCase, PortfolioTestMixin):
         taxable = Account(account_type=self.type_taxable)
         self.assertEqual(taxable.tax_treatment, "TAXABLE")
 
+    def test_total_value(self) -> None:
+        account = Account.objects.create(
+            user=self.user,
+            name="Roth IRA",
+            account_type=self.type_roth,
+            institution=self.institution,
+        )
+        asset_class = AssetClass.objects.create(
+            name="US Stocks",
+            category=self.cat_us_eq,
+        )
+        security = Security.objects.create(
+            ticker="VTI",
+            name="Vanguard Total Stock Market ETF",
+            asset_class=asset_class,
+        )
+
+        Holding.objects.create(
+            account=account,
+            security=security,
+            shares=Decimal("10"),
+            current_price=Decimal("100"),
+        )
+        # 10 * 100 = 1000
+        self.assertEqual(account.total_value(), Decimal("1000"))
+
+    def test_holdings_by_asset_class(self) -> None:
+        account = Account.objects.create(
+            user=self.user,
+            name="Roth IRA",
+            account_type=self.type_roth,
+            institution=self.institution,
+        )
+        us_stocks = AssetClass.objects.create(
+            name="US Stocks",
+            category=self.cat_us_eq,
+        )
+        bonds = AssetClass.objects.create(
+            name="Bonds",
+            category=self.cat_us_eq,
+        )
+        vti = Security.objects.create(
+            ticker="VTI",
+            name="Vanguard Total Stock Market ETF",
+            asset_class=us_stocks,
+        )
+        bnd = Security.objects.create(
+            ticker="BND",
+            name="Vanguard Total Bond Market ETF",
+            asset_class=bonds,
+        )
+
+        Holding.objects.create(
+            account=account,
+            security=vti,
+            shares=Decimal("2"),
+            current_price=Decimal("100"),
+        )
+        Holding.objects.create(
+            account=account,
+            security=bnd,
+            shares=Decimal("4"),
+            current_price=Decimal("50"),
+        )
+
+        by_ac = account.holdings_by_asset_class()
+        self.assertEqual(by_ac["US Stocks"], Decimal("200"))
+        self.assertEqual(by_ac["Bonds"], Decimal("200"))
+
+    def test_calculate_deviation(self) -> None:
+        account = Account.objects.create(
+            user=self.user,
+            name="Roth IRA",
+            account_type=self.type_roth,
+            institution=self.institution,
+        )
+        us_stocks = AssetClass.objects.create(
+            name="US Stocks",
+            category=self.cat_us_eq,
+        )
+        bonds = AssetClass.objects.create(
+            name="Bonds",
+            category=self.cat_us_eq,
+        )
+        vti = Security.objects.create(
+            ticker="VTI",
+            name="Vanguard Total Stock Market ETF",
+            asset_class=us_stocks,
+        )
+        bnd = Security.objects.create(
+            ticker="BND",
+            name="Vanguard Total Bond Market ETF",
+            asset_class=bonds,
+        )
+
+        # Current: 600 stocks, 400 bonds, total 1000
+        Holding.objects.create(
+            account=account,
+            security=vti,
+            shares=Decimal("6"),
+            current_price=Decimal("100"),
+        )
+        Holding.objects.create(
+            account=account,
+            security=bnd,
+            shares=Decimal("4"),
+            current_price=Decimal("100"),
+        )
+
+        # Target: 50/50 -> 500 each
+        targets = {"US Stocks": Decimal("50"), "Bonds": Decimal("50")}
+        deviation = account.calculate_deviation(targets)
+        # |600-500| + |400-500| = 200
+        self.assertEqual(deviation, Decimal("200"))
+
 
 class SecurityTests(
     TestCase, PortfolioTestMixin
@@ -121,6 +236,69 @@ class HoldingTests(TestCase, PortfolioTestMixin):  # Inherit from PortfolioTestM
         self.assertEqual(holding.shares, Decimal("10.5000"))
         self.assertEqual(str(holding), "VTI in Roth IRA (10.5000 shares)")
 
+    def test_market_value_with_price(self) -> None:
+        holding = Holding(
+            account=self.account,
+            security=self.security,
+            shares=Decimal("10"),
+            current_price=Decimal("100"),
+        )
+        self.assertEqual(holding.market_value, Decimal("1000"))
+
+    def test_market_value_without_price(self) -> None:
+        holding = Holding(
+            account=self.account,
+            security=self.security,
+            shares=Decimal("10"),
+            current_price=None,
+        )
+        self.assertEqual(holding.market_value, Decimal("0.00"))
+
+    def test_has_price_property(self) -> None:
+        holding_with_price = Holding(
+            account=self.account,
+            security=self.security,
+            shares=Decimal("1"),
+            current_price=Decimal("50"),
+        )
+        self.assertTrue(holding_with_price.has_price)
+
+        holding_without_price = Holding(
+            account=self.account,
+            security=self.security,
+            shares=Decimal("1"),
+            current_price=None,
+        )
+        self.assertFalse(holding_without_price.has_price)
+
+    def test_update_price(self) -> None:
+        holding = Holding.objects.create(
+            account=self.account,
+            security=self.security,
+            shares=Decimal("5"),
+            current_price=Decimal("10"),
+        )
+        holding.update_price(Decimal("20"))
+        holding.refresh_from_db()
+        self.assertEqual(holding.current_price, Decimal("20"))
+
+    def test_calculate_target_value_and_variance(self) -> None:
+        holding = Holding(
+            account=self.account,
+            security=self.security,
+            shares=Decimal("10"),
+            current_price=Decimal("100"),
+        )
+
+        account_total = Decimal("10000")
+        target_pct = Decimal("25")
+        target_value = holding.calculate_target_value(account_total, target_pct)
+        self.assertEqual(target_value, Decimal("2500"))
+
+        # Current value: 1000, Target: 2500 -> variance: -1500 (underweight)
+        variance = holding.calculate_variance(target_value)
+        self.assertEqual(variance, Decimal("1000") - Decimal("2500"))
+
 
 class TargetAllocationTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
@@ -168,6 +346,83 @@ class TargetAllocationTests(TestCase, PortfolioTestMixin):
         self.assertEqual(TargetAllocation.objects.count(), 2)
         self.assertEqual(target2.user.username, "otheruser")
         self.assertEqual(target2.target_pct, Decimal("60.00"))
+
+    def test_target_value_for(self) -> None:
+        allocation = TargetAllocation(
+            user=self.user,
+            account_type=self.type_roth,
+            asset_class=self.asset_class,
+            target_pct=Decimal("25"),
+        )
+        self.assertEqual(allocation.target_value_for(Decimal("10000")), Decimal("2500"))
+
+    def test_variance_for(self) -> None:
+        allocation = TargetAllocation(
+            user=self.user,
+            account_type=self.type_roth,
+            asset_class=self.asset_class,
+            target_pct=Decimal("25"),
+        )
+        variance = allocation.variance_for(Decimal("3000"), Decimal("10000"))
+        self.assertEqual(variance, Decimal("500"))
+
+    def test_variance_pct_for(self) -> None:
+        allocation = TargetAllocation(
+            user=self.user,
+            account_type=self.type_roth,
+            asset_class=self.asset_class,
+            target_pct=Decimal("25"),
+        )
+        # (3000 - 2500) / 10000 * 100 = 5
+        variance_pct = allocation.variance_pct_for(Decimal("3000"), Decimal("10000"))
+        self.assertEqual(variance_pct, Decimal("5"))
+
+    def test_variance_pct_for_handles_zero_total(self) -> None:
+        allocation = TargetAllocation(
+            user=self.user,
+            account_type=self.type_roth,
+            asset_class=self.asset_class,
+            target_pct=Decimal("25"),
+        )
+        self.assertEqual(allocation.variance_pct_for(Decimal("0"), Decimal("0")), Decimal("0.00"))
+
+    def test_validate_allocation_set_valid(self) -> None:
+        allocations = [
+            TargetAllocation(
+                user=self.user,
+                account_type=self.type_roth,
+                asset_class=self.asset_class,
+                target_pct=Decimal("60"),
+            ),
+            TargetAllocation(
+                user=self.user,
+                account_type=self.type_roth,
+                asset_class=self.asset_class,
+                target_pct=Decimal("40"),
+            ),
+        ]
+        ok, msg = TargetAllocation.validate_allocation_set(allocations)
+        self.assertTrue(ok)
+        self.assertEqual(msg, "")
+
+    def test_validate_allocation_set_exceeds_100(self) -> None:
+        allocations = [
+            TargetAllocation(
+                user=self.user,
+                account_type=self.type_roth,
+                asset_class=self.asset_class,
+                target_pct=Decimal("60"),
+            ),
+            TargetAllocation(
+                user=self.user,
+                account_type=self.type_roth,
+                asset_class=self.asset_class,
+                target_pct=Decimal("50"),
+            ),
+        ]
+        ok, msg = TargetAllocation.validate_allocation_set(allocations)
+        self.assertFalse(ok)
+        self.assertIn("110", msg)
 
 
 class RebalancingRecommendationTests(TestCase, PortfolioTestMixin):
