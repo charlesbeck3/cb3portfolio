@@ -154,10 +154,10 @@ class PortfolioSummaryService:
         account_type_map: dict[int, str],
     ) -> None:
         for holding in holdings:
-            if holding.current_price is None:
+            if not holding.has_price:
                 continue
 
-            value = holding.shares * holding.current_price
+            value = holding.market_value
 
             account_totals[holding.account_id] += value
             if holding.account_id not in account_type_map:
@@ -275,8 +275,7 @@ class PortfolioSummaryService:
                 )
             for acc_id in group_entry.account_totals:
                 group_entry.account_variance_totals[acc_id] = (
-                    group_entry.account_totals[acc_id]
-                    - group_entry.account_target_totals[acc_id]
+                    group_entry.account_totals[acc_id] - group_entry.account_target_totals[acc_id]
                 )
             group_entry.variance_total = group_entry.total - group_entry.target_total
 
@@ -287,8 +286,7 @@ class PortfolioSummaryService:
             )
         for acc_id in summary.account_grand_totals:
             summary.account_grand_variance_totals[acc_id] = (
-                summary.account_grand_totals[acc_id]
-                - summary.account_grand_target_totals[acc_id]
+                summary.account_grand_totals[acc_id] - summary.account_grand_target_totals[acc_id]
             )
         summary.grand_variance_total = summary.grand_total - summary.grand_target_total
 
@@ -415,28 +413,13 @@ class PortfolioSummaryService:
         grand_total = Decimal("0.00")
 
         for account in accounts:
-            account_total = Decimal("0.00")
-            holdings_by_ac: dict[str, Decimal] = defaultdict(Decimal)
-
-            for holding in account.holdings.all():
-                if holding.current_price:
-                    val = holding.shares * holding.current_price
-                    account_total += val
-                    holdings_by_ac[holding.security.asset_class.name] += val
+            account_total = account.total_value()
 
             account_targets = effective_targets_map.get(account.id, {})
-            all_asset_classes = set(holdings_by_ac.keys()) | set(account_targets.keys())
 
-            absolute_deviation = Decimal("0.00")
+            absolute_deviation = account.calculate_deviation(account_targets)
             absolute_deviation_pct = Decimal("0.00")
-
             if account_total > 0:
-                for ac_name in all_asset_classes:
-                    actual_val = holdings_by_ac.get(ac_name, Decimal("0.00"))
-                    target_pct = account_targets.get(ac_name, Decimal("0.00"))
-                    target_val = account_total * (target_pct / Decimal("100.00"))
-                    absolute_deviation += abs(actual_val - target_val)
-
                 absolute_deviation_pct = (absolute_deviation / account_total) * Decimal("100.00")
 
             group_name = "Other"
@@ -570,7 +553,10 @@ class PortfolioSummaryService:
                 ac_id = ac_id_obj["id"]
 
                 has_holdings = False
-                if acc_id in account_ac_security_counts and ac_id in account_ac_security_counts[acc_id]:
+                if (
+                    acc_id in account_ac_security_counts
+                    and ac_id in account_ac_security_counts[acc_id]
+                ):
                     has_holdings = True
 
                 if not has_holdings:

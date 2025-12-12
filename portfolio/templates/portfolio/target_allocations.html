@@ -114,16 +114,17 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     function formatAccounting(val, decimals, prefix='', suffix='') {
-        const isNeg = val < 0;
-        const absVal = Math.abs(val);
+        // Avoid "negative zero" and tiny floating point negatives showing as (0.0%).
+        const rounded = parseFloat((val || 0).toFixed(decimals));
+        const isNeg = rounded < 0;
+        const absVal = Math.abs(rounded);
         const numStr = absVal.toLocaleString('en-US', {minimumFractionDigits: decimals, maximumFractionDigits: decimals});
         const result = `${prefix}${numStr}${suffix}`;
         
         if (isNeg) {
             return `(${result})`;
-        } else {
-            return `<span style="visibility: hidden">(</span>${result}<span style="visibility: hidden">)</span>`;
         }
+        return result;
     }
 
     function formatPct(val) {
@@ -145,24 +146,30 @@ document.addEventListener('DOMContentLoaded', function() {
     // Core Calculation Logic
     function updateCalculations() {
         let valid = true;
+        const invalidDefaultTotals = new Map();
         
         // 1. Gather Defaults: {atId: {acId: val}}
         const defaults = {};
-        const defaultTotals = {}; // atId -> total
+        const defaultTotals = {}; // atId -> total (non-cash)
+        const allAtIds = new Set();
+        const atLabels = {};
         
         defaultInputs.forEach(inp => {
             const atId = inp.dataset.atId;
             const acId = inp.dataset.acId;
             const val = parseFloat(inp.value) || 0;
+
+            allAtIds.add(atId);
+            if (!atLabels[atId] && inp.dataset.atLabel) atLabels[atId] = inp.dataset.atLabel;
             
             // Only store non-zero values to avoid overwriting server-rendered targets
             if (val > 0) {
                 if (!defaults[atId]) defaults[atId] = {};
                 defaults[atId][acId] = val;
-                
-                if (!defaultTotals[atId]) defaultTotals[atId] = 0;
-                defaultTotals[atId] += val;
             }
+
+            if (!defaultTotals[atId]) defaultTotals[atId] = 0;
+            defaultTotals[atId] += val;
         });
         
         // 2. Gather Overrides: {accId: {acId: val}}
@@ -188,6 +195,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const aggTargetDollars = {}; // acId -> dollars (percent-table only)
         const atTargetDollars = {}; // atId -> {acId: dollars} (percent-table only)
+        let aggCashDollars = 0;
+        const atCashDollars = {};
         
         const accountIds = new Set();
         overrideInputs.forEach(inp => accountIds.add(inp.dataset.accId));
@@ -264,6 +273,12 @@ document.addEventListener('DOMContentLoaded', function() {
                  const defTotal = defaultTotals[atId] || 0;
                  cashEff = Math.max(0, 100 - defTotal);
             }
+
+            // Aggregate cash dollars like other asset classes
+            const cashDollars = accValue * (cashEff / 100);
+            aggCashDollars += cashDollars;
+            if (!atCashDollars[atId]) atCashDollars[atId] = 0;
+            atCashDollars[atId] += cashDollars;
             
             // ... (Existing Cash Span Updates) ...
             const cashSpan = document.getElementById(`cash-eff-${accId}`);
@@ -300,15 +315,27 @@ document.addEventListener('DOMContentLoaded', function() {
         // 4. Update Aggregates (Account Types & Portfolio)
         
         // AT Defaults validation
-        for (const [atId, total] of Object.entries(defaultTotals)) {
+        for (const atId of allAtIds) {
+             const total = defaultTotals[atId] || 0;
              const cashDef = Math.max(0, 100 - total);
              const cashEl = document.getElementById(`cash-default-${atId}`);
              if(cashEl) cashEl.innerHTML = formatPct(cashDef);
              
              const totEl = document.getElementById(`total-default-${atId}`);
-             if(totEl) totEl.innerHTML = formatPct(total + cashDef);
+             if(totEl) {
+                 totEl.innerHTML = formatPct(total + cashDef);
+                 totEl.title = `Non-cash total: ${total.toFixed(2)}%`;
+                 if (total >= 100.01) totEl.classList.add('text-danger');
+                 else totEl.classList.remove('text-danger');
+             }
              
-             if (total > 100.01) valid = false;
+             if (total >= 100.01) {
+                 valid = false;
+                 invalidDefaultTotals.set(atId, {
+                     label: atLabels[atId] || atId,
+                     total: total,
+                 });
+             }
         }
 
         const atTotalValues = dataObj.at_values;
@@ -411,9 +438,31 @@ document.addEventListener('DOMContentLoaded', function() {
              }
         });
         
+        // 6. Cash aggregate targets (Account Types + Portfolio)
+        for (const [atId, dollars] of Object.entries(atCashDollars)) {
+            const totalVal = atTotalValues[atId] || 0;
+            const pct = totalVal > 0 ? (dollars / totalVal * 100) : 0;
+            const el = document.getElementById(`cash-agg-${atId}`);
+            if (el) el.innerHTML = formatPct(pct);
+        }
+
+        const cashPortfolioPct = portfolioTotal > 0 ? (aggCashDollars / portfolioTotal * 100) : 0;
+        const cashTotalEl = document.getElementById('cash-total');
+        if (cashTotalEl) cashTotalEl.innerHTML = formatPct(cashPortfolioPct);
+
         // 6. Cash and money-table grand totals are rendered from backend; no JS updates here.
 
-        saveButtons.forEach(btn => btn.disabled = !valid);
+        saveButtons.forEach(btn => {
+            btn.disabled = !valid;
+            if (!valid) {
+                const parts = Array.from(invalidDefaultTotals.values()).map(v => {
+                    return `Total allocation for ${v.label} exceeds 100% (${v.total.toFixed(2)}%)`;
+                });
+                btn.title = parts.join(' | ');
+            } else {
+                btn.title = '';
+            }
+        });
     }
     
     allInputs.forEach(inp => inp.addEventListener('input', updateCalculations));

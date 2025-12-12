@@ -93,7 +93,7 @@ class Command(BaseCommand):
             },
             {
                 "code": "DEPOSIT",
-                "label": "Deposit Account",
+                "label": "Deposit",
                 "group": "Deposit",
                 "tax_treatment": "TAXABLE",
             },

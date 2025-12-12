@@ -71,11 +71,15 @@ class PortfolioAnalysisTests(TestCase, PortfolioTestMixin):
 
         self.assertEqual(analysis.target_value_for("US Stocks"), Decimal("500"))
         self.assertEqual(analysis.variance_for("US Stocks"), Decimal("100"))
-        self.assertEqual(analysis.variance_pct_for("US Stocks").quantize(Decimal("0.01")), Decimal("10.00"))
+        self.assertEqual(
+            analysis.variance_pct_for("US Stocks").quantize(Decimal("0.01")), Decimal("10.00")
+        )
 
         self.assertEqual(analysis.target_value_for("Bonds"), Decimal("500"))
         self.assertEqual(analysis.variance_for("Bonds"), Decimal("-100"))
-        self.assertEqual(analysis.variance_pct_for("Bonds").quantize(Decimal("0.01")), Decimal("-10.00"))
+        self.assertEqual(
+            analysis.variance_pct_for("Bonds").quantize(Decimal("0.01")), Decimal("-10.00")
+        )
 
     def test_variance_pct_for_zero_total(self) -> None:
         empty = Portfolio(user_id=self.user.id, accounts=[])

@@ -9,6 +9,7 @@ from django.db import transaction
 from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
+from portfolio.context_builders import AllocationTableBuilder
 from portfolio.forms import TargetAllocationForm
 from portfolio.mixins import PortfolioContextMixin
 from portfolio.models import (
@@ -57,95 +58,44 @@ class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         sidebar_data = summary_service.get_account_summary(user)
         context["sidebar_data"] = sidebar_data
 
-        # Map account ID to total from sidebar data
-        account_totals = {}
-        for group in sidebar_data["groups"].values():
-            for acc in group["accounts"]:
-                account_totals[acc["id"]] = acc["total"]
-
-        # 3. Build Account Types with rich context
+        # 3. Build Account Types with lightweight context
         account_types_qs = (
             AccountType.objects.filter(accounts__user=user)
             .distinct()
             .order_by("group__sort_order", "label")
         )
 
-        accounts = Account.objects.filter(user=user).select_related("account_type")
-        account_map = {a.id: a for a in accounts}
-
-        # Account Type Grand Totals from service
         at_totals = summary.account_type_grand_totals
-
-        rich_account_types = []
+        rich_account_types: list[Any] = []
         for at_obj in account_types_qs:
             at: Any = at_obj
-            at_accounts = [a for a in accounts if a.account_type_id == at.id]
-
-            # Attach context expected by template
-            at.current_total_value = at_totals.get(at.code, Decimal(0))
+            at.current_total_value = at_totals.get(at.code, Decimal("0.00"))
             at.target_map = defaults_map.get(at.id, {})
-
-            # Prepare accounts
-            for acc in at_accounts:
-                acc.current_total_value = account_totals.get(acc.id, Decimal(0))  # type: ignore
-                acc.target_map = overrides_map.get(acc.id, {})  # type: ignore
-
-            at.active_accounts = at_accounts
             rich_account_types.append(at)
 
         context["account_types"] = rich_account_types
-
-        # 4. Calculate detailed maps for Accounts and Types (Dollar values from Holdings)
-        holdings = (
-            Holding.objects.filter(account__user=user)
-            .select_related("security", "account")
-            .only("account_id", "security__asset_class_id", "shares", "current_price")
-        )
-
-        # account_id -> ac_id -> value
-        account_ac_map: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
-        # at_id -> ac_id -> value
-        at_ac_map: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
-
-        for h in holdings:
-            if h.current_price:
-                val = h.shares * h.current_price
-                if val > 0:
-                    ac_id = h.security.asset_class_id
-                    acc_id = h.account.id
-                    at_id = account_map[acc_id].account_type_id
-
-                    account_ac_map[acc_id][ac_id] += val
-                    at_ac_map[at_id][ac_id] += val
-
-        # Now populate maps on objects
-        # Map asset_class_id -> category_code helper
-        # (This might be useful if we want to cross-reference categories, but template uses ac_data hierarchy)
-
-        for at in rich_account_types:
-            # Populate AT maps
-            at.dollar_map = at_ac_map[at.id]
-            at.allocation_map = {}
-            if at.current_total_value > 0:
-                for ac_id, val in at.dollar_map.items():
-                    at.allocation_map[ac_id] = (val / at.current_total_value) * 100
-
-            for acc in at.active_accounts:
-                acc.dollar_map = account_ac_map[acc.id]
-                acc.allocation_map = {}
-                if acc.current_total_value > 0:
-                    for ac_id, val in acc.dollar_map.items():
-                        acc.allocation_map[ac_id] = (val / acc.current_total_value) * 100
-
-        # 5. Populate Cash Maps explicitly?
-        # The holdings loop handles the "Cash" Asset Class IF it exists as a holding.
-        # But our template logic for "Cash (Calculated)" often relies on `cash_asset_class_id`.
 
         cash_ac = AssetClass.objects.filter(name="Cash").first()
         context["cash_asset_class_id"] = cash_ac.id if cash_ac else None
 
         # Calculate 'Portfolio Total Value' for template usage
         context["portfolio_total_value"] = summary.grand_total
+
+        builder = AllocationTableBuilder()
+        context["allocation_rows_money"] = builder.build_rows(
+            summary=summary,
+            account_types=rich_account_types,
+            portfolio_total_value=summary.grand_total,
+            mode="money",
+            cash_asset_class_id=context["cash_asset_class_id"],
+        )
+        context["allocation_rows_percent"] = builder.build_rows(
+            summary=summary,
+            account_types=rich_account_types,
+            portfolio_total_value=summary.grand_total,
+            mode="percent",
+            cash_asset_class_id=context["cash_asset_class_id"],
+        )
 
         return context
 

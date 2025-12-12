@@ -70,4 +70,6 @@ class TestSmokePages(PortfolioTestMixin):
     def test_account_holdings_page_loads(self, page: Page, live_server_url: str) -> None:
         _login(page, live_server_url, "testuser", "password")
         page.goto(f"{live_server_url}/account/{self.account.id}/")
-        expect(page.get_by_role("heading", name=f"Holdings for {self.account.name}")).to_be_visible()
+        expect(
+            page.get_by_role("heading", name=f"Holdings for {self.account.name}")
+        ).to_be_visible()

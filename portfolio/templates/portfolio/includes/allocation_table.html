@@ -88,6 +88,7 @@
                                                max="100" 
                                                class="form-control form-control-sm text-end default-input px-1"
                                                data-at-id="{{ at.id }}"
+                                               data-at-label="{{ at.label }}"
                                                data-ac-id="{{ ac_data.id }}"
                                                value="{{ at.target_map|get_item:ac_data.id|default:'' }}"
                                                placeholder="--">
@@ -236,9 +237,10 @@
 
                 <!-- Subtotal Row for Category -->
                 {% with category_label=summary.category_labels|get_item:category_code %}
-                {% if cat_data.asset_classes|length > 1 %}
-                <tr class="table-info fw-bold category-subtotal-{{ category_code }}">
-                    <td class="ps-4 text-dark">{{ category_label|default:category_code }} Total</td>
+                {% if category_code != 'CASH' %}
+                {% if mode == 'percent' or cat_data.asset_classes|length > 1 %}
+                <tr class="table-info fw-bold category-subtotal-{{ category_code }}{% if mode == 'percent' and cat_data.asset_classes|length == 1 %} d-none{% endif %}">
+                    <td class="ps-4 text-dark">{% if mode == 'percent' and cat_data.asset_classes|length == 1 %}{% else %}{{ category_label|default:category_code }} Total{% endif %}</td>
                     {% for at in account_types %}
                         <!-- Account Type Subtotals -->
                         <td class="text-end pe-1 small text-dark">
@@ -380,12 +382,14 @@
                     </td>
                 </tr>
                 {% endif %}
+                {% endif %}
                 {% endwith %}
             {% endfor %}
 
             <!-- Group Total Row -->
-            {% if group_data.asset_class_count > 1 and group_data.categories|length > 1 %}
-            <tr class="table-group-total fw-bold group-total-{{ group_code }}" style="background-color: #e2e3e5;">
+            {% if group_code != 'CASH' %}
+            {% if mode == 'percent' or group_data.asset_class_count > 1 and group_data.categories|length > 1 %}
+            <tr class="table-group-total fw-bold group-total-{{ group_code }}{% if mode == 'percent' %}{% if group_data.asset_class_count > 1 and group_data.categories|length > 1 %}{% else %} d-none{% endif %}{% endif %}" style="background-color: #e2e3e5;">
                 <td class="ps-4 text-dark">{{ group_data.label|default:group_code }} Total</td>
                 {% for at in account_types %}
                     <!-- Account Type Group Totals -->
@@ -531,6 +535,7 @@
                 </td>
             </tr>
             {% endif %}
+        {% endif %}
         {% endfor %}
         
         <!-- Cash Row | We reuse the generic loop? No, Cash is special computed row. -->
