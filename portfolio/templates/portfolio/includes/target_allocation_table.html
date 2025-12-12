@@ -1,0 +1,97 @@
+<table class="table table-bordered table-striped table-hover mb-0 align-middle" id="{{ table_id }}" style="font-size: 0.8rem; table-layout: fixed;">
+    <thead class="table-light">
+        <tr>
+            <th scope="col" class="ps-4" rowspan="2" style="width: 250px; min-width: 250px; white-space: nowrap;">Asset Class</th>
+            {% for group in account_types %}
+                <th scope="col" class="text-center border-bottom-0 position-relative" colspan="4">
+                    {{ group.label }}
+                    {% if group.active_accounts and mode == 'percent' %}
+                    <button type="button" class="btn btn-sm btn-link p-0 ms-2 text-decoration-none expand-btn" data-at-id="{{ group.id }}" title="Show/Hide Individual Accounts">[+]</button>
+                    {% endif %}
+                </th>
+                {% for acc in group.active_accounts %}
+                    <th scope="col" class="text-center border-bottom-0 table-warning d-none col-acc-{{ group.id }}" colspan="3">
+                        <small>{{ acc.name }}</small>
+                    </th>
+                {% endfor %}
+            {% endfor %}
+            <th scope="col" class="text-center table-active border-bottom-0" colspan="3">Total Portfolio ({% if mode == 'percent' %}%{% else %}${% endif %})</th>
+        </tr>
+        <tr>
+            {% for group in account_types %}
+                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 60px; min-width: 60px;">Current</th>
+                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 90px; min-width: 90px;">Target</th>
+                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 70px; min-width: 70px;">Wt. Target</th>
+                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 70px; min-width: 70px;">vTarget</th>
+                {% for _acc in group.active_accounts %}
+                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 60px; min-width: 60px;">Current</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 90px; min-width: 90px;">Target</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 70px; min-width: 70px;">vTarget</th>
+                {% endfor %}
+            {% endfor %}
+            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 60px; min-width: 60px;">Current</th>
+            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 90px; min-width: 90px;">Target</th>
+            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 70px; min-width: 70px;">vTarget</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+        <tr
+            {% if row.is_cash %}class="table-warning fw-bold"{% elif row.is_subtotal %}class="table-info fw-bold"{% elif row.is_group_total %}class="fw-bold" style="background-color: #e2e3e5;"{% elif row.is_grand_total %}class="table-dark fw-bold"{% endif %}
+        >
+            <td class="ps-4">{{ row.asset_class_name }}</td>
+
+            {% for group in row.groups %}
+                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.account_type.current|safe }}</td>
+
+                <td class="{% if mode == 'percent' and group.account_type.target_input_name and not row.is_subtotal and not row.is_group_total and not row.is_grand_total and not row.is_cash %}p-1{% else %}text-end pe-1 small{% endif %}">
+                    {% if mode == 'percent' and group.account_type.target_input_name and not row.is_subtotal and not row.is_group_total and not row.is_grand_total and not row.is_cash %}
+                        <input type="number"
+                               name="{{ group.account_type.target_input_name }}"
+                               step="0.01"
+                               min="0"
+                               max="100"
+                               class="form-control form-control-sm text-end default-input px-1"
+                               data-at-id="{{ group.account_type.account_type_id }}"
+                               data-at-label="{{ group.account_type.label }}"
+                               data-ac-id="{{ row.asset_class_id }}"
+                               value="{{ group.account_type.target_input_value }}"
+                               placeholder="--">
+                    {% else %}
+                        {{ group.account_type.target_input_value|default:"--" }}
+                    {% endif %}
+                </td>
+
+                <td class="text-end pe-1 small fw-bold text-muted d-none d-md-table-cell">{{ group.account_type.weighted_target|safe }}</td>
+                <td class="text-end pe-1 small fw-bold">{{ group.account_type.vtarget|safe }}</td>
+
+                {% for acc in group.accounts %}
+                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.account_type.account_type_id }}">{{ acc.current|safe }}</td>
+                    <td class="{% if mode == 'percent' and acc.input_name and not row.is_grand_total %}p-1{% else %}text-end pe-1 small{% endif %} table-warning d-none col-acc-{{ group.account_type.account_type_id }}">
+                        {% if mode == 'percent' and acc.input_name and not row.is_grand_total %}
+                            <input type="number"
+                                   name="{{ acc.input_name }}"
+                                   step="0.01"
+                                   min="0"
+                                   max="100"
+                                   class="form-control form-control-sm text-end override-input px-1"
+                                   data-acc-id="{{ acc.account_id }}"
+                                   data-at-id="{{ group.account_type.account_type_id }}"
+                                   data-ac-id="{{ row.asset_class_id }}"
+                                   value="{{ acc.input_value }}"
+                                   placeholder="--">
+                        {% else %}
+                            {{ acc.target|safe }}
+                        {% endif %}
+                    </td>
+                    <td class="text-end pe-2 small table-warning d-none col-acc-{{ group.account_type.account_type_id }}">{{ acc.vtarget|safe }}</td>
+                {% endfor %}
+            {% endfor %}
+
+            <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio_current|safe }}</td>
+            <td class="text-end pe-2 table-active">{{ row.portfolio_target|safe }}</td>
+            <td class="text-end pe-2 table-active fw-bold">{{ row.portfolio_vtarget|safe }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

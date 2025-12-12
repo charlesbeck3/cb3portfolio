@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from decimal import Decimal
+from typing import Any
+
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.views.generic import TemplateView
+
+from portfolio.context_builders import AllocationTableBuilder
+from portfolio.models import AccountType, AssetClass, TargetAllocation
+from portfolio.views.mixins import PortfolioContextMixin
+
+
+class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
+    template_name = "portfolio/index.html"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        user = self.request.user
+        assert user.is_authenticated
+
+        # 1. Get Targets (needed for displaying target values even in read-only)
+        targets = TargetAllocation.objects.filter(user=user).select_related(
+            "account_type", "asset_class", "account"
+        )
+
+        # Structure:
+        # defaults: at_id -> ac_id -> pct
+        # overrides: account_id -> ac_id -> pct
+        defaults_map: dict[int, dict[int, Decimal]] = defaultdict(dict)
+        overrides_map: dict[int, dict[int, Decimal]] = defaultdict(dict)
+
+        for t in targets:
+            if t.account_id:
+                overrides_map[t.account_id][t.asset_class_id] = t.target_pct
+            else:
+                defaults_map[t.account_type_id][t.asset_class_id] = t.target_pct
+
+        # 2. Get Summary Data via shared services
+        services = self.get_portfolio_services()
+        summary_service = services["summary"]
+
+        summary = summary_service.get_holdings_summary(user)
+        context["summary"] = summary
+
+        # Sidebar data
+        sidebar_data = summary_service.get_account_summary(user)
+        context["sidebar_data"] = sidebar_data
+
+        # 3. Build Account Types with lightweight context
+        account_types_qs = (
+            AccountType.objects.filter(accounts__user=user)
+            .distinct()
+            .order_by("group__sort_order", "label")
+        )
+
+        at_totals = summary.account_type_grand_totals
+        rich_account_types: list[Any] = []
+        for at_obj in account_types_qs:
+            at: Any = at_obj
+            at.current_total_value = at_totals.get(at.code, Decimal("0.00"))
+            at.target_map = defaults_map.get(at.id, {})
+            rich_account_types.append(at)
+
+        context["account_types"] = rich_account_types
+
+        cash_ac = AssetClass.objects.filter(name="Cash").first()
+        context["cash_asset_class_id"] = cash_ac.id if cash_ac else None
+
+        # Calculate 'Portfolio Total Value' for template usage
+        context["portfolio_total_value"] = summary.grand_total
+
+        builder = AllocationTableBuilder()
+        context["allocation_rows_money"] = builder.build_rows(
+            summary=summary,
+            account_types=rich_account_types,
+            portfolio_total_value=summary.grand_total,
+            mode="money",
+            cash_asset_class_id=context["cash_asset_class_id"],
+        )
+        context["allocation_rows_percent"] = builder.build_rows(
+            summary=summary,
+            account_types=rich_account_types,
+            portfolio_total_value=summary.grand_total,
+            mode="percent",
+            cash_asset_class_id=context["cash_asset_class_id"],
+        )
+
+        return context

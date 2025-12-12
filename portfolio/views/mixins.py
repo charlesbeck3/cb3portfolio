@@ -4,6 +4,8 @@ from typing import Any
 
 from portfolio.services import PortfolioSummaryService, TargetAllocationService
 
+__all__ = ["PortfolioContextMixin"]
+
 
 class PortfolioContextMixin:
     """Provides common portfolio context data for portfolio views."""

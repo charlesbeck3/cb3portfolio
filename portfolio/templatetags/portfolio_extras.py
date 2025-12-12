@@ -8,17 +8,6 @@ register = template.Library()
 
 
 @register.filter
-def get_item(dictionary: dict[Any, Any] | None, key: Any) -> Any:
-    """
-    Get a value from a dictionary using a key.
-    Usage: {{ mydict|get_item:key }}
-    """
-    if not dictionary:
-        return None
-    return dictionary.get(key)
-
-
-@register.filter
 def percentage_of(value: Any, total: Any) -> Decimal:
     """
     Calculate percentage of value / total.
@@ -30,20 +19,6 @@ def percentage_of(value: Any, total: Any) -> Decimal:
         if tot_d == 0:
             return Decimal("0")
         return (val_d / tot_d) * Decimal("100")
-    except (ValueError, TypeError, InvalidOperation):
-        return Decimal("0")
-
-
-@register.filter
-def subtract(value: Any, arg: Any) -> Decimal:
-    """
-    Subtract arg from value.
-    Usage: {{ value|subtract:arg }}
-    """
-    try:
-        val_d = Decimal(str(value))
-        arg_d = Decimal(str(arg))
-        return val_d - arg_d
     except (ValueError, TypeError, InvalidOperation):
         return Decimal("0")
 

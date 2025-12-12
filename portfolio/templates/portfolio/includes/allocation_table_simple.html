@@ -10,13 +10,13 @@
         <tr>
             <th></th>
             {% for at in account_types %}
-                <th scope="col" class="text-center small text-muted">Curr</th>
+                <th scope="col" class="text-center small text-muted">Current</th>
                 <th scope="col" class="text-center small text-muted">Target</th>
-                <th scope="col" class="text-center small text-muted">Var</th>
+                <th scope="col" class="text-center small text-muted">vTarget</th>
             {% endfor %}
-            <th scope="col" class="text-center small table-active text-muted">Curr</th>
+            <th scope="col" class="text-center small table-active text-muted">Current</th>
             <th scope="col" class="text-center small table-active text-muted">Target</th>
-            <th scope="col" class="text-center small table-active text-muted">Var</th>
+            <th scope="col" class="text-center small table-active text-muted">vTarget</th>
         </tr>
     </thead>
     <tbody>
@@ -26,11 +26,11 @@
             {% for at_col in row.account_type_data %}
                 <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ at_col.current|safe }}</td>
                 <td class="text-end pe-1 small">{{ at_col.target|safe }}</td>
-                <td class="text-end pe-1 small fw-bold">{{ at_col.variance|safe }}</td>
+                <td class="text-end pe-1 small fw-bold">{{ at_col.vtarget|safe }}</td>
             {% endfor %}
             <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio_current|safe }}</td>
             <td class="text-end pe-2 table-active">{{ row.portfolio_target|safe }}</td>
-            <td class="text-end pe-2 table-active fw-bold">{{ row.portfolio_variance|safe }}</td>
+            <td class="text-end pe-2 table-active fw-bold">{{ row.portfolio_vtarget|safe }}</td>
         </tr>
         {% endfor %}
     </tbody>

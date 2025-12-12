@@ -203,7 +203,6 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         """
         Verify that redundant Category Subtotal rows are suppressed
         if the category has only 1 asset class.
-        In allocation_table.html, logic is: {% if cat_data.asset_classes|length > 1 %}
         """
         # Let's create a new Category 'Bonds' with only 'US Bond'
         bond_cat = AssetCategory.objects.create(label="Fixed Income", code="BONDS", sort_order=2)
