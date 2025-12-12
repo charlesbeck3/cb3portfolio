@@ -1,10 +1,10 @@
-from typing import Any
-
 from django.db import models
+
+from users.models import CustomUser
 
 
 class AccountQuerySet(models.QuerySet):
-    def for_user(self, user: Any) -> "AccountQuerySet":
+    def for_user(self, user: CustomUser) -> "AccountQuerySet":
         return self.filter(user=user)
 
     def with_details(self) -> "AccountQuerySet":
@@ -17,15 +17,15 @@ class AccountManager(models.Manager):
     def get_queryset(self) -> AccountQuerySet:
         return AccountQuerySet(self.model, using=self._db)
 
-    def for_user(self, user: Any) -> AccountQuerySet:
+    def for_user(self, user: CustomUser) -> AccountQuerySet:
         return self.get_queryset().for_user(user)
 
-    def get_summary_data(self, user: Any) -> AccountQuerySet:
+    def get_summary_data(self, user: CustomUser) -> AccountQuerySet:
         return self.for_user(user).with_details()
 
 
 class HoldingQuerySet(models.QuerySet):
-    def for_user(self, user: Any) -> "HoldingQuerySet":
+    def for_user(self, user: CustomUser) -> "HoldingQuerySet":
         return self.filter(account__user=user)
 
     def with_security_details(self) -> "HoldingQuerySet":
@@ -51,21 +51,21 @@ class HoldingManager(models.Manager):
     def get_queryset(self) -> HoldingQuerySet:
         return HoldingQuerySet(self.model, using=self._db)
 
-    def for_user(self, user: Any) -> HoldingQuerySet:
+    def for_user(self, user: CustomUser) -> HoldingQuerySet:
         return self.get_queryset().for_user(user)
 
-    def get_for_pricing(self, user: Any) -> HoldingQuerySet:
+    def get_for_pricing(self, user: CustomUser) -> HoldingQuerySet:
         return self.for_user(user).with_security_details()
 
-    def get_for_summary(self, user: Any) -> HoldingQuerySet:
+    def get_for_summary(self, user: CustomUser) -> HoldingQuerySet:
         return self.for_user(user).with_summary_details()
 
-    def get_for_category_view(self, user: Any) -> HoldingQuerySet:
+    def get_for_category_view(self, user: CustomUser) -> HoldingQuerySet:
         return self.for_user(user).for_category_view()
 
 
 class TargetAllocationQuerySet(models.QuerySet):
-    def for_user(self, user: Any) -> "TargetAllocationQuerySet":
+    def for_user(self, user: CustomUser) -> "TargetAllocationQuerySet":
         return self.filter(user=user)
 
     def with_details(self) -> "TargetAllocationQuerySet":
@@ -76,5 +76,5 @@ class TargetAllocationManager(models.Manager):
     def get_queryset(self) -> TargetAllocationQuerySet:
         return TargetAllocationQuerySet(self.model, using=self._db)
 
-    def get_for_user(self, user: Any) -> TargetAllocationQuerySet:
+    def get_for_user(self, user: CustomUser) -> TargetAllocationQuerySet:
         return self.get_queryset().for_user(user).with_details()

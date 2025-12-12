@@ -9,6 +9,7 @@ from portfolio.models import Account, AssetCategory, Holding
 from portfolio.services.pricing import PricingService
 from portfolio.services.targets import TargetAllocationService
 from portfolio.structs import AggregatedHolding, HoldingsCategory, HoldingsGroup, PortfolioSummary
+from users.models import CustomUser
 
 logger = logging.getLogger(__name__)
 
@@ -30,47 +31,17 @@ class PortfolioSummaryService:
         self._pricing = pricing_service or PricingService()
         self._targets = target_service or TargetAllocationService()
 
-    @staticmethod
-    def update_prices(user: Any) -> None:
-        """Fetch current prices and update Holding.current_price for all user holdings.
-
-        Static wrapper retained for backwards compatibility with existing
-        call sites. Preferred usage is via the instance-level helper.
-        """
-
-        PortfolioSummaryService()._update_prices(user)
-
-    def _update_prices(self, user: Any) -> None:
-        """Instance-based price update using injected PricingService."""
+    def update_prices(self, user: CustomUser) -> None:
+        """Fetch current prices and update Holding.current_price for all user holdings."""
 
         self._pricing.update_holdings_prices(user)
 
-    @staticmethod
-    def get_effective_targets(user: Any) -> dict[int, dict[str, Decimal]]:
-        """Get effective target allocation percentages per account/asset class.
-
-        Static wrapper over TargetAllocationService to preserve existing
-        API for existing call sites.
-        """
+    def get_effective_targets(self, user: CustomUser) -> dict[int, dict[str, Decimal]]:
+        """Get effective target allocation percentages per account/asset class."""
 
         return TargetAllocationService.get_effective_targets(user)
 
-    def _get_effective_targets(self, user: Any) -> dict[int, dict[str, Decimal]]:
-        """Instance-based access to effective targets via injected service."""
-
-        return self._targets.get_effective_targets(user)
-
-    @staticmethod
-    def get_holdings_summary(user: Any) -> PortfolioSummary:
-        """Aggregate holdings and targets into a PortfolioSummary struct.
-
-        Static wrapper retained for backwards compatibility; delegates to an
-        instance-based implementation that uses injected services.
-        """
-
-        return PortfolioSummaryService()._get_holdings_summary(user)
-
-    def _get_holdings_summary(self, user: Any) -> PortfolioSummary:
+    def get_holdings_summary(self, user: CustomUser) -> PortfolioSummary:
         """Aggregate holdings and targets into a PortfolioSummary struct.
 
         Currently reuses the existing aggregation logic while routing all
@@ -80,13 +51,13 @@ class PortfolioSummaryService:
 
         # Ensure prices are up to date. Use the static wrapper so tests that
         # patch PortfolioSummaryService.update_prices continue to work.
-        PortfolioSummaryService.update_prices(user)
+        self.update_prices(user)
 
         holdings = Holding.objects.get_for_summary(user)
         categories = AssetCategory.objects.select_related("parent").all()
         return self._build_summary(user, holdings, categories)
 
-    def _build_summary(self, user: Any, holdings: Any, categories: Any) -> PortfolioSummary:
+    def _build_summary(self, user: CustomUser, holdings: Any, categories: Any) -> PortfolioSummary:
         """Build a PortfolioSummary from holdings and category data.
 
         This helper encapsulates the construction of the PortfolioSummary
@@ -195,15 +166,15 @@ class PortfolioSummaryService:
             summary.account_type_grand_totals[account_type_code] += value
             summary.account_grand_totals[holding.account_id] += value
 
-    @staticmethod
     def _calculate_targets_and_variances(
-        user: Any,
+        self,
+        user: CustomUser,
         summary: PortfolioSummary,
         category_group_map: dict[str, str],
         account_totals: dict[int, Decimal],
         account_type_map: dict[int, str],  # account_id -> account_type_code
     ) -> None:
-        effective_targets = PortfolioSummaryService.get_effective_targets(user)
+        effective_targets = self.get_effective_targets(user)
 
         for account_id, ac_targets in effective_targets.items():
             account_total = account_totals.get(account_id, Decimal("0.00"))
@@ -382,21 +353,20 @@ class PortfolioSummaryService:
 
         summary.account_type_percentages = account_type_percentages
 
-    @staticmethod
-    def get_account_summary(user: Any) -> dict[str, Any]:
+    def get_account_summary(self, user: CustomUser) -> dict[str, Any]:
         """Get summary of accounts grouped by AccountGroup.
 
         Includes aggregate absolute deviation from target allocation for each account.
         """
 
         # Ensure prices are up to date
-        PortfolioSummaryService.update_prices(user)
+        self.update_prices(user)
 
         # Prefetch data using Manager
         accounts = Account.objects.get_summary_data(user)
 
         # 1. Fetch Effective Targets
-        effective_targets_map = PortfolioSummaryService.get_effective_targets(user)
+        effective_targets_map = self.get_effective_targets(user)
         # Map: account_id -> asset_class_name -> target_pct
 
         from portfolio.models import AccountGroup
@@ -459,17 +429,16 @@ class PortfolioSummaryService:
             "groups": sorted_groups,
         }
 
-    @staticmethod
-    def get_holdings_by_category(user: Any, account_id: int | None = None) -> dict[str, Any]:
+    def get_holdings_by_category(self, user: CustomUser, account_id: int | None = None) -> dict[str, Any]:
         """Get holdings grouped by category/group, including target and variance data."""
 
-        PortfolioSummaryService.update_prices(user)
+        self.update_prices(user)
 
         holdings_qs = Holding.objects.get_for_category_view(user)
         if account_id:
             holdings_qs = holdings_qs.filter(account_id=account_id)
 
-        effective_targets_map = PortfolioSummaryService.get_effective_targets(user)
+        effective_targets_map = self.get_effective_targets(user)
 
         account_totals: dict[int, Decimal] = defaultdict(Decimal)
         account_ac_security_counts: dict[int, dict[int, set[str]]] = defaultdict(

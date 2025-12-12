@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from portfolio.templatetags.portfolio_extras import (
+from portfolio.templatetags.portfolio_filters import (
     accounting_amount,
     accounting_percent,
     percentage_of,

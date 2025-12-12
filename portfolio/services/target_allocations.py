@@ -10,10 +10,11 @@ from django.db import transaction
 from portfolio.context_builders import TargetAllocationTableBuilder
 from portfolio.forms import TargetAllocationForm
 from portfolio.models import Account, AccountType, AssetClass, Holding, TargetAllocation
+from users.models import CustomUser
 
 
 class TargetAllocationViewService:
-    def build_context(self, *, user: Any, summary_service: Any) -> dict[str, Any]:
+    def build_context(self, *, user: CustomUser, summary_service: Any) -> dict[str, Any]:
         targets = TargetAllocation.objects.filter(user=user).select_related(
             "account_type", "asset_class", "account"
         )

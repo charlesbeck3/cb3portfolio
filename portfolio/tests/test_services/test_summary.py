@@ -74,7 +74,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         """Test the orchestration logic: fetch holdings -> get prices -> update DB."""
         mock_get_prices.return_value = {"VTI": Decimal("210.00"), "BND": Decimal("85.00")}
 
-        PortfolioSummaryService.update_prices(self.user)
+        PortfolioSummaryService().update_prices(self.user)
 
         # Verify MarketDataService was called with correct tickers
         # Order doesn't matter for set, but list order might vary.
@@ -95,7 +95,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
     @patch("portfolio.services.PortfolioSummaryService.update_prices")
     def test_get_holdings_summary(self, mock_update_prices: MagicMock) -> None:
         # Ensure prices are set (already set in setUp, but update_prices is mocked so they won't change)
-        summary = PortfolioSummaryService.get_holdings_summary(self.user)
+        summary = PortfolioSummaryService().get_holdings_summary(self.user)
         # VTI in Roth: 10 * 200 = 2000
         # BND in Taxable: 20 * 80 = 1600
         # Check Grand Total
@@ -146,7 +146,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
             target_pct=Decimal("100.0"),
         )
 
-        summary = PortfolioSummaryService.get_holdings_summary(self.user)
+        summary = PortfolioSummaryService().get_holdings_summary(self.user)
 
         # Grand totals
         self.assertEqual(summary.grand_total, Decimal("3600.00"))
@@ -187,7 +187,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
 
     @patch("portfolio.services.PortfolioSummaryService.update_prices")
     def test_get_account_summary(self, mock_update_prices: MagicMock) -> None:
-        summary = PortfolioSummaryService.get_account_summary(self.user)
+        summary = PortfolioSummaryService().get_account_summary(self.user)
 
         # Check grand total
         self.assertEqual(summary["grand_total"], Decimal("3600.00"))
@@ -209,7 +209,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
 
     @patch("portfolio.services.PortfolioSummaryService.update_prices")
     def test_get_holdings_by_category(self, mock_update_prices: MagicMock) -> None:
-        result = PortfolioSummaryService.get_holdings_by_category(self.user)
+        result = PortfolioSummaryService().get_holdings_by_category(self.user)
 
         grand_total = result["grand_total"]
         self.assertEqual(grand_total, Decimal("3600.00"))
@@ -269,7 +269,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
 
         # Roth (Retirement) is 2000
 
-        summary = PortfolioSummaryService.get_account_summary(self.user)
+        summary = PortfolioSummaryService().get_account_summary(self.user)
         groups = list(summary["groups"].keys())
 
         # Expect Investments (8000) then Retirement (2000)
@@ -279,7 +279,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         self.holding_vti_roth.shares = Decimal("100.0")  # 100 * 200 = 20000
         self.holding_vti_roth.save()
 
-        summary = PortfolioSummaryService.get_account_summary(self.user)
+        summary = PortfolioSummaryService().get_account_summary(self.user)
         groups = list(summary["groups"].keys())
 
         # Expect Retirement (20000) then Investments (8000)
@@ -321,7 +321,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
             target_pct=Decimal("50.0"),
         )
 
-        summary = PortfolioSummaryService.get_account_summary(self.user)
+        summary = PortfolioSummaryService().get_account_summary(self.user)
 
         # Find Roth account
         roth_account = None
@@ -393,7 +393,7 @@ class VTargetSubtotalTests(TestCase):
     def test_us_equities_category_vtarget_is_current_minus_target(self) -> None:
         """For an account fully invested in its override target, vTarget dollars should be zero at both row and category subtotal level."""
 
-        summary = PortfolioSummaryService.get_holdings_summary(self.user)
+        summary = PortfolioSummaryService().get_holdings_summary(self.user)
 
         # Locate US Equities category and asset class
         us_cat = summary.categories["US_EQUITIES"]
@@ -480,7 +480,7 @@ class CashVTargetTests(TestCase):
     def test_cash_vtarget_is_current_minus_target(self) -> None:
         """For a cash account with 100% allocation, vTarget should be 0% when current and target are both 100%."""
 
-        summary = PortfolioSummaryService.get_holdings_summary(self.user)
+        summary = PortfolioSummaryService().get_holdings_summary(self.user)
 
         # Locate Cash asset class
         cash_cat = summary.categories["CASH"]

@@ -32,8 +32,6 @@ def _format_accounting(value: Any, decimals: int = 0, prefix: str = "", suffix: 
     is_negative = val_f < 0
     abs_val = abs(val_f)
 
-    # Format number with commas and specific decimals
-    # {:,.2f} format
     fmt = f"{{:,.{decimals}f}}"
     formatted_num = fmt.format(abs_val)
 
@@ -41,11 +39,10 @@ def _format_accounting(value: Any, decimals: int = 0, prefix: str = "", suffix: 
 
     if is_negative:
         return f"({result})"
-    else:
-        # Use invisible parentheses for alignment
-        return mark_safe(
-            f'<span style="visibility: hidden">(</span>{result}<span style="visibility: hidden">)</span>'
-        )
+
+    return mark_safe(
+        f'<span style="visibility: hidden">(</span>{result}<span style="visibility: hidden">)</span>'
+    )
 
 
 @register.filter
@@ -53,6 +50,7 @@ def accounting_amount(value: Any, decimals: int = 0) -> str:
     """
     Format currency in accounting style: (1,234.00) for negative, 1,234.00 for positive (aligned).
     """
+
     return _format_accounting(value, decimals, prefix="$")
 
 
@@ -61,6 +59,7 @@ def accounting_number(value: Any, decimals: int = 2) -> str:
     """
     Format number in accounting style: (1,234.00).
     """
+
     return _format_accounting(value, decimals)
 
 
@@ -69,4 +68,5 @@ def accounting_percent(value: Any, decimals: int = 1) -> str:
     """
     Format percent in accounting style: (12.5%).
     """
+
     return _format_accounting(value, decimals, suffix="%")

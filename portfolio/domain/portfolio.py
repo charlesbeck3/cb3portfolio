@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from portfolio.models import Account
+    from users.models import CustomUser
 
 
 @dataclass
@@ -70,11 +71,11 @@ class Portfolio:
         return [acc for acc in self.accounts if acc.account_type.code == account_type_code]
 
     @classmethod
-    def load_for_user(cls, user: object) -> Portfolio:
+    def load_for_user(cls, user: CustomUser) -> Portfolio:
         """Factory method to load a complete portfolio for a user."""
 
         from portfolio.models import Account
 
         accounts = list(Account.objects.get_summary_data(user))
-        user_id = user.id  # type: ignore[attr-defined]
+        user_id = user.id
         return cls(user_id=user_id, accounts=accounts)

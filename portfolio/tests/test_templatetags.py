@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.test import TestCase
 
-from portfolio.templatetags.portfolio_extras import (
+from portfolio.templatetags.portfolio_filters import (
     accounting_amount,
     accounting_number,
     accounting_percent,

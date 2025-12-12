@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from portfolio.services import PortfolioSummaryService, TargetAllocationService
+from users.models import CustomUser
 
 __all__ = ["PortfolioContextMixin"]
 
@@ -18,7 +19,7 @@ class PortfolioContextMixin:
             }
         return self._services
 
-    def get_sidebar_context(self, user: Any) -> dict[str, Any]:
+    def get_sidebar_context(self, user: CustomUser) -> dict[str, Any]:
         """Get sidebar data for all portfolio views."""
 
         service = self.get_portfolio_services()["summary"]

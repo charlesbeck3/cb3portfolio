@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
 
 from portfolio.market_data import MarketDataService
 from portfolio.models import Holding
+from users.models import CustomUser
 
 
 class PricingService:
@@ -13,7 +13,7 @@ class PricingService:
     def __init__(self, market_data: MarketDataService | None = None) -> None:
         self._market_data = market_data or MarketDataService()
 
-    def update_holdings_prices(self, user: Any) -> dict[str, Decimal]:
+    def update_holdings_prices(self, user: CustomUser) -> dict[str, Decimal]:
         """Fetch current prices and update all holdings for a user.
 
         Returns a mapping of ticker -> price for reference.

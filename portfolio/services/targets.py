@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections import defaultdict
 from decimal import Decimal
-from typing import Any
 
 from portfolio.models import Account, TargetAllocation
+from users.models import CustomUser
 
 
 class TargetAllocationService:
@@ -16,7 +16,7 @@ class TargetAllocationService:
     """
 
     @staticmethod
-    def get_effective_targets(user: Any) -> dict[int, dict[str, Decimal]]:
+    def get_effective_targets(user: CustomUser) -> dict[int, dict[str, Decimal]]:
         """Return mapping ``{account_id: {asset_class_name: target_pct}}``.
 
         Strategy:

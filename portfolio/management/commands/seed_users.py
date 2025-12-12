@@ -14,6 +14,7 @@ from portfolio.models import (
     Security,
     TargetAllocation,
 )
+from users.models import CustomUser
 
 User = get_user_model()
 
@@ -265,7 +266,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS("User Data seeded successfully!"))
 
-    def seed_user_portfolio(self, user: Any, accounts_data: list[dict], type_objects: dict) -> None:
+    def seed_user_portfolio(self, user: CustomUser, accounts_data: list[dict], type_objects: dict) -> None:
         for account_data in accounts_data:
             institution, _ = Institution.objects.get_or_create(name=account_data["institution"])
 
@@ -313,7 +314,7 @@ class Command(BaseCommand):
                     defaults={"shares": holding_data["shares"]},
                 )
 
-    def seed_user_targets(self, user: Any, targets_data: list[dict], type_objects: dict) -> None:
+    def seed_user_targets(self, user: CustomUser, targets_data: list[dict], type_objects: dict) -> None:
         for row in targets_data:
             ac_name = row["asset_class"]
             try:

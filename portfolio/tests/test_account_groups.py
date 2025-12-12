@@ -72,7 +72,7 @@ class AccountGroupTests(TestCase, PortfolioTestMixin):
             institution=self.institution,
         )
 
-        summary = PortfolioSummaryService.get_account_summary(self.user)
+        summary = PortfolioSummaryService().get_account_summary(self.user)
         groups = summary["groups"]
 
         # Check Retirement
