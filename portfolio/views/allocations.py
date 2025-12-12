@@ -18,5 +18,5 @@ class AllocationsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         assert user.is_authenticated
 
         # Allocations view currently only needs sidebar data; delegate to mixin.
-        context.update(self.get_sidebar_context(user))
+        context.update(self.get_sidebar_context())
         return context

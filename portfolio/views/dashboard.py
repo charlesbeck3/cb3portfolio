@@ -44,7 +44,7 @@ class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         summary = summary_service.get_holdings_summary(user)
         context["summary"] = summary
 
-        context.update(self.get_sidebar_context(user))
+        context.update(self.get_sidebar_context())
 
         # 3. Build Account Types with lightweight context
         account_types_qs = (

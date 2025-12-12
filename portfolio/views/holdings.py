@@ -27,7 +27,7 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         summary_service = services["summary"]
 
         context.update(summary_service.get_holdings_by_category(user, account_id))
-        context.update(self.get_sidebar_context(user))
+        context.update(self.get_sidebar_context())
 
         if account_id and self.request.user.is_authenticated:
             with contextlib.suppress(Account.DoesNotExist):
