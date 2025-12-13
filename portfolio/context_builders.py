@@ -611,6 +611,7 @@ class TargetAccountColumnData:
     vtarget_raw: Decimal
     input_name: str
     input_value: str
+    is_input: bool
 
 
 @dataclass(frozen=True)
@@ -627,6 +628,7 @@ class TargetAccountTypeColumnData:
     target_input_raw: Decimal
     weighted_target_raw: Decimal
     vtarget_raw: Decimal
+    is_input: bool
 
 
 @dataclass(frozen=True)
@@ -648,6 +650,7 @@ class TargetAllocationTableRow:
     portfolio_current: str
     portfolio_target: str
     portfolio_vtarget: str
+    row_css_class: str
 
 
 class TargetAllocationTableBuilder:
@@ -883,12 +886,23 @@ class TargetAllocationTableBuilder:
                 variance_pct = variance_pct_by_at.get(at.code, current_pct - weighted_target_pct)
                 default_target_pct = at.target_map.get(asset_class_id, Decimal("0.00")) if hasattr(at, "target_map") else Decimal("0.00")
 
+                target_input_name = f"target_{at.id}_{asset_class_id}" if asset_class_id else ""
+
+                # Determine is_input for AccountType
+                at_is_input = (
+                    bool(target_input_name)
+                    and not is_subtotal
+                    and not is_group_total
+                    and not is_grand_total
+                    and not is_cash
+                )
+
                 at_col = TargetAccountTypeColumnData(
                     account_type_id=at.id,
                     code=at.code,
                     label=at.label,
                     current=str(accounting_percent(current_pct, 1)),
-                    target_input_name=f"target_{at.id}_{asset_class_id}" if asset_class_id else "",
+                    target_input_name=target_input_name,
                     target_input_value=str(default_target_pct) if default_target_pct > 0 else "",
                     weighted_target=str(accounting_percent(weighted_target_pct, 1)),
                     vtarget=str(accounting_percent(variance_pct, 1)),
@@ -896,6 +910,7 @@ class TargetAllocationTableBuilder:
                     target_input_raw=default_target_pct,
                     weighted_target_raw=weighted_target_pct,
                     vtarget_raw=variance_pct,
+                    is_input=at_is_input,
                 )
             else:
                 variance_money = current_money - target_money
@@ -912,6 +927,7 @@ class TargetAllocationTableBuilder:
                     target_input_raw=Decimal("0.00"),
                     weighted_target_raw=target_money,
                     vtarget_raw=variance_money,
+                    is_input=False,
                 )
 
             for acc in getattr(at, "active_accounts", []):
@@ -933,6 +949,10 @@ class TargetAllocationTableBuilder:
                         percentage_of(current_money_acc, acc_total_value) if acc_total_value > 0 else Decimal("0.00")
                     )
                     vtarget_pct = current_pct_acc - effective_target_pct
+
+                    input_name = f"target_account_{acc.id}_{asset_class_id}" if asset_class_id else ""
+                    acc_is_input = bool(input_name) and not is_grand_total
+
                     account_cols_for_at.append(
                         TargetAccountColumnData(
                             account_id=acc.id,
@@ -944,8 +964,9 @@ class TargetAllocationTableBuilder:
                             current_raw=current_pct_acc,
                             target_raw=effective_target_pct,
                             vtarget_raw=vtarget_pct,
-                            input_name=f"target_account_{acc.id}_{asset_class_id}" if asset_class_id else "",
+                            input_name=input_name,
                             input_value=input_value,
+                            is_input=acc_is_input,
                         )
                     )
                 else:
@@ -963,6 +984,7 @@ class TargetAllocationTableBuilder:
                             vtarget_raw=vtarget_money,
                             input_name="",
                             input_value="",
+                            is_input=False,
                         )
                     )
 
@@ -986,6 +1008,17 @@ class TargetAllocationTableBuilder:
             portfolio_target_str = str(accounting_amount(portfolio_target, 0))
             portfolio_vtarget_str = str(accounting_amount(portfolio_variance, 0))
 
+        # Determine Row CSS Class
+        row_css_class = ""
+        if is_cash:
+            row_css_class = "table-warning fw-bold"
+        elif is_subtotal:
+            row_css_class = "table-info fw-bold"
+        elif is_group_total:
+            row_css_class = "fw-bold table-secondary"
+        elif is_grand_total:
+            row_css_class = "table-dark fw-bold"
+
         return TargetAllocationTableRow(
             asset_class_id=asset_class_id,
             asset_class_name=label,
@@ -998,4 +1031,5 @@ class TargetAllocationTableBuilder:
             portfolio_current=portfolio_current_str,
             portfolio_target=portfolio_target_str,
             portfolio_vtarget=portfolio_vtarget_str,
+            row_css_class=row_css_class,
         )

@@ -36,16 +36,14 @@
     </thead>
     <tbody>
         {% for row in rows %}
-        <tr
-            {% if row.is_cash %}class="table-warning fw-bold"{% elif row.is_subtotal %}class="table-info fw-bold"{% elif row.is_group_total %}class="fw-bold" style="background-color: #e2e3e5;"{% elif row.is_grand_total %}class="table-dark fw-bold"{% endif %}
-        >
+        <tr class="{{ row.row_css_class }}">
             <td class="ps-4">{{ row.asset_class_name }}</td>
 
             {% for group in row.groups %}
                 <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.account_type.current|safe }}</td>
 
-                <td class="{% if mode == 'percent' and group.account_type.target_input_name and not row.is_subtotal and not row.is_group_total and not row.is_grand_total and not row.is_cash %}p-1{% else %}text-end pe-1 small{% endif %}">
-                    {% if mode == 'percent' and group.account_type.target_input_name and not row.is_subtotal and not row.is_group_total and not row.is_grand_total and not row.is_cash %}
+                <td class="{% if group.account_type.is_input %}p-1{% else %}text-end pe-1 small{% endif %}">
+                    {% if group.account_type.is_input %}
                         <input type="number"
                                name="{{ group.account_type.target_input_name }}"
                                step="0.01"
@@ -67,8 +65,8 @@
 
                 {% for acc in group.accounts %}
                     <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.account_type.account_type_id }}">{{ acc.current|safe }}</td>
-                    <td class="{% if mode == 'percent' and acc.input_name and not row.is_grand_total %}p-1{% else %}text-end pe-1 small{% endif %} table-warning d-none col-acc-{{ group.account_type.account_type_id }}">
-                        {% if mode == 'percent' and acc.input_name and not row.is_grand_total %}
+                    <td class="{% if acc.is_input %}p-1{% else %}text-end pe-1 small{% endif %} table-warning d-none col-acc-{{ group.account_type.account_type_id }}">
+                        {% if acc.is_input %}
                             <input type="number"
                                    name="{{ acc.input_name }}"
                                    step="0.01"

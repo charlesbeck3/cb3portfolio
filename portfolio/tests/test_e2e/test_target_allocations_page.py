@@ -6,7 +6,6 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from portfolio.models import Account, AssetCategory, AssetClass, Holding, Security
-
 from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()

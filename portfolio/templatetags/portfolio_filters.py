@@ -40,9 +40,7 @@ def _format_accounting(value: Any, decimals: int = 0, prefix: str = "", suffix: 
     if is_negative:
         return f"({result})"
 
-    return mark_safe(
-        f'<span style="visibility: hidden">(</span>{result}<span style="visibility: hidden">)</span>'
-    )
+    return mark_safe(f'{result}<span style="visibility: hidden">)</span>')
 
 
 @register.filter

@@ -49,38 +49,44 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             messages.error(request, "Account not found.")
             return redirect("portfolio:holdings")
 
-        # Track updates
-        updates_count = 0
+        # 1. Handle Add Holding
+        if "security_id" in request.POST:
+            return self._handle_add_holding(request, account)
 
-        # Check for Add Holding
-        security_id = request.POST.get("security_id")
-        if security_id:
-            initial_shares_str = request.POST.get("initial_shares", "0")
-            try:
-                initial_shares = Decimal(initial_shares_str)
-                if initial_shares > 0:
-                    security = Security.objects.get(id=security_id)
+        # 2. Handle Delete Holding
+        if "delete_ticker" in request.POST:
+            return self._handle_delete_holding(request, account)
 
-                    # Create or Get Holding
-                    holding, created = Holding.objects.get_or_create(
-                        account=account, security=security, defaults={"shares": initial_shares}
-                    )
+        # 3. Handle Bulk Update
+        return self._handle_bulk_update(request, account)
 
-                    if not created:
-                        messages.warning(
-                            request,
-                            f"Holding for {security.ticker} already exists. Please edit shares instead.",
-                        )
-                    else:
-                        messages.success(request, f"Added {security.ticker} to account.")
-            except Security.DoesNotExist:
-                messages.error(request, "Security not found.")
-            except Exception as e:
-                messages.error(request, f"Error adding holding: {e}")
+    def _handle_add_holding(self, request: Any, account: Account) -> Any:
+        from portfolio.forms.holdings import AddHoldingForm
 
-            return redirect("portfolio:account_holdings", account_id=account_id)
+        form = AddHoldingForm(request.POST)
+        if form.is_valid():
+            security_id = form.cleaned_data["security_id"]
+            initial_shares = form.cleaned_data["initial_shares"]
+            security = Security.objects.get(id=security_id)
 
-        # Check for Delete Holding
+            holding, created = Holding.objects.get_or_create(
+                account=account, security=security, defaults={"shares": initial_shares}
+            )
+
+            if not created:
+                messages.warning(
+                    request,
+                    f"Holding for {security.ticker} already exists. Please edit shares instead.",
+                )
+            else:
+                messages.success(request, f"Added {security.ticker} to account.")
+        else:
+            for error in form.errors.values():
+                messages.error(request, error)
+
+        return redirect("portfolio:account_holdings", account_id=account.id)
+
+    def _handle_delete_holding(self, request: Any, account: Account) -> Any:
         delete_ticker = request.POST.get("delete_ticker")
         if delete_ticker:
             delete_ticker = delete_ticker.strip().upper()
@@ -96,9 +102,10 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             except Exception as e:
                 messages.error(request, f"Error deleting holding: {e}")
 
-            return redirect("portfolio:account_holdings", account_id=account_id)
+        return redirect("portfolio:account_holdings", account_id=account.id)
 
-        # Iterate over POST data
+    def _handle_bulk_update(self, request: Any, account: Account) -> Any:
+        updates_count = 0
         for key, value in request.POST.items():
             if not value:
                 continue
@@ -122,4 +129,5 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         else:
             messages.info(request, "No changes saved.")
 
-        return redirect("portfolio:account_holdings", account_id=account_id)
+        return redirect("portfolio:account_holdings", account_id=account.id)
+
