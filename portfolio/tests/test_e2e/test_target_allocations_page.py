@@ -7,7 +7,7 @@ from playwright.sync_api import Page, expect
 
 from portfolio.models import Account, AssetCategory, AssetClass, Holding, Security
 
-from .base import PortfolioTestMixin
+from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
 
@@ -31,6 +31,15 @@ class TestFrontendAllocations(PortfolioTestMixin):
         )
         self.ac_us, _ = AssetClass.objects.get_or_create(
             name="US Stocks", defaults={"category": self.cat_eq}
+        )
+        self.ac_cash, _ = AssetClass.objects.get_or_create(
+            name="Cash", defaults={"category": self.cat_cash}
+        )
+        self.ac_intl, _ = AssetClass.objects.get_or_create(
+            name="Intl Stocks", defaults={"category": self.cat_eq}
+        )
+        self.sec_vxus, _ = Security.objects.get_or_create(
+            ticker="VXUS", defaults={"name": "VXUS", "asset_class": self.ac_intl}
         )
         self.sec_vti, _ = Security.objects.get_or_create(
             ticker="VTI", defaults={"name": "VTI", "asset_class": self.ac_us}
@@ -125,10 +134,11 @@ class TestFrontendAllocations(PortfolioTestMixin):
         # Category Subtotal Target ID: `sub-total-target-EQUITIES`
         sub_target_selector = "#sub-total-target-EQUITIES"
 
-        # Set Default to 60%
+        # Set Default to 60%.  With 2 items (US + Intl), changes here should sum up.
         input_locator.fill("60")
 
-        # Expected: 60% (since Roth is 100% of portfolio)
+        # Expected: 60% (if Intl is 0).  If we don't set Intl, it's 0.
+        # 60% US + 0% Intl = 60% Total.
         expect(page.locator(sub_target_selector)).to_have_text("60.0%")
 
         # Set Default to 80%

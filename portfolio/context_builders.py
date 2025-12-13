@@ -515,7 +515,7 @@ class AllocationTableBuilder:
 
         return AllocationTableRow(
             asset_class_id=cash_asset_class_id,
-            asset_class_name="Cash (Calculated)",
+            asset_class_name="Cash",
             category_code="CASH",
             is_subtotal=False,
             is_group_total=False,
@@ -796,7 +796,7 @@ class TargetAllocationTableBuilder:
         mode: str,
     ) -> TargetAllocationTableRow:
         return self._build_category_row(
-            label="Cash (Calculated)",
+            label="Cash",
             category_code="CASH",
             current_by_at=cash_group.account_type_totals,
             target_by_at=cash_group.account_type_target_totals,
