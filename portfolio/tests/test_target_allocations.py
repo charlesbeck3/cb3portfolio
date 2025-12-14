@@ -7,8 +7,8 @@ from django.urls import reverse
 
 from portfolio.models import (
     Account,
-    AssetCategory,
     AssetClass,
+    AssetClassCategory,
     Holding,
     Security,
     TargetAllocation,
@@ -26,7 +26,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         self.client.force_login(self.user)
 
         # Setup Assets
-        self.cat_eq, _ = AssetCategory.objects.get_or_create(
+        self.cat_eq, _ = AssetClassCategory.objects.get_or_create(
             code="EQUITIES", defaults={"label": "Equities", "sort_order": 1}
         )
         self.ac_us, _ = AssetClass.objects.get_or_create(
@@ -36,7 +36,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             ticker="VTI", defaults={"name": "VTI", "asset_class": self.ac_us}
         )
 
-        self.cat_cash, _ = AssetCategory.objects.get_or_create(
+        self.cat_cash, _ = AssetClassCategory.objects.get_or_create(
             code="CASH", defaults={"label": "Cash", "sort_order": 10}
         )
         self.ac_cash, _ = AssetClass.objects.get_or_create(
@@ -205,7 +205,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         if the category has only 1 asset class.
         """
         # Let's create a new Category 'Bonds' with only 'US Bond'
-        bond_cat = AssetCategory.objects.create(label="Fixed Income", code="BONDS", sort_order=2)
+        bond_cat = AssetClassCategory.objects.create(label="Fixed Income", code="BONDS", sort_order=2)
         AssetClass.objects.create(name="US Bond", category=bond_cat)
 
         # Create Cash Asset Class if not exists (tests usually clear DB, but setUp might create some)

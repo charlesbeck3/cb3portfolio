@@ -8,8 +8,8 @@ from portfolio.models import (
     Account,
     AccountGroup,
     AccountType,
-    AssetCategory,
     AssetClass,
+    AssetClassCategory,
     Holding,
     Institution,
     Security,
@@ -344,7 +344,7 @@ class VTargetSubtotalTests(TestCase):
         self.institution = Institution.objects.create(name="Test Bank")
 
         # Categories and groups mirroring US Equities
-        self.cat_us_eq, _ = AssetCategory.objects.get_or_create(
+        self.cat_us_eq, _ = AssetClassCategory.objects.get_or_create(
             code="US_EQUITIES", label="US Equities"
         )
 
@@ -433,7 +433,7 @@ class CashVTargetTests(TestCase):
         self.institution = Institution.objects.create(name="Test Bank")
 
         # Cash category
-        self.cat_cash, _ = AssetCategory.objects.get_or_create(code="CASH", label="Cash")
+        self.cat_cash, _ = AssetClassCategory.objects.get_or_create(code="CASH", label="Cash")
 
         # Account type and account (WF Cash analogue)
         self.group_cash = AccountGroup.objects.create(name="Cash", sort_order=1)

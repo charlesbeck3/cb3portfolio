@@ -1,8 +1,10 @@
 from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
-from portfolio.models import Account, AccountType, Holding, Security, AssetClass, AssetCategory
+
+from portfolio.models import Account, AssetClass, AssetClassCategory, Holding, Security
 from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
@@ -21,7 +23,7 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
         )
 
         # Create a security to add
-        self.cat_eq, _ = AssetCategory.objects.get_or_create(code="EQUITIES", defaults={"label": "Equities"})
+        self.cat_eq, _ = AssetClassCategory.objects.get_or_create(code="EQUITIES", defaults={"label": "Equities"})
         self.ac_us, _ = AssetClass.objects.get_or_create(name="US Stocks", defaults={"category": self.cat_eq})
         self.sec_us, _ = Security.objects.get_or_create(ticker="VTI", defaults={"name": "VTI", "asset_class": self.ac_us})
 
@@ -33,7 +35,7 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
         }
         response = self.client.post(url, data, follow=True)
         self.assertContains(response, f"Added {self.sec_us.ticker} to account.")
-        
+
         holding = Holding.objects.get(account=self.account, security=self.sec_us)
         self.assertEqual(holding.shares, Decimal("10.00"))
 
@@ -48,7 +50,7 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
         }
         response = self.client.post(url, data, follow=True)
         self.assertContains(response, f"Holding for {self.sec_us.ticker} already exists")
-        
+
         # Shares should remain unchanged
         holding = Holding.objects.get(account=self.account, security=self.sec_us)
         self.assertEqual(holding.shares, Decimal("5.00"))
@@ -66,7 +68,7 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
 
     def test_delete_holding(self):
         Holding.objects.create(account=self.account, security=self.sec_us, shares=5)
-        
+
         url = reverse("portfolio:account_holdings", args=[self.account.id])
         data = {
             "delete_ticker": "VTI"
@@ -77,7 +79,7 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
 
     def test_bulk_update_shares(self):
         h1 = Holding.objects.create(account=self.account, security=self.sec_us, shares=5)
-        
+
         # Another security
         sec_vxus = Security.objects.create(ticker="VXUS", name="VXUS", asset_class=self.ac_us)
         h2 = Holding.objects.create(account=self.account, security=sec_vxus, shares=10)

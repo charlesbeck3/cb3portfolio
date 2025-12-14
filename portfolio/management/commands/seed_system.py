@@ -6,8 +6,8 @@ from django.core.management.base import BaseCommand
 from portfolio.models import (
     AccountGroup,
     AccountType,
-    AssetCategory,
     AssetClass,
+    AssetClassCategory,
     Institution,
     Security,
 )
@@ -126,11 +126,11 @@ class Command(BaseCommand):
             {"code": "CASH", "label": "Cash", "parent": None, "sort_order": 6},
         ]
 
-        category_objects: dict[str, AssetCategory] = {}
+        category_objects: dict[str, AssetClassCategory] = {}
         for cat_data in categories:
             parent_code = cat_data["parent"]
             parent_obj = category_objects.get(parent_code) if parent_code else None
-            cat_obj, created = AssetCategory.objects.update_or_create(
+            cat_obj, created = AssetClassCategory.objects.update_or_create(
                 code=cat_data["code"],
                 defaults={
                     "label": cat_data["label"],

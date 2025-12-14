@@ -5,7 +5,7 @@ from collections import OrderedDict, defaultdict
 from decimal import Decimal
 from typing import Any
 
-from portfolio.models import Account, AssetCategory, Holding
+from portfolio.models import Account, AssetClassCategory, Holding
 from portfolio.services.pricing import PricingService
 from portfolio.services.targets import TargetAllocationService
 from portfolio.structs import AggregatedHolding, HoldingsCategory, HoldingsGroup, PortfolioSummary
@@ -54,7 +54,7 @@ class PortfolioSummaryService:
         self.update_prices(user)
 
         holdings = Holding.objects.get_for_summary(user)
-        categories = AssetCategory.objects.select_related("parent").all()
+        categories = AssetClassCategory.objects.select_related("parent").all()
         return self._build_summary(user, holdings, categories)
 
     def _build_summary(self, user: CustomUser, holdings: Any, categories: Any) -> PortfolioSummary:
@@ -538,7 +538,7 @@ class PortfolioSummaryService:
         # behavior expected by existing tests.
 
         # Build category -> group mappings and labels
-        categories = AssetCategory.objects.select_related("parent").all()
+        categories = AssetClassCategory.objects.select_related("parent").all()
         category_group_map: dict[str, str] = {}
         group_labels: dict[str, str] = {}
         category_labels: dict[str, str] = {}

@@ -5,7 +5,7 @@ from django.contrib.auth import get_user_model
 import pytest
 from playwright.sync_api import Page, expect
 
-from portfolio.models import Account, AssetCategory, AssetClass, Holding, Security
+from portfolio.models import Account, AssetClass, AssetClassCategory, Holding, Security
 from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
@@ -25,7 +25,7 @@ class TestFrontendAllocations(PortfolioTestMixin):
         self.user = User.objects.create_user(username="testuser", password="password")
 
         # Setup Assets
-        self.cat_eq, _ = AssetCategory.objects.get_or_create(
+        self.cat_eq, _ = AssetClassCategory.objects.get_or_create(
             code="EQUITIES", defaults={"label": "Equities", "sort_order": 1}
         )
         self.ac_us, _ = AssetClass.objects.get_or_create(

@@ -4,8 +4,8 @@ from .models import (
     Account,
     AccountGroup,
     AccountType,
-    AssetCategory,
     AssetClass,
+    AssetClassCategory,
     Holding,
     Institution,
     RebalancingRecommendation,
@@ -40,7 +40,7 @@ class AccountAdmin(admin.ModelAdmin):
         return obj.account_type.group.name
 
 
-admin.site.register(AssetCategory)
+admin.site.register(AssetClassCategory)
 admin.site.register(AssetClass)
 admin.site.register(Institution, InstitutionAdmin)
 admin.site.register(Account, AccountAdmin)

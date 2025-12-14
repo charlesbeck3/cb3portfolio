@@ -1,4 +1,4 @@
-from portfolio.models import AccountGroup, AccountType, AssetCategory, Institution
+from portfolio.models import AccountGroup, AccountType, AssetClassCategory, Institution
 
 
 class PortfolioTestMixin:
@@ -43,22 +43,22 @@ class PortfolioTestMixin:
 
         # Get or Create Asset Categories
         # Parent Categories
-        self.cat_eq, _ = AssetCategory.objects.get_or_create(
+        self.cat_eq, _ = AssetClassCategory.objects.get_or_create(
             code="EQUITIES", defaults={"label": "Equities", "sort_order": 1}
         )
-        self.cat_fi, _ = AssetCategory.objects.get_or_create(
+        self.cat_fi, _ = AssetClassCategory.objects.get_or_create(
             code="FIXED_INCOME", defaults={"label": "Fixed Income", "sort_order": 2}
         )
-        self.cat_cash, _ = AssetCategory.objects.get_or_create(
+        self.cat_cash, _ = AssetClassCategory.objects.get_or_create(
             code="CASH", defaults={"label": "Cash", "sort_order": 3}
         )
 
         # Sub Categories
-        self.cat_us_eq, _ = AssetCategory.objects.get_or_create(
+        self.cat_us_eq, _ = AssetClassCategory.objects.get_or_create(
             code="US_EQUITIES",
             defaults={"label": "US Equities", "parent": self.cat_eq, "sort_order": 1},
         )
-        self.cat_intl_eq, _ = AssetCategory.objects.get_or_create(
+        self.cat_intl_eq, _ = AssetClassCategory.objects.get_or_create(
             code="INTERNATIONAL_EQUITIES",
             defaults={"label": "International Equities", "parent": self.cat_eq, "sort_order": 2},
         )

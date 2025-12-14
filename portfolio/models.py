@@ -7,7 +7,7 @@ from django.db import models
 from portfolio.managers import AccountManager, HoldingManager, TargetAllocationManager
 
 
-class AssetCategory(models.Model):
+class AssetClassCategory(models.Model):
     """Hierarchical asset category that can be grouped under a parent category."""
 
     code = models.CharField(max_length=50, primary_key=True)
@@ -23,8 +23,8 @@ class AssetCategory(models.Model):
 
     class Meta:
         ordering = ["sort_order", "label"]
-        verbose_name = "Asset Category"
-        verbose_name_plural = "Asset Categories"
+        verbose_name = "Asset Class Category"
+        verbose_name_plural = "Asset Class Categories"
 
     def __str__(self) -> str:
         return self.label
@@ -37,7 +37,7 @@ class AssetClass(models.Model):
         max_length=100, unique=True, help_text="Asset class name (e.g., 'US Large Cap Stocks')"
     )
     category = models.ForeignKey(
-        AssetCategory,
+        AssetClassCategory,
         on_delete=models.PROTECT,
         related_name="asset_classes",
         to_field="code",

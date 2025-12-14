@@ -7,8 +7,8 @@ from django.urls import reverse
 from portfolio.models import (
     Account,
     AccountType,
-    AssetCategory,
     AssetClass,
+    AssetClassCategory,
     Holding,
     Security,
     TargetAllocation,
@@ -64,7 +64,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         # 1. Single Asset Group (simulating Cash)
         # Group 'Deposit Accounts' (self.group_dep) created in mixin.
         # Create Category 'Cash' -> 1 Asset Class 'Cash' -> 1 Security 'CASH'
-        cat_cash, _ = AssetCategory.objects.get_or_create(
+        cat_cash, _ = AssetClassCategory.objects.get_or_create(
             code="CASH", defaults={"label": "Cash", "sort_order": 10}
         )
         ac_cash, _ = AssetClass.objects.get_or_create(
@@ -88,12 +88,12 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         # 2. Multi-Asset Group
         # Group 'Investments' (self.group_inv).
         # Category 'Equities' -> 2 Asset Classes 'US Stocks', 'Intl Stocks'
-        cat_eq, _ = AssetCategory.objects.get_or_create(
+        cat_eq, _ = AssetClassCategory.objects.get_or_create(
             code="EQUITIES", defaults={"label": "Equities", "sort_order": 1}
         )
-        # Link category to group? The link is via AssetCategory.parent??
+        # Link category to group? The link is via AssetClassCategory.parent??
         # Logic in services.py: group = category.parent or category.
-        # But wait, Group is AccountGroup, Category is AssetCategory.
+        # But wait, Group is AccountGroup, Category is AssetClassCategory.
         # services.py maps: group_code = category.parent or category.code
         # And summary.groups keys are these codes.
         # BUT AccountGroup logic in get_account_summary is different from get_holdings_summary?
@@ -114,7 +114,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
 
         # Let's create 'Equities' Parent Category
         # Note: code='EQUITIES' might already exist from earlier lines or mixin. Ensure label is set.
-        cat_parent_eq, _ = AssetCategory.objects.get_or_create(
+        cat_parent_eq, _ = AssetClassCategory.objects.get_or_create(
             code="EQUITIES", defaults={"label": "Equities Parent", "sort_order": 1}
         )
         cat_parent_eq.label = "Equities Parent"
@@ -122,7 +122,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
 
         # Sub-category 1: US Equities
         # Force parent assignment as it might exist from mixin without parent
-        cat_us, _ = AssetCategory.objects.get_or_create(
+        cat_us, _ = AssetClassCategory.objects.get_or_create(
             code="US_EQ",
             defaults={"label": "US Equities", "parent": cat_parent_eq, "sort_order": 1},
         )
@@ -138,7 +138,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         Holding.objects.create(account=acc_dep, security=sec_us, shares=10, current_price=100)
 
         # Sub-category 2: Intl Equities
-        cat_intl, _ = AssetCategory.objects.get_or_create(
+        cat_intl, _ = AssetClassCategory.objects.get_or_create(
             code="INTL_EQ",
             defaults={"label": "Intl Equities", "parent": cat_parent_eq, "sort_order": 2},
         )
@@ -190,7 +190,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         """
         # Setup Data
         # Group "Investments"
-        cat_eq, _ = AssetCategory.objects.get_or_create(
+        cat_eq, _ = AssetClassCategory.objects.get_or_create(
             code="EQUITIES", defaults={"label": "Equities", "sort_order": 1}
         )
         ac_us, _ = AssetClass.objects.get_or_create(name="US Stocks", defaults={"category": cat_eq})
