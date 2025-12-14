@@ -7,8 +7,8 @@ from typing import Any
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import TemplateView
 
-from portfolio.context_builders import AllocationTableBuilder
 from portfolio.models import AccountType, AssetClass, TargetAllocation
+from portfolio.presenters import AllocationTableBuilder
 from portfolio.views.mixins import PortfolioContextMixin
 
 

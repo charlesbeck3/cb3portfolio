@@ -26,8 +26,22 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         services = self.get_portfolio_services()
         summary_service = services["summary"]
 
-        context.update(summary_service.get_holdings_by_category(user, account_id))
+        summary_data = summary_service.get_holdings_by_category(user, account_id)
+        context.update(summary_data)
         context.update(self.get_sidebar_context())
+
+        # Use Builder to create flat rows for the table
+        from portfolio.presenters import HoldingsTableBuilder
+
+        builder = HoldingsTableBuilder()
+        holdings_rows = builder.build_rows(
+            holding_groups=summary_data["holding_groups"],
+            grand_total_data={
+                "total": summary_data["grand_total"],
+                "target": summary_data.get("grand_total_target", Decimal("0.00")),
+            },
+        )
+        context["holdings_rows"] = holdings_rows
 
         if account_id and self.request.user.is_authenticated:
             with contextlib.suppress(Account.DoesNotExist):

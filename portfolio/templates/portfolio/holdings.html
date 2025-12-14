@@ -65,115 +65,109 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% if holding_groups %}
-                                    {% for group_code, group_data in holding_groups.items %}
-                                    {% for category_code, category_data in group_data.categories.items %}
-                                    {% for holding in category_data.holdings %}
-                                    <tr class="group-{{ forloop.parentloop.parentloop.counter }}-rows collapse show">
-                                        <td>
-                                            <div class="d-flex justify-content-between align-items-center">
-                                                <strong>{{ holding.ticker }}</strong>
-                                                {% if account and holding.ticker %}
-                                                <button type="button" class="btn btn-link btn-sm p-0 text-danger" 
-                                                        data-bs-toggle="modal" data-bs-target="#deleteHoldingModal"
-                                                        data-ticker="{{ holding.ticker }}"
-                                                        title="Remove {{ holding.ticker }}">
-                                                    <i class="bi bi-trash"></i> &times;
-                                                </button>
+                                    {% for row in holdings_rows %}
+                                        {% if row.is_holding %}
+                                        <tr class="{{ row.row_class }}" id="{{ row.row_id }}">
+                                            <td>
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <strong>{{ row.ticker }}</strong>
+                                                    {% if account and row.ticker %}
+                                                    <button type="button" class="btn btn-link btn-sm p-0 text-danger" 
+                                                            data-bs-toggle="modal" data-bs-target="#deleteHoldingModal"
+                                                            data-ticker="{{ row.ticker }}"
+                                                            title="Remove {{ row.ticker }}">
+                                                        <i class="bi bi-trash"></i> &times;
+                                                    </button>
+                                                    {% endif %}
+                                                </div>
+                                            </td>
+                                            <td>{{ row.name }}</td>
+                                            <td>{{ row.asset_class }}</td>
+                                            <td class="text-end">{{ row.price }}</td>
+                                            
+                                            <!-- Shares (Editable if account) -->
+                                            <td class="text-end" style="min-width: 100px;">
+                                                {% if account %}
+                                                    <input type="number" name="shares_{{ row.ticker }}" 
+                                                           value="{{ row.shares }}" 
+                                                           step="0.0001" class="form-control form-control-sm p-1 text-end"
+                                                           style="font-size: 0.8rem;">
+                                                {% else %}
+                                                    {{ row.shares }}
                                                 {% endif %}
-                                            </div>
-                                        </td>
-                                        <td>{{ holding.name }}</td>
-                                        <td>{{ holding.asset_class }}</td>
-                                        
-                                        <td class="text-end">{{ holding.current_price|default:"0"|accounting_amount:2 }}</td>
-                                        
-                                        <!-- Shares (Editable if account) -->
-                                        <td class="text-end" style="min-width: 100px;">
-                                            {% if account %}
-                                                <input type="number" name="shares_{{ holding.ticker }}" 
-                                                       value="{{ holding.shares|floatformat:4 }}" 
-                                                       step="0.0001" class="form-control form-control-sm p-1 text-end"
-                                                       style="font-size: 0.8rem;">
-                                            {% else %}
-                                                {{ holding.shares|floatformat:2 }}
-                                            {% endif %}
-                                        </td>
-                                        <td class="text-end">{{ holding.target_shares|floatformat:2 }}</td>
-                                        <td class="text-end">{{ holding.shares_variance|accounting_number:2 }}</td>
+                                            </td>
+                                            <td class="text-end">{{ row.target_shares }}</td>
+                                            <td class="text-end">{{ row.shares_variance }}</td>
 
-                                        <!-- Value -->
-                                        <td class="text-end">{{ holding.value|accounting_amount:0 }}</td>
-                                        <td class="text-end">{{ holding.target_value|accounting_amount:0 }}</td>
-                                        <td class="text-end">{{ holding.value_variance|accounting_amount:0 }}</td>
-                                        
-                                        <!-- Allocation -->
-                                        <td class="text-end">{{ holding.current_allocation|floatformat:2 }}%</td>
-                                        <td class="text-end">{{ holding.target_allocation|floatformat:2 }}%</td>
-                                        <td class="text-end">{{ holding.allocation_variance|accounting_percent:2 }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                    {% if group_data.categories|length > 1 %}
-                                    <tr class="table-secondary fw-bold group-{{ forloop.parentloop.counter }}-rows collapse show">
-                                        <td colspan="4">{{ category_data.label }} Total</td>
-                                        
-                                        <!-- Shares empty -->
-                                        <td colspan="3"></td>
+                                            <!-- Value -->
+                                            <td class="text-end">{{ row.value }}</td>
+                                            <td class="text-end">{{ row.target_value }}</td>
+                                            <td class="text-end">{{ row.value_variance }}</td>
+                                            
+                                            <!-- Allocation -->
+                                            <td class="text-end">{{ row.allocation }}</td>
+                                            <td class="text-end">{{ row.target_allocation }}</td>
+                                            <td class="text-end">{{ row.allocation_variance }}</td>
+                                        </tr>
+                                        {% elif row.is_subtotal %}
+                                        <tr class="{{ row.row_class }}" id="{{ row.row_id }}">
+                                            <td colspan="4">{{ row.name }}</td>
+                                            
+                                            <!-- Shares empty -->
+                                            <td colspan="3"></td>
 
-                                        <!-- Value Total -->
-                                        <td class="text-end">{{ category_data.total|accounting_amount:0 }}</td>
-                                        <td class="text-end">{{ category_data.total_target_value|accounting_amount:0 }}</td>
-                                        <td class="text-end">{{ category_data.total_value_variance|accounting_amount:0 }}</td>
-                                        
-                                        <!-- Allocation Total -->
-                                        <td class="text-end">{{ category_data.total_current_allocation|floatformat:2 }}%</td>
-                                        <td class="text-end">{{ category_data.total_target_allocation|floatformat:2 }}%</td>
-                                        <td class="text-end">{{ category_data.total_allocation_variance|accounting_percent:2 }}</td>
-                                    </tr>
-                                    {% endif %}
-                                    {% endfor %}
-                                    <tr class="table-primary fw-bold border-top group-toggle mt-3" data-bs-toggle="collapse"
-                                        data-bs-target=".group-{{ forloop.counter }}-rows" aria-expanded="true" role="button">
-                                        <td colspan="4">{{ group_data.label|default:group_code }} Total</td>
-                                        
-                                        <!-- Shares empty -->
-                                        <td colspan="3"></td>
+                                            <!-- Value Total -->
+                                            <td class="text-end">{{ row.value }}</td>
+                                            <td class="text-end">{{ row.target_value }}</td>
+                                            <td class="text-end">{{ row.value_variance }}</td>
+                                            
+                                            <!-- Allocation Total -->
+                                            <td class="text-end">{{ row.allocation }}</td>
+                                            <td class="text-end">{{ row.target_allocation }}</td>
+                                            <td class="text-end">{{ row.allocation_variance }}</td>
+                                        </tr>
+                                        {% elif row.is_group_total %}
+                                        <tr class="{{ row.row_class }}" data-bs-toggle="collapse" data-bs-target=".{{ row.row_id }}-rows" aria-expanded="true" role="button">
+                                            <td colspan="4">
+                                                <i class="bi bi-chevron-down me-2"></i>{{ row.name }}
+                                            </td>
+                                            <!-- Shares empty -->
+                                            <td colspan="3"></td>
 
-                                        <!-- Value Total -->
-                                        <td class="text-end">{{ group_data.total|accounting_amount:0 }}</td>
-                                        <td class="text-end">{{ group_data.total_target_value|accounting_amount:0 }}</td>
-                                        <td class="text-end">{{ group_data.total_value_variance|accounting_amount:0 }}</td>
-                                        
-                                        <!-- Allocation Total -->
-                                        <td class="text-end">{{ group_data.total_current_allocation|floatformat:2 }}%</td>
-                                        <td class="text-end">{{ group_data.total_target_allocation|floatformat:2 }}%</td>
-                                        <td class="text-end">{{ group_data.total_allocation_variance|accounting_percent:2 }}</td>
-                                    </tr>
+                                            <!-- Value Total -->
+                                            <td class="text-end">{{ row.value }}</td>
+                                            <td class="text-end">{{ row.target_value }}</td>
+                                            <td class="text-end">{{ row.value_variance }}</td>
+                                            
+                                            <!-- Allocation Total -->
+                                            <td class="text-end">{{ row.allocation }}</td>
+                                            <td class="text-end">{{ row.target_allocation }}</td>
+                                            <td class="text-end">{{ row.allocation_variance }}</td>
+                                        </tr>
+                                        {% elif row.is_grand_total %}
+                                        <tr class="{{ row.row_class }}">
+                                            <td colspan="4">{{ row.name }}</td>
+                                            
+                                            <!-- Shares empty -->
+                                            <td colspan="3"></td>
+
+                                            <!-- Value Total -->
+                                            <td class="text-end">{{ row.value }}</td>
+                                            <td class="text-end">{{ row.target_value }}</td>
+                                            <td class="text-end">{{ row.value_variance }}</td>
+                                             
+                                             <!-- Allocation Total -->
+                                            <td class="text-end">{{ row.allocation }}</td>
+                                            <td class="text-end">{{ row.target_allocation }}</td>
+                                            <td class="text-end">{{ row.allocation_variance }}</td>
+                                        </tr>
+                                        {% endif %}
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="13" class="text-center">No holdings found.</td>
+                                        </tr>
                                     {% endfor %}
-                                    {% else %}
-                                    <tr>
-                                        <td colspan="13" class="text-center">No holdings found.</td>
-                                    </tr>
-                                    {% endif %}
                                 </tbody>
-                                <tfoot>
-                                    <tr class="table-dark fw-bold">
-                                        <td colspan="4">Grand Total</td>
-                                        
-                                        <!-- Shares empty -->
-                                        <td colspan="3"></td>
-
-                                        <!-- Value Total -->
-                                        <td class="text-end">{{ grand_total|accounting_amount:0 }}</td>
-                                        <td class="text-end">{{ grand_target_value|accounting_amount:0 }}</td>
-                                        <td class="text-end">{{ grand_value_variance|accounting_amount:0 }}</td>
-                                         
-                                         <!-- Allocation Total -->
-                                        <td class="text-end">{{ grand_current_allocation|floatformat:2 }}%</td>
-                                        <td class="text-end">{{ grand_target_allocation|floatformat:2 }}%</td>
-                                        <td class="text-end">{{ grand_allocation_variance|accounting_percent:2 }}</td>
-                                    </tr>
-                                </tfoot>
                             </table>
                         </div>
                         {% if account %}

@@ -7,9 +7,9 @@ from typing import Any, cast
 
 from django.db import transaction
 
-from portfolio.context_builders import TargetAllocationTableBuilder
 from portfolio.forms import TargetAllocationForm
 from portfolio.models import Account, AccountType, AssetClass, Holding, TargetAllocation
+from portfolio.presenters import TargetAllocationTableBuilder
 from users.models import CustomUser
 
 
