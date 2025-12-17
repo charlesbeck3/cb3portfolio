@@ -59,11 +59,11 @@ class PortfolioAnalysisTests(TestCase, PortfolioTestMixin):
             current_price=Decimal("100"),
         )
 
-        self.portfolio = Portfolio(user_id=self.user.id, accounts=[self.acc_roth, self.acc_taxable])
+        self.domain_portfolio = Portfolio(user_id=self.user.id, accounts=[self.acc_roth, self.acc_taxable])
 
     def test_target_value_and_variance(self) -> None:
         analysis = PortfolioAnalysis(
-            portfolio=self.portfolio,
+            portfolio=self.domain_portfolio,
             targets={
                 "US Stocks": Decimal("50.00"),
                 "Bonds": Decimal("50.00"),

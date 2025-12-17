@@ -9,6 +9,8 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
+import pandas as pd
+
 from portfolio.models import Account, Holding, Security
 from portfolio.views.mixins import PortfolioContextMixin
 
@@ -47,7 +49,34 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             with contextlib.suppress(Account.DoesNotExist):
                 context["account"] = Account.objects.get(id=account_id, user=self.request.user)
                 # Pass securities for the "Add Holding" modal
+                # Pass securities for the "Add Holding" modal
                 context["securities"] = Security.objects.all().order_by("ticker")
+
+                # New Engine Calculation for single account
+                try:
+                    df = context["account"].to_dataframe()
+                    if not df.empty:
+                        # Group by Asset Class (level 0 of columns)
+                        # df columns: (Asset_Class, Asset_Category, Security)
+                        by_asset_class = df.T.groupby(level="Asset_Class").sum().T
+
+                        # Calculate totals and percentages
+                        total_val = by_asset_class.sum(axis=1).iloc[0]
+                        if total_val > 0:
+                            percentages = (by_asset_class / total_val * 100)
+                        else:
+                            percentages = by_asset_class * 0
+
+                        # Create summary DataFrame
+                        summary_df = pd.DataFrame({
+                            'Asset_Class': by_asset_class.columns,
+                            'Dollar_Amount': by_asset_class.iloc[0].values,
+                            'Percentage': percentages.iloc[0].values
+                        })
+                        context["account_allocation"] = summary_df.to_dict('records')
+                        context["account_total_value"] = total_val
+                except Exception as e:
+                    print(f"Error in pandas calculation: {e}")
 
         return context
 
@@ -95,8 +124,9 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             else:
                 messages.success(request, f"Added {security.ticker} to account.")
         else:
-            for error in form.errors.values():
-                messages.error(request, error)
+            for field, error_list in form.errors.items():
+                for error in error_list:
+                    messages.error(request, f"{field}: {error}")
 
         return redirect("portfolio:account_holdings", account_id=account.id)
 

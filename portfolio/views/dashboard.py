@@ -11,9 +11,11 @@ from portfolio.models import (
     AccountType,
     AccountTypeStrategyAssignment,
     AssetClass,
+    Portfolio,
     TargetAllocation,
 )
 from portfolio.presenters import AllocationTableBuilder
+from portfolio.services.allocation_calculations import AllocationCalculationEngine
 from portfolio.views.mixins import PortfolioContextMixin
 
 
@@ -94,5 +96,28 @@ class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             mode="percent",
             cash_asset_class_id=context["cash_asset_class_id"],
         )
+
+        # New Calculation Engine
+        portfolio = Portfolio.objects.filter(user=user).first()
+        if portfolio:
+            holdings_df = portfolio.to_dataframe()
+            engine = AllocationCalculationEngine()
+            allocations = engine.calculate_allocations(holdings_df)
+
+            context["allocation_by_account"] = allocations["by_account"].to_html(
+                classes="table table-striped table-sm", float_format="%.2f"
+            )
+            context["allocation_by_account_type"] = allocations["by_account_type"].to_html(
+                classes="table table-striped table-sm", float_format="%.2f"
+            )
+            context["allocation_by_asset_class"] = allocations["by_asset_class"].to_html(
+                classes="table table-striped table-sm", float_format="%.2f"
+            )
+            if not allocations["portfolio_summary"].empty:
+                context["portfolio_summary"] = allocations["portfolio_summary"].to_dict(
+                    "records"
+                )[0]
+            else:
+                context["portfolio_summary"] = {}
 
         return context

@@ -8,6 +8,7 @@ from portfolio.models import (
     AllocationStrategy,
     AssetClass,
     Holding,
+    Portfolio,
     RebalancingRecommendation,
     Security,
     TargetAllocation,
@@ -16,6 +17,81 @@ from portfolio.models import (
 from .base import PortfolioTestMixin
 
 User = get_user_model()
+
+
+class AccountTypeTests(TestCase, PortfolioTestMixin):
+    def setUp(self) -> None:
+        self.setup_portfolio_data()
+        self.user = User.objects.create(username="testuser_type")
+        self.portfolio = Portfolio.objects.create(name="Test Portfolio Type", user=self.user)
+
+    def test_to_dataframe(self) -> None:
+        """AccountType DataFrame aggregates multiple accounts."""
+        type_obj = self.type_taxable
+        ac_us = AssetClass.objects.create(name="US Stk Ty", category=self.cat_us_eq)
+        sec = Security.objects.create(ticker="VTI_TY", asset_class=ac_us)
+
+        acc1 = Account.objects.create(
+            name="Acc 1", account_type=type_obj, portfolio=self.portfolio, user=self.user, institution=self.institution
+        )
+        acc2 = Account.objects.create(
+            name="Acc 2", account_type=type_obj, portfolio=self.portfolio, user=self.user, institution=self.institution
+        )
+
+        Holding.objects.create(account=acc1, security=sec, shares=10, current_price=100)
+        Holding.objects.create(account=acc2, security=sec, shares=20, current_price=100)
+
+        df = type_obj.to_dataframe()
+        self.assertEqual(len(df), 2)
+        self.assertIn('Acc 1', df.index)
+        self.assertIn('Acc 2', df.index)
+
+
+
+class PortfolioTests(TestCase, PortfolioTestMixin):
+    def setUp(self) -> None:
+        self.setup_portfolio_data()
+        self.user = User.objects.create(username="testuser_port")
+        self.portfolio = Portfolio.objects.create(name="Test Portfolio", user=self.user)
+        # Setup for dataframe tests
+        self.us_stocks = AssetClass.objects.create(name="US Stk", category=self.cat_us_eq)
+        self.bonds = AssetClass.objects.create(name="Bonds", category=self.cat_fi)
+        self.vti = Security.objects.create(ticker="VTI", name="Vanguard Stock", asset_class=self.us_stocks)
+        self.bnd = Security.objects.create(ticker="BND", name="Vanguard Bond", asset_class=self.bonds)
+
+        self.account = Account.objects.create(
+            name="Test Account",
+            account_type=self.type_taxable,
+            portfolio=self.portfolio,
+            user=self.user,
+            institution=self.institution
+        )
+        Holding.objects.create(account=self.account, security=self.vti, shares=Decimal('50'), current_price=Decimal('100.00'))
+        Holding.objects.create(account=self.account, security=self.bnd, shares=Decimal('100'), current_price=Decimal('50.00'))
+
+    def test_to_dataframe_structure(self) -> None:
+        """Portfolio DataFrame has correct MultiIndex structure."""
+        df = self.portfolio.to_dataframe()
+        assert df.index.names == ['Account_Type', 'Account_Category', 'Account_Name']
+        assert df.columns.names == ['Asset_Class', 'Asset_Category', 'Security']
+        assert not df.empty
+
+    def test_to_dataframe_values(self) -> None:
+        """Portfolio DataFrame has correct values."""
+        df = self.portfolio.to_dataframe()
+        assert ('US Stk', 'US Equities', 'VTI') in df.columns
+        assert ('Bonds', 'Fixed Income', 'BND') in df.columns
+
+        # Value check: 50 * 100 = 5000
+        val = df.loc[('Taxable', 'Investments', 'Test Account'), ('US Stk', 'US Equities', 'VTI')]
+        self.assertEqual(val, 5000.0)
+
+    def test_empty_portfolio_dataframe(self) -> None:
+        """Empty portfolio returns empty DataFrame with correct structure."""
+        empty = Portfolio.objects.create(name="Empty", user=self.user)
+        df = empty.to_dataframe()
+        assert df.empty
+        assert df.index.names == ['Account_Type', 'Account_Category', 'Account_Name']
 
 
 class AssetClassTests(TestCase, PortfolioTestMixin):
@@ -191,6 +267,27 @@ class AccountTests(TestCase, PortfolioTestMixin):
         deviation = account.calculate_deviation(targets)
         # |600-500| + |400-500| = 200
         self.assertEqual(deviation, Decimal("200"))
+
+    def test_to_dataframe(self) -> None:
+        """Account DataFrame has single row."""
+        # Setup specific to this test to ensure isolation
+        ac_us = AssetClass.objects.create(name="US Stk Ac", category=self.cat_us_eq)
+        sec = Security.objects.create(ticker="VTI_AC", asset_class=ac_us)
+        # Create a new account to avoid side effects from mixin setup if any
+        account = Account.objects.create(
+            user=self.user, name="My Solitary Account", portfolio=self.portfolio,
+            account_type=self.type_roth, institution=self.institution
+        )
+        Holding.objects.create(account=account, security=sec, shares=Decimal('10'), current_price=Decimal('100'))
+
+        df = account.to_dataframe()
+        self.assertEqual(len(df), 1)
+        self.assertEqual(df.index[0], 'My Solitary Account')
+        val = df.loc['My Solitary Account', ('US Stk Ac', 'US Equities', 'VTI_AC')]
+        self.assertEqual(val, 1000.0)
+
+
+
 
 
 class SecurityTests(
@@ -438,3 +535,6 @@ class RebalancingRecommendationTests(TestCase, PortfolioTestMixin):
         )
         self.assertEqual(rec.action, "BUY")
         self.assertEqual(str(rec), "BUY 10.00 VTI in Roth IRA")
+
+
+

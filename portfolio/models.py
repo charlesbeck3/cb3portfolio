@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
+
+import pandas as pd
 
 if TYPE_CHECKING:
     from portfolio.domain.allocation import AssetAllocation
@@ -89,6 +92,86 @@ class Portfolio(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.user.username})"
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """
+        Convert portfolio holdings to MultiIndex DataFrame.
+
+        Returns:
+            DataFrame where:
+            - Rows: MultiIndex(Account_Type, Account_Category, Account_Name)
+            - Cols: MultiIndex(Asset_Class, Asset_Category, Security)
+            - Values: Dollar amounts (shares * current_price)
+        """
+        # Fetch all holdings for this portfolio
+        holdings = (
+            Holding.objects.filter(account__portfolio=self)
+            .select_related(
+                "account__account_type__group",
+                "security__asset_class__category",
+            )
+            .all()
+        )
+
+        # Build nested dict structure for DataFrame
+        # data[row_key][col_key] = value
+        data: dict[tuple[Any, ...], dict[tuple[Any, ...], float]] = defaultdict(lambda: defaultdict(float))
+
+        for holding in holdings:
+            # Row: Account hierarchy
+            row_key = (
+                holding.account.account_type.label,  # e.g., "Taxable"
+                holding.account.account_type.group.name,  # e.g., "Brokerage"
+                holding.account.name,  # e.g., "Merrill Lynch"
+            )
+
+            # Column: Asset hierarchy
+            col_key = (
+                holding.security.asset_class.name,  # e.g., "Equities"
+                holding.security.asset_class.category.label,  # e.g., "US Large Cap"
+                holding.security.ticker,  # e.g., "VTI"
+            )
+
+            # Value: market value
+            value = float(holding.market_value)
+            data[row_key][col_key] = value
+
+        if not data:
+            # Empty portfolio - return empty DataFrame with correct structure
+            return pd.DataFrame(
+                index=pd.MultiIndex.from_tuples(
+                    [], names=["Account_Type", "Account_Category", "Account_Name"]
+                ),
+                columns=pd.MultiIndex.from_tuples(
+                    [], names=["Asset_Class", "Asset_Category", "Security"]
+                ),
+            )
+
+        # Convert nested dict to DataFrame
+        df = pd.DataFrame.from_dict(
+            {row_key: dict(col_dict) for row_key, col_dict in data.items()},
+            orient="index",
+        )
+
+        # Set MultiIndex for rows
+        df.index = pd.MultiIndex.from_tuples(
+            df.index,
+            names=["Account_Type", "Account_Category", "Account_Name"],
+        )
+
+        # Set MultiIndex for columns
+        df.columns = pd.MultiIndex.from_tuples(
+            df.columns,
+            names=["Asset_Class", "Asset_Category", "Security"],
+        )
+
+        # Fill NaN with 0 (accounts don't hold every security)
+        df = df.fillna(0.0)
+
+        # Sort for consistent ordering
+        df = df.sort_index(axis=0).sort_index(axis=1)
+
+        return df
 
 
 class AllocationStrategy(models.Model):
@@ -192,6 +275,28 @@ class AccountType(models.Model):
     def __str__(self) -> str:
         return self.label
 
+    def to_dataframe(self) -> pd.DataFrame:
+        """
+        Convert all accounts of this type to DataFrame.
+
+        Returns:
+            DataFrame with one row per account of this type.
+        """
+        accounts = self.accounts.all()
+
+        if not accounts:
+            return pd.DataFrame()
+
+        # Get DataFrame for each account and concatenate
+        dfs = [account.to_dataframe() for account in accounts]
+
+        if not dfs:
+            return pd.DataFrame()
+
+        df = pd.concat(dfs, axis=0)
+        # Sort just in case concating mixed up order slightly or for consistency
+        return df.sort_index(axis=0).sort_index(axis=1)
+
 
 class Account(models.Model):
     """Investment account (e.g., Roth IRA, Taxable)."""
@@ -215,6 +320,53 @@ class Account(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.user.username})"
+
+    def to_dataframe(self) -> pd.DataFrame:
+        """
+        Convert account holdings to DataFrame.
+
+        Returns:
+            DataFrame with single row (this account) and MultiIndex columns.
+        """
+        holdings = self.holdings.select_related(
+            "security__asset_class__category"
+        ).all()
+
+        # Build column dict
+        data = {}
+        for holding in holdings:
+            col_key = (
+                holding.security.asset_class.name,
+                holding.security.asset_class.category.label,
+                holding.security.ticker,
+            )
+            value = float(holding.market_value)
+            data[col_key] = value
+
+        if not data:
+            # Empty account
+            return pd.DataFrame(
+                index=pd.Index([self.name], name="Account_Name"),
+                columns=pd.MultiIndex.from_tuples(
+                    [], names=["Asset_Class", "Asset_Category", "Security"]
+                ),
+            )
+
+        # Single-row DataFrame
+        df = pd.DataFrame([data])
+
+        # Set MultiIndex for columns
+        df.columns = pd.MultiIndex.from_tuples(
+            df.columns,
+            names=["Asset_Class", "Asset_Category", "Security"],
+        )
+
+        # Set index to account name
+        df.index = pd.Index([self.name], name="Account_Name")
+
+        df = df.fillna(0.0).sort_index(axis=1)
+
+        return df
 
     @property
     def tax_treatment(self) -> str:

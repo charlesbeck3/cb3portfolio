@@ -641,6 +641,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "django" },
+    { name = "pandas" },
     { name = "python-dotenv" },
     { name = "yfinance" },
 ]
@@ -661,6 +662,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "django", specifier = ">=5.1,<5.2" },
+    { name = "pandas", specifier = ">=2.3.3" },
     { name = "python-dotenv", specifier = ">=1.0,<2.0" },
     { name = "yfinance", specifier = ">=0.2.66" },
 ]
