@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
+
+import pandas as pd
 
 from portfolio.templatetags.portfolio_filters import (
     accounting_amount,
@@ -289,18 +291,25 @@ class TargetAllocationTableBuilder:
 
         return rows
 
-    def _sum_asset_classes(self, df_ac, df_at, df_acc, ac_names, account_types):
+    def _sum_asset_classes(
+        self,
+        df_ac: Optional[pd.DataFrame],
+        df_at: Optional[pd.DataFrame],
+        df_acc: Optional[pd.DataFrame],
+        ac_names: list[str],
+        account_types: list[Any],
+    ) -> dict[str, Any]:
         """Helper to sum values for a list of asset classes."""
-        res = {
-            'portfolio': Decimal("0.00"),
-            'at': defaultdict(Decimal),
-            'acc': defaultdict(Decimal)
+        res: dict[str, Any] = {
+            "portfolio": Decimal("0.00"),
+            "at": defaultdict(Decimal),
+            "acc": defaultdict(Decimal),
         }
 
         for ac in ac_names:
             # Portfolio
             if df_ac is not None and ac in df_ac.index:
-                res['portfolio'] += Decimal(float(df_ac.loc[ac, "Dollar_Amount"]))
+                res["portfolio"] += Decimal(float(df_ac.loc[ac, "Dollar_Amount"]))
 
             col_name = f"{ac}_dollars"
 
@@ -308,14 +317,14 @@ class TargetAllocationTableBuilder:
             if df_at is not None and col_name in df_at.columns:
                 for at in account_types:
                     if at.label in df_at.index:
-                        res['at'][at.id] += Decimal(float(df_at.loc[at.label, col_name]))
+                        res["at"][at.id] += Decimal(float(df_at.loc[at.label, col_name]))
 
             # Acc
             if df_acc is not None and col_name in df_acc.columns:
                 for at in account_types:
                     for acc in getattr(at, "active_accounts", []):
                         if acc.name in df_acc.index:
-                            res['acc'][acc.id] += Decimal(float(df_acc.loc[acc.name, col_name]))
+                            res["acc"][acc.id] += Decimal(float(df_acc.loc[acc.name, col_name]))
 
         return res
 
@@ -511,17 +520,17 @@ class TargetAllocationTableBuilder:
 
     def _build_calculated_row(
         self,
-        label,
-        category_code,
-        data,
-        account_types,
-        portfolio_total_value,
-        mode,
-        ac_names,
-        ac_meta,  # ADDED
-        is_subtotal=False,
-        is_group_total=False,
-        account_targets=None,
+        label: str,
+        category_code: str,
+        data: dict[str, Any],
+        account_types: list[Any],
+        portfolio_total_value: Decimal,
+        mode: str,
+        ac_names: list[str],
+        ac_meta: dict[str, Any],  # ADDED
+        is_subtotal: bool = False,
+        is_group_total: bool = False,
+        account_targets: Optional[dict[int, dict[int, Decimal]]] = None,
     ) -> TargetAllocationTableRow:
         # data: {'portfolio': val, 'at': {id: val}, 'acc': {id: val}} (Current Values only)
 

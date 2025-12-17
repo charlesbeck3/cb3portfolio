@@ -108,43 +108,44 @@ class TargetAllocationViewService:
 
         account_types = []
         for at_obj in account_types_qs:
-            at: Any = at_obj
-            at_accounts = [a for a in accounts if a.account_type_id == at.id]
+            at_any: Any = at_obj
+            at_accounts = [a for a in accounts if a.account_type_id == at_any.id]
 
             at_total = Decimal("0.00")
-            if df_at is not None and at.label in df_at.index:
+            if df_at is not None and at_any.label in df_at.index:
                 dollar_cols = [c for c in df_at.columns if c.endswith("_dollars")]
-                at_total = Decimal(float(df_at.loc[at.label, dollar_cols].sum()))
+                at_total = Decimal(float(df_at.loc[at_any.label, dollar_cols].sum()))
 
-            at.current_total_value = at_total
-            at.target_map = defaults_map.get(at.id, {})
-            at_values[at.id] = at_total
+            at_any.current_total_value = at_total
+            at_any.target_map = defaults_map.get(at_any.id, {})
+            at_values[at_any.id] = at_total
 
             for acc in at_accounts:
+                acc_any: Any = acc
                 acc_total = Decimal("0.00")
-                if df_acc is not None and acc.name in df_acc.index:
-                     dollar_cols = [c for c in df_acc.columns if c.endswith("_dollars")]
-                     # Could be Series or DataFrame if name partial match? Exact match on Index expected.
-                     rows = df_acc.loc[acc.name, dollar_cols]
-                     if isinstance(rows, pd.Series):
-                         acc_total = Decimal(float(rows.sum()))
-                     else:
-                         # Ensure we sum scalar values if it's single row DF
-                         acc_total = Decimal(float(rows.sum().sum())) # sum columns then rows?
-                         # Usually distinct names, so single row.
-                         pass
+                if df_acc is not None and acc_any.name in df_acc.index:
+                    dollar_cols = [c for c in df_acc.columns if c.endswith("_dollars")]
+                    # Could be Series or DataFrame if name partial match? Exact match on Index expected.
+                    rows = df_acc.loc[acc_any.name, dollar_cols]
+                    if isinstance(rows, pd.Series):
+                        acc_total = Decimal(float(rows.sum()))
+                    else:
+                        # Ensure we sum scalar values if it's single row DF
+                        acc_total = Decimal(float(rows.sum().sum()))  # sum columns then rows?
+                        # Usually distinct names, so single row.
+                        pass
 
-                acc.current_total_value = acc_total
-                account_totals[acc.id] = acc_total
-                acc.target_map = overrides_map.get(acc.id, {})
+                acc_any.current_total_value = acc_total
+                account_totals[acc_any.id] = acc_total
+                acc_any.target_map = overrides_map.get(acc_any.id, {})
 
-            if at.id in assignment_by_at_id:
-                at.active_strategy_id = assignment_by_at_id[at.id].allocation_strategy_id
+            if at_any.id in assignment_by_at_id:
+                at_any.active_strategy_id = assignment_by_at_id[at_any.id].allocation_strategy_id
             else:
-                at.active_strategy_id = None
+                at_any.active_strategy_id = None
 
-            at.active_accounts = at_accounts
-            account_types.append(at)
+            at_any.active_accounts = at_accounts
+            account_types.append(at_any)
 
         # Build Metadata & Hierarchy
         ac_qs = AssetClass.objects.select_related('category__parent').all()

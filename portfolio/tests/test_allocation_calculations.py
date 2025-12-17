@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Any
 
 from django.test import SimpleTestCase, TestCase
 
@@ -160,18 +161,19 @@ class TestAllocationDashboardRows(TestCase):
 
         # Manually populate rich AT
         # In a real scenario, this comes from views.
-        self.type_taxable.current_total_value = Decimal("1500.00")
-        self.type_taxable.target_map = {self.asset_class.id: Decimal("60")} # 60% Target for Large Cap
+        type_taxable_any: Any = self.type_taxable
+        type_taxable_any.current_total_value = Decimal("1500.00")
+        type_taxable_any.target_map = {self.asset_class.id: Decimal("60")}  # 60% Target for Large Cap
 
         holdings_df = self.portfolio.to_dataframe()
         engine = AllocationCalculationEngine()
 
         rows = engine.calculate_dashboard_rows(
             holdings_df=holdings_df,
-            account_types=[self.type_taxable],
+            account_types=[type_taxable_any],
             portfolio_total_value=Decimal("1500.00"),
             mode="dollar",
-            cash_asset_class_id=self.cash_ac.id
+            cash_asset_class_id=self.cash_ac.id,
         )
 
         # Expected Rows:
@@ -212,18 +214,19 @@ class TestAllocationDashboardRows(TestCase):
         self.assertEqual(r_total.portfolio_current, "$1,500")
 
     def test_calculate_dashboard_rows_percent_mode(self) -> None:
-        self.type_taxable.current_total_value = Decimal("1500.00")
-        self.type_taxable.target_map = {self.asset_class.id: Decimal("60")}
+        type_taxable_any: Any = self.type_taxable
+        type_taxable_any.current_total_value = Decimal("1500.00")
+        type_taxable_any.target_map = {self.asset_class.id: Decimal("60")}
 
         holdings_df = self.portfolio.to_dataframe()
         engine = AllocationCalculationEngine()
 
         rows = engine.calculate_dashboard_rows(
             holdings_df=holdings_df,
-            account_types=[self.type_taxable],
+            account_types=[type_taxable_any],
             portfolio_total_value=Decimal("1500.00"),
             mode="percent",
-            cash_asset_class_id=self.cash_ac.id
+            cash_asset_class_id=self.cash_ac.id,
         )
 
         # Check Large Cap

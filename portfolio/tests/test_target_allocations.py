@@ -400,9 +400,10 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         expected_selected = f'value="{self.strategy_conservative.id}" selected'
         self.assertIn(expected_selected, content)
 
-    def _strip_html(self, value):
+    def _strip_html(self, value: str) -> str:
         import re
-        clean = re.sub('<[^<]+?>', '', value)
+
+        clean = re.sub("<[^<]+?>", "", value)
         return clean.replace(")", "").replace("(", "-").replace("$", "").replace(",", "").strip()
 
     def test_category_subtotal_calculation(self) -> None:
@@ -417,7 +418,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         cat_intl = AssetClassCategory.objects.create(code="INTL_LARGE", label="Intl Large Cap", parent=parent_cat, sort_order=2)
 
         ac_us = AssetClass.objects.create(name="US Large Asset", category=cat_us)
-        ac_us_2 = AssetClass.objects.create(name="US Large Growth", category=cat_us) # Trigger Subtotal
+        ac_us_2 = AssetClass.objects.create(name="US Large Growth", category=cat_us)  # Trigger Subtotal
         ac_intl = AssetClass.objects.create(name="Intl Large Asset", category=cat_intl)
 
         sec_us = Security.objects.create(ticker="USL", name="US Large ETF", asset_class=ac_us)
@@ -425,9 +426,9 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         sec_intl = Security.objects.create(ticker="INT", name="Intl ETF", asset_class=ac_intl)
 
         # Add Holdings to Taxable Account (from setUp)
-        Holding.objects.create(account=self.acc_tax, security=sec_us, shares=10, current_price=Decimal("150.00")) # $1500
-        Holding.objects.create(account=self.acc_tax, security=sec_us_2, shares=10, current_price=Decimal("100.00")) # $1000
-        Holding.objects.create(account=self.acc_tax, security=sec_intl, shares=10, current_price=Decimal("100.00")) # $1000
+        Holding.objects.create(account=self.acc_tax, security=sec_us, shares=Decimal("10"), current_price=Decimal("150.00"))  # $1500
+        Holding.objects.create(account=self.acc_tax, security=sec_us_2, shares=Decimal("10"), current_price=Decimal("100.00"))  # $1000
+        Holding.objects.create(account=self.acc_tax, security=sec_intl, shares=Decimal("10"), current_price=Decimal("100.00"))  # $1000
 
         # Assign Strategy to Account
         strategy_growth = AllocationStrategy.objects.create(user=self.user, name="Global Growth")
@@ -442,14 +443,14 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         # Use simple Pricing Mock that returns values such that View uses Current Prices from Holdings if Mock returns nothing?
         # Or better, just mock VTI/CASH and our new tickers.
         with unittest.mock.patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
-             # Logic in `calculate_allocations` might rely on current_price in Holding if not in map?
-             # `Portfolio.to_dataframe` uses `holding.current_price`.
-             # We set `current_price` on creation.
-             # So we don't strictly need `get_prices` if we trust the DB values.
-             # But View might trigger a pricing update? Current `TargetAllocationViewService` does not trigger update.
-             mock_prices.return_value = {}
+            # Logic in `calculate_allocations` might rely on current_price in Holding if not in map?
+            # `Portfolio.to_dataframe` uses `holding.current_price`.
+            # We set `current_price` on creation.
+            # So we don't strictly need `get_prices` if we trust the DB values.
+            # But View might trigger a pricing update? Current `TargetAllocationViewService` does not trigger update.
+            mock_prices.return_value = {}
 
-             response = self.client.get(reverse("portfolio:target_allocations") + "?mode=dollar")
+            response = self.client.get(reverse("portfolio:target_allocations") + "?mode=dollar")
 
         self.assertEqual(response.status_code, 200)
         rows = response.context["allocation_rows_money"]
@@ -459,20 +460,22 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         # Check for row with label "US Large Cap Total"
         subtotal_row = next((r for r in rows if r.is_subtotal and "US Large Cap" in r.asset_class_name), None)
         self.assertIsNotNone(subtotal_row)
+        assert subtotal_row is not None
 
-        if subtotal_row:
-             # Find column for Taxable
-             group = next((g for g in subtotal_row.groups if g.account_type.code == self.type_taxable.code), None)
-             self.assertIsNotNone(group)
-             # "2,500" or "2500"
-             self.assertEqual(self._strip_html(group.account_type.current), "2500")
+        # Find column for Taxable
+        group = next((g for g in subtotal_row.groups if g.account_type.code == self.type_taxable.code), None)
+        self.assertIsNotNone(group)
+        assert group is not None
+        # "2,500" or "2500"
+        self.assertEqual(self._strip_html(group.account_type.current), "2500")
 
         # Group Total Row "Global Equities" (Sum of 2500 + 1000 = 3500)
         group_row = next((r for r in rows if r.is_group_total and "Global Equities" in r.asset_class_name), None)
         self.assertIsNotNone(group_row)
+        assert group_row is not None
 
-        if group_row:
-             group = next((g for g in group_row.groups if g.account_type.code == self.type_taxable.code), None)
-             self.assertIsNotNone(group)
-             self.assertEqual(self._strip_html(group.account_type.current), "3500")
+        group = next((g for g in group_row.groups if g.account_type.code == self.type_taxable.code), None)
+        self.assertIsNotNone(group)
+        assert group is not None
+        self.assertEqual(self._strip_html(group.account_type.current), "3500")
 
