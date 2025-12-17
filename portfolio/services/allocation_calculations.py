@@ -90,12 +90,14 @@ class AllocationCalculationEngine:
         # Dataframe index now includes Account_ID.
         # We want to group by Account_Name (and Type/Cat/ID to stay unique).
         # Simply grouping by columns (Asset Class) sums across securities.
-        by_asset_class = df.groupby(level=["Account_Type", "Account_Category", "Account_Name"], axis=0).sum()
+        by_asset_class = df.groupby(
+            level=["Account_Type", "Account_Category", "Account_Name"]
+        ).sum()
         # But wait, groupby sum loses the specific levels if we don't include them?
         # Actually `sum(axis=1)` sums securities (columns).
 
         # Step 1: Sum across securities to get total per Asset Class per Row (Account)
-        by_asset_class = df.groupby(level="Asset_Class", axis=1).sum()
+        by_asset_class = df.T.groupby(level="Asset_Class").sum().T
 
         # Step 2: Ensure rows are unique Accounts.
         # The input DF has Account_ID in index.
@@ -136,7 +138,7 @@ class AllocationCalculationEngine:
         by_type = df.groupby(level="Account_Type").sum()
 
         # Group by asset class
-        by_asset_class = by_type.groupby(level="Asset_Class", axis=1).sum()
+        by_asset_class = by_type.T.groupby(level="Asset_Class").sum().T
 
         # Calculate totals and percentages
         type_totals = by_asset_class.sum(axis=1)
@@ -345,8 +347,8 @@ class AllocationCalculationEngine:
 
         # Flatten security dimension first
         # Sum across securities to get (Account_Type, Account_Category, Account_Name) x (Asset_Class, Asset_Category)
-        df_by_ac = holdings_df.groupby(level=["Asset_Class", "Asset_Category"], axis=1).sum() # Columns -> Asset Class
-        df_by_at_ac = df_by_ac.groupby(level="Account_Type", axis=0).sum() # Rows -> Account Type
+        df_by_ac = holdings_df.T.groupby(level=["Asset_Class", "Asset_Category"]).sum().T
+        df_by_at_ac = df_by_ac.groupby(level="Account_Type").sum() # Rows -> Account Type
 
         # Pivot so we have Asset Class as rows and Account Type as columns
         # df_grid: index=(Asset_Class, Asset_Category), columns=Account_Type

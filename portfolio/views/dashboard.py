@@ -72,7 +72,7 @@ class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         # We can use the engine's internal methods or simple pandas sum
         if not holdings_df.empty:
             # Group by Account_Type and sum
-            at_totals_df = holdings_df.groupby(level="Account_Type", axis=0).sum().sum(axis=1)
+            at_totals_df = holdings_df.groupby(level="Account_Type").sum().sum(axis=1)
             at_totals_map = at_totals_df.to_dict()
             portfolio_total_value = Decimal(float(holdings_df.sum().sum()))
         else:
@@ -108,10 +108,5 @@ class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             mode="percent",
             cash_asset_class_id=context["cash_asset_class_id"],
         )
-
-
-        # Legacy/Debug info (optional, can remove if we are confident)
-        # Leaving minimal debug context if needed or removing entirely
-        # The user asked to Simplify. Let's remove the extra heavy debug tables.
 
         return context

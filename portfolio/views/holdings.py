@@ -126,7 +126,7 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
                     if not holdings_df.empty:
                         # Group by Asset Class (level 0 of columns)
                         # holdings_df columns: (Asset_Class, Asset_Category, Security)
-                        by_asset_class = holdings_df.groupby(level="Asset_Class", axis=1).sum()
+                        by_asset_class = holdings_df.T.groupby(level="Asset_Class").sum().T
 
                         # Sum across the single account (row)
                         # holdings_df row index: (Type, Cat, Name, ID)

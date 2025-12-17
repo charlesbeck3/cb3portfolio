@@ -245,26 +245,26 @@ class TestHoldingsDetailCalculation(SimpleTestCase):
     def test_calculate_holdings_detail(self) -> None:
         """Test granular holdings detail calculation using Long DataFrame."""
         # 1. Setup Mock DF (Long Format)
-        ACC_ID_1 = 1
-        ACC_ID_2 = 2
+        acc_id_1 = 1
+        acc_id_2 = 2
 
         data = [
             # Acct1: VTI, AAPL
             {
-                "Account_ID": ACC_ID_1, "Account_Name": "Acct1", "Account_Type": "Taxable",
+                "Account_ID": acc_id_1, "Account_Name": "Acct1", "Account_Type": "Taxable",
                 "Account_Category": "Brokerage", "Asset_Class": "Equities", "Asset_Category": "Large Cap",
                 "Ticker": "VTI", "Security_Name": "Vanguard Total Stock",
                 "Shares": 10.0, "Price": 100.0, "Value": 1000.0
             },
             {
-                "Account_ID": ACC_ID_1, "Account_Name": "Acct1", "Account_Type": "Taxable",
+                "Account_ID": acc_id_1, "Account_Name": "Acct1", "Account_Type": "Taxable",
                 "Account_Category": "Brokerage", "Asset_Class": "Equities", "Asset_Category": "Large Cap",
                 "Ticker": "AAPL", "Security_Name": "Apple Inc",
                 "Shares": 5.0, "Price": 100.0, "Value": 500.0
             },
             # Acct2: BND
             {
-                "Account_ID": ACC_ID_2, "Account_Name": "Acct2", "Account_Type": "Retirement",
+                "Account_ID": acc_id_2, "Account_Name": "Acct2", "Account_Type": "Retirement",
                 "Account_Category": "Roth", "Asset_Class": "Fixed Income", "Asset_Category": "Bonds",
                 "Ticker": "BND", "Security_Name": "Vanguard Bond",
                 "Shares": 20.0, "Price": 100.0, "Value": 2000.0
@@ -278,8 +278,8 @@ class TestHoldingsDetailCalculation(SimpleTestCase):
         # Acct2: Fixed Income Target 100% (of 2000 = 2000)
 
         targets_map = {
-            ACC_ID_1: {'Equities': Decimal('60.0')},
-            ACC_ID_2: {'Fixed Income': Decimal('100.0')}
+            acc_id_1: {'Equities': Decimal('60.0')},
+            acc_id_2: {'Fixed Income': Decimal('100.0')}
         }
 
         engine = AllocationCalculationEngine()
@@ -298,7 +298,7 @@ class TestHoldingsDetailCalculation(SimpleTestCase):
         # Check AAPL (Acct1)
         r_aapl = res.iloc[0]
         self.assertEqual(r_aapl["Ticker"], "AAPL")
-        self.assertEqual(r_aapl["Account_ID"], ACC_ID_1)
+        self.assertEqual(r_aapl["Account_ID"], acc_id_1)
         self.assertEqual(r_aapl["Value"], 500.0)
         self.assertEqual(r_aapl["Shares"], 5.0) # Preserved
 
@@ -321,7 +321,7 @@ class TestHoldingsDetailCalculation(SimpleTestCase):
         # Check BND (Acct2)
         r_bnd = res.iloc[2]
         self.assertEqual(r_bnd["Ticker"], "BND")
-        self.assertEqual(r_bnd["Account_ID"], ACC_ID_2)
+        self.assertEqual(r_bnd["Account_ID"], acc_id_2)
         self.assertEqual(r_bnd["Value"], 2000.0)
         # Target 100% of 2000 = 2000. One security.
         self.assertAlmostEqual(r_bnd["Target_Value"], 2000.0)

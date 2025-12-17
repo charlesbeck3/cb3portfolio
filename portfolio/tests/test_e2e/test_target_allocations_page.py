@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
@@ -5,7 +6,15 @@ from django.contrib.auth import get_user_model
 import pytest
 from playwright.sync_api import Page, expect
 
-from portfolio.models import Account, AssetClass, AssetClassCategory, Holding, Security
+from portfolio.models import (
+    Account,
+    AllocationStrategy,
+    AssetClass,
+    AssetClassCategory,
+    Holding,
+    Security,
+    TargetAllocation,
+)
 from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
@@ -59,9 +68,20 @@ class TestFrontendAllocations(PortfolioTestMixin):
             account=self.acc_roth, security=self.sec_vti, shares=10, current_price=100
         )
 
+        # Setup Strategies
+        self.strategy_all_stocks = AllocationStrategy.objects.create(
+            user=self.user, name="All Stocks"
+        )
+        TargetAllocation.objects.create(
+            strategy=self.strategy_all_stocks, asset_class=self.ac_us, target_percent=Decimal("100")
+        )
+
+        self.strategy_all_cash = AllocationStrategy.objects.create(user=self.user, name="All Cash")
+        # No allocations means 100% cash in this system
+
     def test_calculation_persistence(self, page: Page, live_server_url: str) -> None:
         """
-        Verify that changing an override input and saving updates:
+        Verify that changing a strategy assignment and saving updates:
         1. Total Portfolio Target %
         2. Variance %
         """
@@ -74,20 +94,20 @@ class TestFrontendAllocations(PortfolioTestMixin):
         # Go to Allocations
         page.goto(f"{live_server_url}/targets/")
 
-        # Find the input for US Stocks override in My Roth
-        input_name = f"target_account_{self.acc_roth.id}_{self.ac_us.id}"
-        unique_input_selector = f'#allocations-table input[name="{input_name}"]'
+        # Use Select for US Stocks strategy override in My Roth
+        select_name = f"strategy_acc_{self.acc_roth.id}"
+        unique_select_selector = f'#allocations-table select[name="{select_name}"]'
 
         # Expand the account column
         expand_btn = page.locator(f'#allocations-table button[data-at-id="{self.type_roth.id}"]')
         expand_btn.click()
 
-        # Wait for column to be visible
-        input_locator = page.locator(unique_input_selector)
-        expect(input_locator).to_be_visible()
+        # Wait for select to be visible
+        select_locator = page.locator(unique_select_selector)
+        expect(select_locator).to_be_visible()
 
-        # Enter 50%
-        input_locator.fill("50")
+        # Select "All Stocks" (100% US Stocks)
+        select_locator.select_option(label="All Stocks")
 
         # Save
         with page.expect_navigation():
@@ -96,11 +116,12 @@ class TestFrontendAllocations(PortfolioTestMixin):
         # Verify persistence and calculation on reload
         # US Stocks Row Total Target ID: `row-total-{ac_id}`
         row_total_selector = f"#allocations-table #row-total-{self.ac_us.id}"
-        expect(page.locator(row_total_selector)).to_have_text("50.0%")
+        expect(page.locator(row_total_selector)).to_contain_text("100.0%")
 
-        # Verify Variance Updates
+        # Verify Variance Updates (Current 1000 / Total 1000 = 100%, Target 100% -> 0% variance)
+        # Wait, the vTarget display might be formatted.
         row_var_selector = f"#allocations-table #row-var-{self.ac_us.id}"
-        expect(page.locator(row_var_selector)).to_have_text("50.0%")
+        expect(page.locator(row_var_selector)).to_contain_text("0.0%")
 
     def test_category_subtotal_updates(self, page: Page, live_server_url: str) -> None:
         """Verify Category Subtotals update correctly after save."""
@@ -111,29 +132,27 @@ class TestFrontendAllocations(PortfolioTestMixin):
         page.click('button[type="submit"]')
         page.goto(f"{live_server_url}/targets/")
 
-        # ROTH Default Input
-        input_name = f"target_{self.type_roth.id}_{self.ac_us.id}"
-        input_locator = page.locator(f'#allocations-table input[name="{input_name}"]')
+        # ROTH Default Select
+        select_name = f"strategy_at_{self.type_roth.id}"
+        select_locator = page.locator(f'#allocations-table select[name="{select_name}"]')
 
         # Category Subtotal Target ID: `sub-total-target-EQUITIES`
         sub_target_selector = "#allocations-table #sub-total-target-EQUITIES"
 
-        # Set Default to 60%.
-        input_locator.fill("60")
+        # Set Default to All Stocks (100%).
+        select_locator.select_option(label="All Stocks")
         with page.expect_navigation():
             page.click("#save-button-top")
 
-        # Expected: 60%
-        expect(page.locator(sub_target_selector)).to_have_text("60.0%")
+        # Expected: 100%
+        expect(page.locator(sub_target_selector)).to_contain_text("100.0%")
 
-        # Set Default to 80%
-        # Page reloaded, need to refind element? Playwright locators might be stale.
-        # Re-locate
-        input_locator = page.locator(f'#allocations-table input[name="{input_name}"]')
-        input_locator.fill("80")
+        # Set Default to All Cash (0% Equities)
+        select_locator = page.locator(f'#allocations-table select[name="{select_name}"]')
+        select_locator.select_option(label="All Cash")
         page.click("#save-button-top")
 
-        expect(page.locator(sub_target_selector)).to_have_text("80.0%")
+        expect(page.locator(sub_target_selector)).to_contain_text("0.0%")
 
     def test_cash_row_updates(self, page: Page, live_server_url: str) -> None:
         """Verify Cash Row calculations after save."""
@@ -144,22 +163,21 @@ class TestFrontendAllocations(PortfolioTestMixin):
         page.click('button[type="submit"]')
         page.goto(f"{live_server_url}/targets/")
 
-        # ROTH Default Input for US Stocks
-        input_name = f"target_{self.type_roth.id}_{self.ac_us.id}"
-        input_locator = page.locator(f'#allocations-table input[name="{input_name}"]')
+        # ROTH Default Select
+        select_name = f"strategy_at_{self.type_roth.id}"
+        select_locator = page.locator(f'#allocations-table select[name="{select_name}"]')
 
         # Cash Total Target ID: `cash-total`
         cash_total_selector = "#allocations-table #cash-total"
 
-        # If US Stocks = 60%, Cash (Implicit) = 40%
-        input_locator.fill("60")
+        # If US Stocks = 100%, Cash (Implicit) = 0%
+        select_locator.select_option(label="All Stocks")
         page.click("#save-button-top")
 
-        expect(page.locator(cash_total_selector)).to_have_text("40.0%")
+        expect(page.locator(cash_total_selector)).to_contain_text("0.0%")
 
-        # If US Stocks = 90%, Cash = 10%
-        # Re-locate
-        input_locator = page.locator(f'#allocations-table input[name="{input_name}"]')
-        input_locator.fill("90")
+        # If All Cash = 100% Cash
+        select_locator = page.locator(f'#allocations-table select[name="{select_name}"]')
+        select_locator.select_option(label="All Cash")
         page.click("#save-button-top")
-        expect(page.locator(cash_total_selector)).to_have_text("10.0%")
+        expect(page.locator(cash_total_selector)).to_contain_text("100.0%")

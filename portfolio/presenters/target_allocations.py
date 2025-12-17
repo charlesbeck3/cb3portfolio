@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 
@@ -115,7 +115,6 @@ class TargetAllocationTableBuilder:
             # Check if we need a Group Total row (at the end usually, but we need data for it)
             # The loop structure in previous was: Categories -> ACs -> CategoryTotal -> (GroupTotal)
 
-            sum(len(acs) for acs in categories.values())
 
             for category_code, ac_names in categories.items():
                 # Filter out Cash if needed
@@ -134,7 +133,10 @@ class TargetAllocationTableBuilder:
                      # Lookup df_asset_class.loc[ac_name]
                      portfolio_current = Decimal("0.00")
                      if df_asset_class is not None and ac_name in df_asset_class.index:
-                         portfolio_current = Decimal(float(df_asset_class.loc[ac_name, "Dollar_Amount"]))
+                         val_raw = df_asset_class.loc[ac_name, "Dollar_Amount"]
+                         if hasattr(val_raw, "iloc"):
+                             val_raw = val_raw.iloc[0]
+                         portfolio_current = Decimal(float(val_raw))
 
                      # Account Type Level
                      # df_account_type columns are "Asset_Class_dollars" ... no wait.
@@ -146,9 +148,15 @@ class TargetAllocationTableBuilder:
                      for at in account_types:
                          col_name = f"{ac_name}_dollars"
                          val = Decimal("0.00")
-                         if df_account_type is not None and at.label in df_account_type.index:
-                              if col_name in df_account_type.columns:
-                                   val = Decimal(float(df_account_type.loc[at.label, col_name]))
+                         if (
+                             df_account_type is not None
+                             and at.label in df_account_type.index
+                             and col_name in df_account_type.columns
+                         ):
+                             val_raw = df_account_type.loc[at.label, col_name]
+                             if hasattr(val_raw, "iloc"):
+                                 val_raw = val_raw.iloc[0]
+                             val = Decimal(float(val_raw))
                          at_currents[at.id] = val
 
                      # Account Level
@@ -158,9 +166,15 @@ class TargetAllocationTableBuilder:
                          for acc in getattr(at, "active_accounts", []):
                              col_name = f"{ac_name}_dollars"
                              val = Decimal("0.00")
-                             if df_account is not None and acc.name in df_account.index:
-                                 if col_name in df_account.columns:
-                                     val = Decimal(float(df_account.loc[acc.name, col_name]))
+                             if (
+                                 df_account is not None
+                                 and acc.name in df_account.index
+                                 and col_name in df_account.columns
+                             ):
+                                 val_raw = df_account.loc[acc.name, col_name]
+                                 if hasattr(val_raw, "iloc"):
+                                     val_raw = val_raw.iloc[0]
+                                 val = Decimal(float(val_raw))
                              acc_currents[acc.id] = val
 
                      rows.append(self._build_asset_row(
@@ -241,14 +255,20 @@ class TargetAllocationTableBuilder:
                  # Get Cash Data
                  portfolio_current = Decimal("0.00")
                  if df_asset_class is not None and cash_ac_name in df_asset_class.index:
-                     portfolio_current = Decimal(float(df_asset_class.loc[cash_ac_name, "Dollar_Amount"]))
+                     val_raw = df_asset_class.loc[cash_ac_name, "Dollar_Amount"]
+                     if hasattr(val_raw, "iloc"):
+                         val_raw = val_raw.iloc[0]
+                     portfolio_current = Decimal(float(val_raw))
 
                  at_currents = {}
                  for at in account_types:
                      col_name = f"{cash_ac_name}_dollars"
                      val = Decimal("0.00")
                      if df_account_type is not None and at.label in df_account_type.index and col_name in df_account_type.columns:
-                         val = Decimal(float(df_account_type.loc[at.label, col_name]))
+                         val_raw = df_account_type.loc[at.label, col_name]
+                         if hasattr(val_raw, "iloc"):
+                             val_raw = val_raw.iloc[0]
+                         val = Decimal(float(val_raw))
                      at_currents[at.id] = val
 
                  acc_currents = {}
@@ -257,7 +277,10 @@ class TargetAllocationTableBuilder:
                          col_name = f"{cash_ac_name}_dollars"
                          val = Decimal("0.00")
                          if df_account is not None and acc.name in df_account.index and col_name in df_account.columns:
-                             val = Decimal(float(df_account.loc[acc.name, col_name]))
+                             val_raw = df_account.loc[acc.name, col_name]
+                             if hasattr(val_raw, "iloc"):
+                                 val_raw = val_raw.iloc[0]
+                             val = Decimal(float(val_raw))
                          acc_currents[acc.id] = val
 
                  rows.append(self._build_cash_row(
@@ -272,7 +295,10 @@ class TargetAllocationTableBuilder:
         # Sum of everything in df_asset_class 'Dollar_Amount'
         grand_total = Decimal("0.00")
         if df_asset_class is not None and not df_asset_class.empty:
-            grand_total = Decimal(float(df_asset_class["Dollar_Amount"].sum()))
+            val_raw = df_asset_class["Dollar_Amount"].sum()
+            # sum() on series returns scalar, so float() is usually fine,
+            # but let's be consistent if it somehow stays as series (unlikely)
+            grand_total = Decimal(float(val_raw))
 
         # AT Grand Totals
         at_grand_totals = {}
@@ -293,9 +319,9 @@ class TargetAllocationTableBuilder:
 
     def _sum_asset_classes(
         self,
-        df_ac: Optional[pd.DataFrame],
-        df_at: Optional[pd.DataFrame],
-        df_acc: Optional[pd.DataFrame],
+        df_ac: pd.DataFrame | None,
+        df_at: pd.DataFrame | None,
+        df_acc: pd.DataFrame | None,
         ac_names: list[str],
         account_types: list[Any],
     ) -> dict[str, Any]:
@@ -309,7 +335,10 @@ class TargetAllocationTableBuilder:
         for ac in ac_names:
             # Portfolio
             if df_ac is not None and ac in df_ac.index:
-                res["portfolio"] += Decimal(float(df_ac.loc[ac, "Dollar_Amount"]))
+                val_raw = df_ac.loc[ac, "Dollar_Amount"]
+                if hasattr(val_raw, "iloc"):
+                    val_raw = val_raw.iloc[0]
+                res["portfolio"] += Decimal(float(val_raw))
 
             col_name = f"{ac}_dollars"
 
@@ -317,14 +346,20 @@ class TargetAllocationTableBuilder:
             if df_at is not None and col_name in df_at.columns:
                 for at in account_types:
                     if at.label in df_at.index:
-                        res["at"][at.id] += Decimal(float(df_at.loc[at.label, col_name]))
+                        val_raw = df_at.loc[at.label, col_name]
+                        if hasattr(val_raw, "iloc"):
+                            val_raw = val_raw.iloc[0]
+                        res["at"][at.id] += Decimal(float(val_raw))
 
             # Acc
             if df_acc is not None and col_name in df_acc.columns:
                 for at in account_types:
                     for acc in getattr(at, "active_accounts", []):
                         if acc.name in df_acc.index:
-                            res["acc"][acc.id] += Decimal(float(df_acc.loc[acc.name, col_name]))
+                            val_raw = df_acc.loc[acc.name, col_name]
+                            if hasattr(val_raw, "iloc"):
+                                val_raw = val_raw.iloc[0]
+                            res["acc"][acc.id] += Decimal(float(val_raw))
 
         return res
 
@@ -530,7 +565,7 @@ class TargetAllocationTableBuilder:
         ac_meta: dict[str, Any],  # ADDED
         is_subtotal: bool = False,
         is_group_total: bool = False,
-        account_targets: Optional[dict[int, dict[int, Decimal]]] = None,
+        account_targets: dict[int, dict[int, Decimal]] | None = None,
     ) -> TargetAllocationTableRow:
         # data: {'portfolio': val, 'at': {id: val}, 'acc': {id: val}} (Current Values only)
 
@@ -563,10 +598,9 @@ class TargetAllocationTableBuilder:
                         if ac_id:
                             # Use acc.target_map
                             pct = Decimal("0.00")
-                            if acc.target_map and ac_id in acc.target_map:
-                                pct = acc.target_map[ac_id]
-                            else:
-                                pct = acc.target_map.get(ac_id, Decimal("0.00"))
+                            pct = acc.target_map.get(ac_id)
+                            if pct is None:
+                                pct = at.target_map.get(ac_id, Decimal("0.00"))
 
                             acc_target_val += acc_total_val * (pct / Decimal("100.00"))
 
@@ -694,7 +728,8 @@ class TargetAllocationTableBuilder:
                     non_cash_target_total += val
 
             cash_target_pct = Decimal("100.00") - non_cash_target_total
-            if cash_target_pct < 0: cash_target_pct = Decimal("0.00")
+            if cash_target_pct < 0:
+                cash_target_pct = Decimal("0.00")
 
             # AT Target Value
             at_target_val = at_total_val * (cash_target_pct / Decimal("100.00"))
@@ -715,7 +750,8 @@ class TargetAllocationTableBuilder:
                 else:
                     acc_cash_pct = cash_target_pct
 
-                if acc_cash_pct < 0: acc_cash_pct = Decimal("0.00")
+                if acc_cash_pct < 0:
+                    acc_cash_pct = Decimal("0.00")
 
                 acc_target_val = acc_total_val * (acc_cash_pct / Decimal("100.00"))
                 at_agg_target_val += acc_target_val
@@ -833,7 +869,6 @@ class TargetAllocationTableBuilder:
 
             # Grand total target = current (variance 0)
             at_target = at_current
-            Decimal("0.00")
 
             accounts_data = []
             for acc in getattr(at, "active_accounts", []):

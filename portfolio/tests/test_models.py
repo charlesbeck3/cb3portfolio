@@ -466,14 +466,6 @@ class TargetAllocationTests(TestCase, PortfolioTestMixin):
         # Keep coverage focused on TargetAllocation model methods that still exist.
         self.assertTrue(True)
 
-    def test_variance_pct_for(self) -> None:
-        # variance_pct_for no longer exists on TargetAllocation after strategy refactor.
-        self.assertTrue(True)
-
-    def test_variance_pct_for_handles_zero_total(self) -> None:
-        # variance_pct_for no longer exists on TargetAllocation after strategy refactor.
-        self.assertTrue(True)
-
     def test_validate_allocation_set_valid(self) -> None:
         allocations = [
             TargetAllocation(
