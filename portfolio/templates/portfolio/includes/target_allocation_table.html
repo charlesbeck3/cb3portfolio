@@ -88,11 +88,13 @@
 
             <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio_current|safe }}</td>
             <td class="text-end pe-2 table-active"
+                data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-total"
                 {% elif row.is_subtotal %}id="sub-total-target-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-total-{{ row.asset_class_id }}"{% endif %}
             >{{ row.portfolio_target|safe }}</td>
             <td class="text-end pe-2 table-active fw-bold"
+                data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-var"
                 {% elif row.is_subtotal %}id="sub-total-var-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-var-{{ row.asset_class_id }}"{% endif %}

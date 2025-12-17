@@ -13,11 +13,13 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
     def setUp(self):
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.create_portfolio(user=self.user)
         self.client.force_login(self.user)
 
         self.account = Account.objects.create(
             user=self.user,
             name="My Roth",
+            portfolio=self.portfolio,
             account_type=self.type_roth,
             institution=self.institution,
         )

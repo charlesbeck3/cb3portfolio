@@ -13,6 +13,7 @@ class AccountGroupTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.create_portfolio(user=self.user)
         # self.institution = Institution.objects.create(name='Test Bank')
 
         self.client.force_login(self.user)
@@ -29,14 +30,23 @@ class AccountGroupTests(TestCase, PortfolioTestMixin):
 
         # Create accounts
         Account.objects.create(
-            user=self.user, name="Roth", account_type=self.type_roth, institution=self.institution
+            user=self.user,
+            name="Roth",
+            portfolio=self.portfolio,
+            account_type=self.type_roth,
+            institution=self.institution,
         )
         Account.objects.create(
-            user=self.user, name="Trad", account_type=self.type_trad, institution=self.institution
+            user=self.user,
+            name="Trad",
+            portfolio=self.portfolio,
+            account_type=self.type_trad,
+            institution=self.institution,
         )
         Account.objects.create(
             user=self.user,
             name="Taxable",
+            portfolio=self.portfolio,
             account_type=self.type_taxable,
             institution=self.institution,
         )
@@ -48,6 +58,7 @@ class AccountGroupTests(TestCase, PortfolioTestMixin):
         Account.objects.create(
             user=self.user,
             name="Savings",
+            portfolio=self.portfolio,
             account_type=self.type_savings,
             institution=self.institution,
         )
@@ -68,6 +79,7 @@ class AccountGroupTests(TestCase, PortfolioTestMixin):
         Account.objects.create(
             user=self.user,
             name="Mystery Account",
+            portfolio=self.portfolio,
             account_type=mystery_type,
             institution=self.institution,
         )

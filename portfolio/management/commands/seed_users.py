@@ -8,9 +8,12 @@ from django.core.management.base import BaseCommand
 from portfolio.models import (
     Account,
     AccountType,
+    AccountTypeStrategyAssignment,
+    AllocationStrategy,
     AssetClass,
     Holding,
     Institution,
+    Portfolio,
     Security,
     TargetAllocation,
 )
@@ -42,6 +45,12 @@ class Command(BaseCommand):
             self.stdout.write(f"Superuser already exists: {username}")
 
         admin_user = User.objects.get(username=username)
+
+        admin_portfolio, _ = Portfolio.objects.update_or_create(
+            user=admin_user,
+            name="Main Portfolio",
+            defaults={},
+        )
 
         admin_accounts: list[dict[str, Any]] = [
             {
@@ -137,7 +146,7 @@ class Command(BaseCommand):
             },
         ]
 
-        self.seed_user_portfolio(admin_user, admin_accounts, type_objects)
+        self.seed_user_portfolio(admin_user, admin_portfolio, admin_accounts, type_objects)
 
         # Admin Target Allocations
         target_data = [
@@ -203,7 +212,7 @@ class Command(BaseCommand):
             },
         ]
 
-        self.seed_user_targets(admin_user, target_data, type_objects)
+        self.seed_user_targets(admin_user, admin_portfolio, target_data, type_objects)
 
         # ---------------------------
         # 2. Test User
@@ -219,6 +228,12 @@ class Command(BaseCommand):
             self.stdout.write(f"Test user already exists: {test_username}")
 
         test_user = User.objects.get(username=test_username)
+
+        test_portfolio, _ = Portfolio.objects.update_or_create(
+            user=test_user,
+            name="Main Portfolio",
+            defaults={},
+        )
 
         test_accounts: list[dict[str, Any]] = [
             {
@@ -253,7 +268,7 @@ class Command(BaseCommand):
             },
         ]
 
-        self.seed_user_portfolio(test_user, test_accounts, type_objects)
+        self.seed_user_portfolio(test_user, test_portfolio, test_accounts, type_objects)
 
         test_targets = [
             {"asset_class": "US Equities", "TAXABLE": 60, "ROTH_IRA": 50},
@@ -262,11 +277,17 @@ class Command(BaseCommand):
             {"asset_class": "US Short-term Treasuries", "TRADITIONAL_IRA": 100},
         ]
 
-        self.seed_user_targets(test_user, test_targets, type_objects)
+        self.seed_user_targets(test_user, test_portfolio, test_targets, type_objects)
 
         self.stdout.write(self.style.SUCCESS("User Data seeded successfully!"))
 
-    def seed_user_portfolio(self, user: CustomUser, accounts_data: list[dict], type_objects: dict) -> None:
+    def seed_user_portfolio(
+        self,
+        user: CustomUser,
+        portfolio: Portfolio,
+        accounts_data: list[dict],
+        type_objects: dict,
+    ) -> None:
         for account_data in accounts_data:
             institution, _ = Institution.objects.get_or_create(name=account_data["institution"])
 
@@ -289,6 +310,7 @@ class Command(BaseCommand):
                 user=user,
                 name=account_data["name"],
                 defaults={
+                    "portfolio": portfolio,
                     "account_type": account_type,
                     "institution": institution,
                 },
@@ -314,23 +336,81 @@ class Command(BaseCommand):
                     defaults={"shares": holding_data["shares"]},
                 )
 
-    def seed_user_targets(self, user: CustomUser, targets_data: list[dict], type_objects: dict) -> None:
+    def seed_user_targets(
+        self,
+        user: CustomUser,
+        portfolio: Portfolio,
+        targets_data: list[dict],
+        type_objects: dict,
+    ) -> None:
+        allocations_by_type: dict[str, dict[str, Decimal]] = {}
+
         for row in targets_data:
-            ac_name = row["asset_class"]
-            try:
-                asset_class = AssetClass.objects.get(name=ac_name)
-            except AssetClass.DoesNotExist:
+            ac_name = row.get("asset_class")
+            if not ac_name:
                 continue
 
             for key, val in row.items():
                 if key == "asset_class":
                     continue
+                if key not in type_objects:
+                    continue
 
-                # key implies account type code
-                if key in type_objects:
-                    TargetAllocation.objects.update_or_create(
-                        user=user,
-                        account_type=type_objects[key],
-                        asset_class=asset_class,
-                        defaults={"target_pct": Decimal(str(val))},
-                    )
+                allocations_by_type.setdefault(key, {})[ac_name] = Decimal(str(val))
+
+        cash_ac = AssetClass.objects.filter(name="Cash").first()
+        if cash_ac is None:
+            return
+
+        portfolio_default_strategy, _ = AllocationStrategy.objects.update_or_create(
+            user=user,
+            name="Portfolio Default",
+            defaults={"description": "Default strategy for the portfolio"},
+        )
+        portfolio.allocation_strategy = portfolio_default_strategy
+        portfolio.save(update_fields=["allocation_strategy"])
+
+        # Ensure the portfolio default strategy is at least defined (100% cash).
+        TargetAllocation.objects.update_or_create(
+            strategy=portfolio_default_strategy,
+            asset_class=cash_ac,
+            defaults={"target_percent": Decimal("100.00")},
+        )
+
+        for at_code, allocation_map in allocations_by_type.items():
+            account_type = type_objects[at_code]
+
+            strategy, _ = AllocationStrategy.objects.update_or_create(
+                user=user,
+                name=f"{account_type.label} Strategy",
+                defaults={"description": f"Default strategy for {account_type.label}"},
+            )
+
+            # Replace allocations for this strategy.
+            strategy.target_allocations.all().delete()
+
+            total = Decimal("0.00")
+            for ac_name, pct in allocation_map.items():
+                try:
+                    asset_class = AssetClass.objects.get(name=ac_name)
+                except AssetClass.DoesNotExist:
+                    continue
+                TargetAllocation.objects.create(
+                    strategy=strategy,
+                    asset_class=asset_class,
+                    target_percent=Decimal(str(pct)),
+                )
+                total += Decimal(str(pct))
+
+            if total < Decimal("100.00"):
+                TargetAllocation.objects.update_or_create(
+                    strategy=strategy,
+                    asset_class=cash_ac,
+                    defaults={"target_percent": Decimal("100.00") - total},
+                )
+
+            AccountTypeStrategyAssignment.objects.update_or_create(
+                user=user,
+                account_type=account_type,
+                defaults={"allocation_strategy": strategy},
+            )

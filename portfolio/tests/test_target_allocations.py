@@ -7,6 +7,8 @@ from django.urls import reverse
 
 from portfolio.models import (
     Account,
+    AccountTypeStrategyAssignment,
+    AllocationStrategy,
     AssetClass,
     AssetClassCategory,
     Holding,
@@ -23,6 +25,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.create_portfolio(user=self.user)
         self.client.force_login(self.user)
 
         # Setup Assets
@@ -50,12 +53,14 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         self.acc_roth = Account.objects.create(
             user=self.user,
             name="My Roth",
+            portfolio=self.portfolio,
             account_type=self.type_roth,
             institution=self.institution,
         )
         self.acc_tax = Account.objects.create(
             user=self.user,
             name="My Taxable",
+            portfolio=self.portfolio,
             account_type=self.type_taxable,
             institution=self.institution,
         )
@@ -127,20 +132,24 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         self.assertRedirects(response, url)
 
         # Verify DB
-        t_roth = TargetAllocation.objects.get(
-            user=self.user, account_type=self.type_roth, asset_class=self.ac_us
+        roth_assignment = AccountTypeStrategyAssignment.objects.get(
+            user=self.user,
+            account_type=self.type_roth,
         )
-        self.assertEqual(t_roth.target_pct, Decimal("80.00"))
+        roth_strategy = roth_assignment.allocation_strategy
+        t_roth = TargetAllocation.objects.get(strategy=roth_strategy, asset_class=self.ac_us)
+        self.assertEqual(t_roth.target_percent, Decimal("80.00"))
 
-        t_roth_cash = TargetAllocation.objects.get(
-            user=self.user, account_type=self.type_roth, asset_class=self.ac_cash
-        )
-        self.assertEqual(t_roth_cash.target_pct, Decimal("20.00"))  # 100 - 80
+        t_roth_cash = TargetAllocation.objects.get(strategy=roth_strategy, asset_class=self.ac_cash)
+        self.assertEqual(t_roth_cash.target_percent, Decimal("20.00"))  # 100 - 80
 
-        t_tax = TargetAllocation.objects.get(
-            user=self.user, account_type=self.type_taxable, asset_class=self.ac_us
+        tax_assignment = AccountTypeStrategyAssignment.objects.get(
+            user=self.user,
+            account_type=self.type_taxable,
         )
-        self.assertEqual(t_tax.target_pct, Decimal("60.00"))
+        tax_strategy = tax_assignment.allocation_strategy
+        t_tax = TargetAllocation.objects.get(strategy=tax_strategy, asset_class=self.ac_us)
+        self.assertEqual(t_tax.target_percent, Decimal("60.00"))
 
     def test_save_overrides(self) -> None:
         """Verify saving account overrides (Full Override Mode)."""
@@ -156,16 +165,15 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         self.assertRedirects(response, url)
 
         # Verify DB - Should have Account-specific target
-        t_acc = TargetAllocation.objects.get(
-            user=self.user, account=self.acc_roth, asset_class=self.ac_us
-        )
-        self.assertEqual(t_acc.target_pct, Decimal("90.00"))
+        self.acc_roth.refresh_from_db()
+        self.assertIsNotNone(self.acc_roth.allocation_strategy_id)
+        strategy = AllocationStrategy.objects.get(id=self.acc_roth.allocation_strategy_id)
+        t_acc = TargetAllocation.objects.get(strategy=strategy, asset_class=self.ac_us)
+        self.assertEqual(t_acc.target_percent, Decimal("90.00"))
 
         # Implicit Cash for Account Override
-        t_acc_cash = TargetAllocation.objects.get(
-            user=self.user, account=self.acc_roth, asset_class=self.ac_cash
-        )
-        self.assertEqual(t_acc_cash.target_pct, Decimal("10.00"))  # 100 - 90
+        t_acc_cash = TargetAllocation.objects.get(strategy=strategy, asset_class=self.ac_cash)
+        self.assertEqual(t_acc_cash.target_percent, Decimal("10.00"))  # 100 - 90
 
     def test_validation_negative(self) -> None:
         """Verify negative inputs are rejected."""
@@ -259,13 +267,32 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         acc_roth_2 = Account.objects.create(
             user=self.user,
             name="My Roth 2",
+            portfolio=self.portfolio,
             account_type=self.type_roth,
             institution=self.institution,
         )
 
         # Set TYPE default: Roth -> 60% US Stocks (40% Cash)
+        roth_strategy, _ = AllocationStrategy.objects.update_or_create(
+            user=self.user,
+            name=f"{self.type_roth.label} Strategy",
+            defaults={"description": f"Default strategy for {self.type_roth.label}"},
+        )
+        roth_strategy.target_allocations.all().delete()
         TargetAllocation.objects.create(
-            user=self.user, account_type=self.type_roth, asset_class=self.ac_us, target_pct=60
+            strategy=roth_strategy,
+            asset_class=self.ac_us,
+            target_percent=Decimal("60.00"),
+        )
+        TargetAllocation.objects.create(
+            strategy=roth_strategy,
+            asset_class=self.ac_cash,
+            target_percent=Decimal("40.00"),
+        )
+        AccountTypeStrategyAssignment.objects.update_or_create(
+            user=self.user,
+            account_type=self.type_roth,
+            defaults={"allocation_strategy": roth_strategy},
         )
 
         # Verify Initial State for both: effective target should be 60% US

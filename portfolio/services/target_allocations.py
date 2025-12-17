@@ -8,27 +8,23 @@ from typing import Any, cast
 from django.db import transaction
 
 from portfolio.forms import TargetAllocationForm
-from portfolio.models import Account, AccountType, AssetClass, Holding, TargetAllocation
+from portfolio.models import (
+    Account,
+    AccountType,
+    AccountTypeStrategyAssignment,
+    AllocationStrategy,
+    AssetClass,
+    Holding,
+    TargetAllocation,
+)
 from portfolio.presenters import TargetAllocationTableBuilder
 from users.models import CustomUser
 
 
 class TargetAllocationViewService:
     def build_context(self, *, user: CustomUser, summary_service: Any) -> dict[str, Any]:
-        targets = TargetAllocation.objects.filter(user=user).select_related(
-            "account_type", "asset_class", "account"
-        )
-
         defaults_map: dict[int, dict[int, Decimal]] = defaultdict(dict)
         overrides_map: dict[int, dict[int, Decimal]] = defaultdict(dict)
-
-        for t in targets:
-            if t.account_id:
-                overrides_map[t.account_id][t.asset_class_id] = t.target_pct
-            else:
-                defaults_map[t.account_type_id][t.asset_class_id] = t.target_pct
-
-        summary = summary_service.get_holdings_summary(user)
 
         account_types_qs = (
             AccountType.objects.filter(accounts__user=user)
@@ -36,8 +32,42 @@ class TargetAllocationViewService:
             .order_by("group__sort_order", "label")
         )
 
-        accounts = Account.objects.filter(user=user).select_related("account_type")
+        assignments = (
+            AccountTypeStrategyAssignment.objects.filter(user=user, account_type__in=account_types_qs)
+            .select_related("account_type", "allocation_strategy")
+            .all()
+        )
+        assignment_by_at_id = {a.account_type_id: a for a in assignments}
+
+        strategy_ids: set[int] = {a.allocation_strategy_id for a in assignments}
+
+        accounts = (
+            Account.objects.filter(user=user)
+            .select_related("account_type", "allocation_strategy")
+            .all()
+        )
         account_map = {a.id: a for a in accounts}
+
+        override_accounts = [a for a in accounts if a.allocation_strategy_id]
+        strategy_ids.update(cast(int, a.allocation_strategy_id) for a in override_accounts)
+
+        strategy_allocations = (
+            TargetAllocation.objects.filter(strategy_id__in=strategy_ids)
+            .select_related("asset_class")
+            .all()
+        )
+
+        alloc_map: dict[int, dict[int, Decimal]] = defaultdict(dict)
+        for alloc in strategy_allocations:
+            alloc_map[alloc.strategy_id][alloc.asset_class_id] = alloc.target_percent
+
+        for at_id, assignment in assignment_by_at_id.items():
+            defaults_map[at_id] = alloc_map.get(assignment.allocation_strategy_id, {})
+
+        for acc in override_accounts:
+            overrides_map[acc.id] = alloc_map.get(cast(int, acc.allocation_strategy_id), {})
+
+        summary = summary_service.get_holdings_summary(user)
 
         sidebar_data = summary_service.get_account_summary(user)
 
@@ -139,6 +169,7 @@ class TargetAllocationViewService:
             "allocation_rows_percent": allocation_rows_percent,
             "allocation_rows_money": allocation_rows_money,
             "at_values": at_values,
+            "account_totals": account_totals,
             "defaults_map": defaults_map,
             "cash_asset_class_id": cash_ac.id if cash_ac else None,
         }
@@ -252,56 +283,67 @@ class TargetAllocationViewService:
 
         try:
             with transaction.atomic():
-                current_defaults = TargetAllocation.objects.filter(user=user, account__isnull=True)
-                default_map_obj = {(t.account_type_id, t.asset_class_id): t for t in current_defaults}
+                account_types_by_id = {at.id: at for at in account_types}
 
                 for at_id, ac_map in default_updates.items():
-                    for ac_id, val in ac_map.items():
-                        lookup = (at_id, ac_id)
-                        if lookup in default_map_obj:
-                            obj = default_map_obj[lookup]
-                            if obj.target_pct != val:
-                                obj.target_pct = val
-                                obj.save()
-                            del default_map_obj[lookup]
-                        else:
-                            TargetAllocation.objects.create(
-                                user=user,
-                                account_type_id=at_id,
+                    at = account_types_by_id.get(at_id)
+                    if at is None:
+                        continue
+
+                    strategy, _ = AllocationStrategy.objects.update_or_create(
+                        user=user,
+                        name=f"{at.label} Strategy",
+                        defaults={"description": f"Default strategy for {at.label}"},
+                    )
+
+                    strategy.target_allocations.all().delete()
+                    TargetAllocation.objects.bulk_create(
+                        [
+                            TargetAllocation(
+                                strategy=strategy,
                                 asset_class_id=ac_id,
-                                target_pct=val,
+                                target_percent=val,
                             )
+                            for ac_id, val in ac_map.items()
+                        ]
+                    )
 
-                current_overrides = TargetAllocation.objects.filter(user=user, account__isnull=False)
-                override_obj_map = {
-                    (cast(int, t.account_id), t.asset_class_id): t for t in current_overrides
-                }
+                    AccountTypeStrategyAssignment.objects.update_or_create(
+                        user=user,
+                        account_type=at,
+                        defaults={"allocation_strategy": strategy},
+                    )
 
-                processed_overrides: set[tuple[int, int]] = set()
+                accounts_by_id = {a.id: a for a in accounts}
+                for acc in accounts:
+                    if acc.id in override_updates:
+                        strategy, _ = AllocationStrategy.objects.update_or_create(
+                            user=user,
+                            name=f"{acc.name} Strategy",
+                            defaults={"description": f"Account override strategy for {acc.name}"},
+                        )
 
-                for acc_id, ac_map in override_updates.items():
-                    for ac_id, val in ac_map.items():
-                        lookup = (acc_id, ac_id)
-                        processed_overrides.add(lookup)
-
-                        if lookup in override_obj_map:
-                            obj = override_obj_map[lookup]
-                            if obj.target_pct != val:
-                                obj.target_pct = val
-                                obj.save()
-                        else:
-                            with contextlib.suppress(Account.DoesNotExist):
-                                TargetAllocation.objects.create(
-                                    user=user,
-                                    account_type_id=Account.objects.get(id=acc_id).account_type_id,
-                                    account_id=acc_id,
+                        strategy.target_allocations.all().delete()
+                        TargetAllocation.objects.bulk_create(
+                            [
+                                TargetAllocation(
+                                    strategy=strategy,
                                     asset_class_id=ac_id,
-                                    target_pct=val,
+                                    target_percent=val,
                                 )
+                                for ac_id, val in override_updates[acc.id].items()
+                            ]
+                        )
 
-                for lookup, obj in override_obj_map.items():
-                    if lookup not in processed_overrides:
-                        obj.delete()
+                        if acc.allocation_strategy_id != strategy.id:
+                            acc.allocation_strategy = strategy
+                            acc.save(update_fields=["allocation_strategy"])
+                    else:
+                        if acc.allocation_strategy_id:
+                            acc.allocation_strategy = None
+                            acc.save(update_fields=["allocation_strategy"])
+
+                _ = accounts_by_id
 
             return True, []
         except Exception as e:  # pragma: no cover

@@ -65,11 +65,8 @@ class HoldingManager(models.Manager):
 
 
 class TargetAllocationQuerySet(models.QuerySet):
-    def for_user(self, user: CustomUser) -> "TargetAllocationQuerySet":
-        return self.filter(user=user)
-
     def with_details(self) -> "TargetAllocationQuerySet":
-        return self.select_related("asset_class", "account_type")
+        return self.select_related("asset_class", "strategy")
 
 
 class TargetAllocationManager(models.Manager):
@@ -77,4 +74,4 @@ class TargetAllocationManager(models.Manager):
         return TargetAllocationQuerySet(self.model, using=self._db)
 
     def get_for_user(self, user: CustomUser) -> TargetAllocationQuerySet:
-        return self.get_queryset().for_user(user).with_details()
+        return self.get_queryset().filter(strategy__user=user).with_details()

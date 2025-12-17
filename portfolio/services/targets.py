@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from decimal import Decimal
 
-from portfolio.models import Account, TargetAllocation
+from portfolio.models import Account, AllocationStrategy
 from users.models import CustomUser
 
 
@@ -20,36 +19,30 @@ class TargetAllocationService:
         """Return mapping ``{account_id: {asset_class_name: target_pct}}``.
 
         Strategy:
-        - Build account-type default targets.
-        - Overlay account-specific overrides.
-        - If any overrides exist for an account, ignore type defaults for it.
+        - Resolve effective AllocationStrategy per account.
+        - Return that strategy's TargetAllocation rows as an asset-class-name keyed dict.
+        - If no strategy is found for an account, return an empty dict for it.
         """
 
-        targets = TargetAllocation.objects.filter(user=user).select_related(
-            "account_type", "asset_class", "account"
+        accounts = Account.objects.filter(user=user).select_related(
+            "account_type",
+            "portfolio",
+            "allocation_strategy",
+            "portfolio__allocation_strategy",
         )
-
-        type_defaults: dict[int, dict[str, Decimal]] = defaultdict(dict)
-        account_overrides: dict[int, dict[str, Decimal]] = defaultdict(dict)
-
-        for t in targets:
-            ac_name = t.asset_class.name
-            if t.account_id:
-                account_overrides[t.account_id][ac_name] = t.target_pct
-            else:
-                type_defaults[t.account_type_id][ac_name] = t.target_pct
-
-        accounts = Account.objects.filter(user=user).select_related("account_type")
 
         effective_targets: dict[int, dict[str, Decimal]] = {}
 
         for account in accounts:
-            overrides = account_overrides.get(account.id, {})
+            strategy: AllocationStrategy | None = account.get_effective_allocation_strategy()
+            if strategy is None:
+                effective_targets[account.id] = {}
+                continue
 
-            if overrides:
-                effective_targets[account.id] = overrides.copy()
-            else:
-                defaults = type_defaults.get(account.account_type_id, {}).copy()
-                effective_targets[account.id] = defaults
+            allocations = strategy.target_allocations.select_related("asset_class").all()
+            effective_targets[account.id] = {
+                a.asset_class.name: a.target_percent
+                for a in allocations
+            }
 
         return effective_targets

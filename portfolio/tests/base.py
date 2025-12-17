@@ -1,8 +1,11 @@
-from portfolio.models import AccountGroup, AccountType, AssetClassCategory, Institution
+from portfolio.models import AccountGroup, AccountType, AssetClassCategory, Institution, Portfolio
 
 
 class PortfolioTestMixin:
     """Mixin to provide standard setup for Portfolio tests."""
+
+    def create_portfolio(self, *, user: object, name: str = "Test Portfolio") -> None:
+        self.portfolio = Portfolio.objects.create(user=user, name=name)
 
     def setup_portfolio_data(self) -> None:
         # Create Institution

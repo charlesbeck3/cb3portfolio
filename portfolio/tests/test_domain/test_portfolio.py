@@ -14,6 +14,7 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.create_portfolio(user=self.user)
 
         self.us_stocks = AssetClass.objects.create(name="US Stocks", category=self.cat_us_eq)
         self.bonds = AssetClass.objects.create(name="Bonds", category=self.cat_fi)
@@ -32,12 +33,14 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
         self.acc_roth = Account.objects.create(
             user=self.user,
             name="Roth IRA",
+            portfolio=self.portfolio,
             account_type=self.type_roth,
             institution=self.institution,
         )
         self.acc_taxable = Account.objects.create(
             user=self.user,
             name="Taxable",
+            portfolio=self.portfolio,
             account_type=self.type_taxable,
             institution=self.institution,
         )

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Optional
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
@@ -60,6 +61,88 @@ class AssetClass(models.Model):
         return self.name
 
 
+class Portfolio(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="portfolios",
+    )
+    name = models.CharField(max_length=100)
+    allocation_strategy = models.ForeignKey(
+        "AllocationStrategy",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="portfolio_assignments",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "name"], name="unique_portfolio_name_per_user"),
+        ]
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.user.username})"
+
+
+class AllocationStrategy(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="allocation_strategies",
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    created_date = models.DateTimeField(auto_now_add=True)
+    modified_date = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "name"],
+                name="unique_allocation_strategy_name_per_user",
+            ),
+        ]
+        ordering = ["name"]
+        verbose_name = "Allocation Strategy"
+        verbose_name_plural = "Allocation Strategies"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class AccountTypeStrategyAssignment(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="account_type_strategy_assignments",
+    )
+    account_type = models.ForeignKey(
+        "AccountType",
+        on_delete=models.CASCADE,
+        related_name="strategy_assignments",
+    )
+    allocation_strategy = models.ForeignKey(
+        "AllocationStrategy",
+        on_delete=models.CASCADE,
+        related_name="account_type_assignments",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "account_type"],
+                name="unique_account_type_strategy_assignment_per_user",
+            ),
+        ]
+        ordering = ["account_type__label"]
+
+    def __str__(self) -> str:
+        return f"{self.user.username} - {self.account_type.label} -> {self.allocation_strategy.name}"
+
+
 class Institution(models.Model):
     """Financial institution (e.g., Vanguard, Fidelity)."""
 
@@ -110,8 +193,16 @@ class Account(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="accounts"
     )
     name = models.CharField(max_length=100)
+    portfolio = models.ForeignKey(Portfolio, on_delete=models.CASCADE, related_name="accounts")
     account_type = models.ForeignKey(AccountType, on_delete=models.PROTECT, related_name="accounts")
     institution = models.ForeignKey(Institution, on_delete=models.PROTECT, related_name="accounts")
+    allocation_strategy = models.ForeignKey(
+        AllocationStrategy,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="account_assignments",
+    )
 
     objects = AccountManager()
 
@@ -121,6 +212,20 @@ class Account(models.Model):
     @property
     def tax_treatment(self) -> str:
         return self.account_type.tax_treatment
+
+    def get_effective_allocation_strategy(self) -> Optional[AllocationStrategy]:
+        if self.allocation_strategy_id:
+            return self.allocation_strategy
+
+        assignment = (
+            AccountTypeStrategyAssignment.objects.select_related("allocation_strategy")
+            .filter(user_id=self.user_id, account_type_id=self.account_type_id)
+            .first()
+        )
+        if assignment is not None:
+            return assignment.allocation_strategy
+
+        return self.portfolio.allocation_strategy
 
     # ===== Aggregate Methods =====
 
@@ -164,26 +269,13 @@ class Account(models.Model):
 
 
 class TargetAllocation(models.Model):
-    """Target allocation for a specific account type and asset class."""
-
-    account_type = models.ForeignKey(
-        AccountType, on_delete=models.PROTECT, related_name="target_allocations"
-    )
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="target_allocations"
-    )
-    asset_class = models.ForeignKey(
-        AssetClass, on_delete=models.PROTECT, related_name="target_allocations"
-    )
-    account = models.ForeignKey(
-        Account,
+    strategy = models.ForeignKey(
+        AllocationStrategy,
         on_delete=models.CASCADE,
         related_name="target_allocations",
-        null=True,
-        blank=True,
-        help_text="Optional specific account override. If null, applies to the account type generally.",
     )
-    target_pct = models.DecimalField(
+    asset_class = models.ForeignKey(AssetClass, on_delete=models.PROTECT)
+    target_percent = models.DecimalField(
         max_digits=5,
         decimal_places=2,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
@@ -193,31 +285,22 @@ class TargetAllocation(models.Model):
 
     class Meta:
         constraints = [
-            # Constraint for Default Type Allocation (account is null)
             models.UniqueConstraint(
-                fields=["user", "account_type", "asset_class"],
-                condition=models.Q(account__isnull=True),
-                name="unique_default_target_allocation",
-            ),
-            # Constraint for Specific Account Override (account is not null)
-            models.UniqueConstraint(
-                fields=["user", "account", "asset_class"],
-                condition=models.Q(account__isnull=False),
-                name="unique_account_target_allocation",
-            ),
+                fields=["strategy", "asset_class"],
+                name="unique_target_allocation_per_strategy_asset_class",
+            )
         ]
+        ordering = ["strategy", "asset_class"]
 
     def __str__(self) -> str:
-        if self.account:
-            return f"{self.user.username} - {self.account.name} (Override) - {self.asset_class.name}: {self.target_pct}%"
-        return f"{self.user.username} - {self.account_type} (Default) - {self.asset_class.name}: {self.target_pct}%"
+        return f"{self.strategy.name}: {self.asset_class.name} - {self.target_percent}%"
 
     # ===== Domain Methods =====
 
     def target_value_for(self, account_total: Decimal) -> Decimal:
         """Calculate the target dollar amount for a given account total."""
 
-        return account_total * self.target_pct / Decimal("100")
+        return account_total * self.target_percent / Decimal("100")
 
     def variance_for(self, current_value: Decimal, account_total: Decimal) -> Decimal:
         """Calculate variance between current and target values."""
@@ -237,7 +320,7 @@ class TargetAllocation(models.Model):
     def validate_allocation_set(cls, allocations: list["TargetAllocation"]) -> tuple[bool, str]:
         """Validate that a set of allocations does not exceed 100%."""
 
-        total = sum((a.target_pct for a in allocations), Decimal("0.00"))
+        total = sum((a.target_percent for a in allocations), Decimal("0.00"))
         if total > Decimal("100.00"):
             return False, f"Allocations sum to {total}%, which exceeds 100%"
         return True, ""

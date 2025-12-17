@@ -8,6 +8,8 @@ from portfolio.models import (
     Account,
     AccountGroup,
     AccountType,
+    AccountTypeStrategyAssignment,
+    AllocationStrategy,
     AssetClass,
     AssetClassCategory,
     Holding,
@@ -26,6 +28,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.create_portfolio(user=self.user)
         self.institution = Institution.objects.create(name="Vanguard")
 
         # Create Assets
@@ -37,12 +40,14 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         self.account_roth = Account.objects.create(
             user=self.user,
             name="Roth IRA",
+            portfolio=self.portfolio,
             account_type=self.type_roth,
             institution=self.institution,
         )
         self.account_taxable = Account.objects.create(
             user=self.user,
             name="Taxable",
+            portfolio=self.portfolio,
             account_type=self.type_taxable,
             institution=self.institution,
         )
@@ -132,18 +137,27 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
     ) -> None:
         """Target allocations should produce target dollar amounts and zero variance when aligned."""
 
-        # Set simple 100% targets for each account type and asset class
+        roth_strategy = AllocationStrategy.objects.create(user=self.user, name="Roth Strategy")
+        taxable_strategy = AllocationStrategy.objects.create(user=self.user, name="Taxable Strategy")
         TargetAllocation.objects.create(
-            user=self.user,
-            account_type=self.type_roth,
+            strategy=roth_strategy,
             asset_class=self.asset_class_us,
-            target_pct=Decimal("100.0"),
+            target_percent=Decimal("100.00"),
         )
         TargetAllocation.objects.create(
+            strategy=taxable_strategy,
+            asset_class=self.asset_class_bonds,
+            target_percent=Decimal("100.00"),
+        )
+        AccountTypeStrategyAssignment.objects.update_or_create(
+            user=self.user,
+            account_type=self.type_roth,
+            defaults={"allocation_strategy": roth_strategy},
+        )
+        AccountTypeStrategyAssignment.objects.update_or_create(
             user=self.user,
             account_type=self.type_taxable,
-            asset_class=self.asset_class_bonds,
-            target_pct=Decimal("100.0"),
+            defaults={"allocation_strategy": taxable_strategy},
         )
 
         summary = PortfolioSummaryService().get_holdings_summary(self.user)
@@ -308,17 +322,21 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         )
 
         # Create Targets
+        roth_strategy = AllocationStrategy.objects.create(user=self.user, name="Roth Strategy")
         TargetAllocation.objects.create(
-            user=self.user,
-            account_type=self.type_roth,
+            strategy=roth_strategy,
             asset_class=self.asset_class_us,
-            target_pct=Decimal("50.0"),
+            target_percent=Decimal("50.00"),
         )
         TargetAllocation.objects.create(
+            strategy=roth_strategy,
+            asset_class=self.asset_class_bonds,
+            target_percent=Decimal("50.00"),
+        )
+        AccountTypeStrategyAssignment.objects.update_or_create(
             user=self.user,
             account_type=self.type_roth,
-            asset_class=self.asset_class_bonds,
-            target_pct=Decimal("50.0"),
+            defaults={"allocation_strategy": roth_strategy},
         )
 
         summary = PortfolioSummaryService().get_account_summary(self.user)
@@ -341,6 +359,7 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
 class VTargetSubtotalTests(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(username="wt_user", password="password")
+        self.portfolio = self.user.portfolios.create(name="Test Portfolio")
         self.institution = Institution.objects.create(name="Test Bank")
 
         # Categories and groups mirroring US Equities
@@ -360,6 +379,7 @@ class VTargetSubtotalTests(TestCase):
         self.account_wf = Account.objects.create(
             user=self.user,
             name="WF S&P",
+            portfolio=self.portfolio,
             account_type=self.at_taxable,
             institution=self.institution,
         )
@@ -382,13 +402,14 @@ class VTargetSubtotalTests(TestCase):
         )
 
         # Override target: 100% US Equities for this account
+        strategy = AllocationStrategy.objects.create(user=self.user, name="WF S&P Strategy")
         TargetAllocation.objects.create(
-            user=self.user,
-            account_type=self.at_taxable,
-            account=self.account_wf,
+            strategy=strategy,
             asset_class=self.ac_us_equities,
-            target_pct=Decimal("100.00"),
+            target_percent=Decimal("100.00"),
         )
+        self.account_wf.allocation_strategy = strategy
+        self.account_wf.save(update_fields=["allocation_strategy"])
 
     def test_us_equities_category_vtarget_is_current_minus_target(self) -> None:
         """For an account fully invested in its override target, vTarget dollars should be zero at both row and category subtotal level."""
@@ -430,6 +451,7 @@ class VTargetSubtotalTests(TestCase):
 class CashVTargetTests(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(username="cash_test_user", password="password")
+        self.portfolio = self.user.portfolios.create(name="Test Portfolio")
         self.institution = Institution.objects.create(name="Test Bank")
 
         # Cash category
@@ -447,6 +469,7 @@ class CashVTargetTests(TestCase):
         self.account_wf_cash = Account.objects.create(
             user=self.user,
             name="WF Cash Account",
+            portfolio=self.portfolio,
             account_type=self.at_cash,
             institution=self.institution,
         )
@@ -469,13 +492,14 @@ class CashVTargetTests(TestCase):
         )
 
         # Override target: 100% Cash for this account
+        strategy = AllocationStrategy.objects.create(user=self.user, name="WF Cash Strategy")
         TargetAllocation.objects.create(
-            user=self.user,
-            account_type=self.at_cash,
-            account=self.account_wf_cash,
+            strategy=strategy,
             asset_class=self.ac_cash,
-            target_pct=Decimal("100.00"),
+            target_percent=Decimal("100.00"),
         )
+        self.account_wf_cash.allocation_strategy = strategy
+        self.account_wf_cash.save(update_fields=["allocation_strategy"])
 
     def test_cash_vtarget_is_current_minus_target(self) -> None:
         """For a cash account with 100% allocation, vTarget should be 0% when current and target are both 100%."""

@@ -23,6 +23,7 @@ class TestFrontendAllocations(PortfolioTestMixin):
     def setup_data(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.create_portfolio(user=self.user)
 
         # Setup Assets
         self.cat_eq, _ = AssetClassCategory.objects.get_or_create(
@@ -48,6 +49,7 @@ class TestFrontendAllocations(PortfolioTestMixin):
         self.acc_roth = Account.objects.create(
             user=self.user,
             name="My Roth",
+            portfolio=self.portfolio,
             account_type=self.type_roth,
             institution=self.institution,
         )
@@ -75,14 +77,14 @@ class TestFrontendAllocations(PortfolioTestMixin):
         # Find the input for US Stocks override in My Roth
         # Structure: Override inputs have `name="target_account_{acc_id}_{ac_id}"`
         input_name = f"target_account_{self.acc_roth.id}_{self.ac_us.id}"
-        unique_input_selector = f'input[name="{input_name}"]'
+        unique_input_selector = f'#allocations-table input[name="{input_name}"]'
 
         # Expand the account column if needed (it's hidden by default for individual accounts)
         # But wait, override inputs are in the hidden columns?
         # Yes, `d-none col-acc-...`. We need to click expand button first.
 
         # Click expand button for Roth (Account Type)
-        expand_btn = page.locator(f'button[data-at-id="{self.type_roth.id}"]')
+        expand_btn = page.locator(f'#allocations-table button[data-at-id="{self.type_roth.id}"]')
         expand_btn.click()
 
         # Wait for column to be visible
@@ -100,13 +102,13 @@ class TestFrontendAllocations(PortfolioTestMixin):
         # If Roth is 100% of portfolio ($1000/$1000), and we set Roth Target for US to 50%.
         # Then Portfolio Target for US = 50% * (Roth Value / Total Value) = 50% * 1 = 50%.
 
-        row_total_selector = f"#row-total-{self.ac_us.id}"
+        row_total_selector = f"#allocations-table #row-total-{self.ac_us.id}"
         expect(page.locator(row_total_selector)).to_have_text("50.0%")
 
         # Verify Variance Updates
         # Current is 100% (since we hold $1000 VTI).
         # Variance = Current (100) - Target (50) = +50%
-        row_var_selector = f"#row-var-{self.ac_us.id}"
+        row_var_selector = f"#allocations-table #row-var-{self.ac_us.id}"
         expect(page.locator(row_var_selector)).to_have_text("50.0%")
 
         # Enter 100%
@@ -127,11 +129,11 @@ class TestFrontendAllocations(PortfolioTestMixin):
         # We can test defaults too.
         # ROTH Default Input
         input_name = f"target_{self.type_roth.id}_{self.ac_us.id}"
-        input_locator = page.locator(f'input[name="{input_name}"]')
+        input_locator = page.locator(f'#allocations-table input[name="{input_name}"]')
 
         # US Stocks is in "EQUITIES" category.
         # Category Subtotal Target ID: `sub-total-target-EQUITIES`
-        sub_target_selector = "#sub-total-target-EQUITIES"
+        sub_target_selector = "#allocations-table #sub-total-target-EQUITIES"
 
         # Set Default to 60%.  With 2 items (US + Intl), changes here should sum up.
         input_locator.fill("60")
@@ -155,10 +157,10 @@ class TestFrontendAllocations(PortfolioTestMixin):
 
         # ROTH Default Input for US Stocks
         input_name = f"target_{self.type_roth.id}_{self.ac_us.id}"
-        input_locator = page.locator(f'input[name="{input_name}"]')
+        input_locator = page.locator(f'#allocations-table input[name="{input_name}"]')
 
         # Cash Total Target ID: `cash-total`
-        cash_total_selector = "#cash-total"
+        cash_total_selector = "#allocations-table #cash-total"
 
         # If US Stocks = 60%, Cash (Implicit) = 40%
         input_locator.fill("60")

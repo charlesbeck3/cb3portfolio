@@ -7,6 +7,8 @@ from django.urls import reverse
 from portfolio.models import (
     Account,
     AccountType,
+    AccountTypeStrategyAssignment,
+    AllocationStrategy,
     AssetClass,
     AssetClassCategory,
     Holding,
@@ -23,6 +25,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.create_portfolio(user=self.user)
         self.client.force_login(self.user)
 
         # Create an account for Roth only.
@@ -30,6 +33,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         Account.objects.create(
             user=self.user,
             name="My Roth",
+            portfolio=self.portfolio,
             account_type=self.type_roth,
             institution=self.institution,
         )
@@ -78,6 +82,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         acc_dep = Account.objects.create(
             user=self.user,
             name="My Cash",
+            portfolio=self.portfolio,
             account_type=AccountType.objects.get(
                 code="TAXABLE"
             ),  # Using TAXABLE for simplicity, technically could be DEPOSIT
@@ -202,6 +207,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         acc_tax = Account.objects.create(
             user=self.user,
             name="My Taxable",
+            portfolio=self.portfolio,
             account_type=AccountType.objects.get(code="TAXABLE"),
             institution=self.institution,
         )
@@ -211,8 +217,17 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
 
         # Targets: Set US Stocks to 50% for Taxable (implies 50% cash if validated, or just 50 target)
         # We need to create TargetAllocation objects
-        TargetAllocation.objects.create(
-            user=self.user, account_type=acc_tax.account_type, asset_class=ac_us, target_pct=50
+        strategy, _ = AllocationStrategy.objects.update_or_create(
+            user=self.user,
+            name=f"{acc_tax.account_type.label} Strategy",
+            defaults={"description": f"Default strategy for {acc_tax.account_type.label}"},
+        )
+        strategy.target_allocations.all().delete()
+        TargetAllocation.objects.create(strategy=strategy, asset_class=ac_us, target_percent=Decimal("50.00"))
+        AccountTypeStrategyAssignment.objects.update_or_create(
+            user=self.user,
+            account_type=acc_tax.account_type,
+            defaults={"allocation_strategy": strategy},
         )
 
         # Force pricing update (mock or ensure service called)
@@ -254,9 +269,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         )
         Holding.objects.create(account=acc_tax, security=sec_intl, shares=10, current_price=50)
         # Add target for Intl: 40%
-        TargetAllocation.objects.create(
-            user=self.user, account_type=acc_tax.account_type, asset_class=ac_intl, target_pct=40
-        )
+        TargetAllocation.objects.create(strategy=strategy, asset_class=ac_intl, target_percent=Decimal("40.00"))
 
         # New Totals:
         # VTI: $1000. Target (50% of $1500? No, 50% of Account Total).
@@ -309,11 +322,13 @@ class HoldingsViewTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.create_portfolio(user=self.user)
         self.client.force_login(self.user)
 
         self.account = Account.objects.create(
             user=self.user,
             name="My Roth",
+            portfolio=self.portfolio,
             account_type=self.type_roth,
             institution=self.institution,
         )

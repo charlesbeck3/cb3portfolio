@@ -79,6 +79,170 @@ document.addEventListener('DOMContentLoaded', function() {
              btn.textContent = isHidden ? '[+]' : '[-]';
         });
     });
+
+    const percentTable = document.querySelector('#allocations-table');
+    if (!percentTable) {
+        return;
+    }
+
+    const atValues = JSON.parse(document.getElementById('at-values-json')?.textContent || '{}');
+    const accountTotals = JSON.parse(document.getElementById('account-totals-json')?.textContent || '{}');
+    const portfolioTotalValue = JSON.parse(document.getElementById('portfolio-total-value-json')?.textContent || '0');
+
+    function formatPercent(val) {
+        const n = Number(val);
+        if (!Number.isFinite(n)) {
+            return '0.0%';
+        }
+        return `${n.toFixed(1)}%`;
+    }
+
+    function parsePercentText(text) {
+        const raw = String(text ?? '').trim();
+        if (!raw) return 0;
+        // Handles strings like "100.0%" or "100.0%)" or "$0" gracefully.
+        const m = raw.match(/-?\d+(?:\.\d+)?/);
+        if (!m) return 0;
+        const n = Number(m[0]);
+        return Number.isFinite(n) ? n : 0;
+    }
+
+    function getInputNumber(input) {
+        if (!input) return 0;
+        const raw = String(input.value ?? '').trim();
+        if (!raw) return 0;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : 0;
+    }
+
+    function recomputePortfolioTargets() {
+        if (!portfolioTotalValue || portfolioTotalValue <= 0) {
+            return;
+        }
+
+        // Map of category_code -> {sum, rowCount}
+        const categoryTotals = new Map();
+        const categoryCurrents = new Map();
+        // Cash is computed as residual across non-cash rows
+        let nonCashPortfolioTargetSum = 0;
+
+        // Each row-total cell exists on non-subtotal, non-group-total, non-grand-total rows
+        const rowTotalCells = percentTable.querySelectorAll('td[id^="row-total-"]');
+        rowTotalCells.forEach(cell => {
+            const row = cell.closest('tr');
+            if (!row) return;
+
+            // Asset class id is encoded on default inputs; use any available input in the row
+            // and sum across account types: weighted target = target_pct * (at_value / portfolio_total)
+            let weightedTargetSum = 0;
+
+            // First, apply account overrides (weighted by account totals)
+            const overriddenValueByAtId = {};
+            const overrideInputs = row.querySelectorAll('input.override-input[data-acc-id][data-at-id]');
+            overrideInputs.forEach(inp => {
+                const accId = Number(inp.getAttribute('data-acc-id'));
+                const atId = Number(inp.getAttribute('data-at-id'));
+                const accValue = Number(accountTotals[String(accId)] ?? 0);
+                const pct = getInputNumber(inp);
+                const rawOverride = String(inp.value ?? '').trim();
+                const isActiveOverride = rawOverride !== '' && !['0', '0.0', '0.00'].includes(rawOverride);
+                if (!isActiveOverride) {
+                    return;
+                }
+                if (accValue > 0 && portfolioTotalValue > 0) {
+                    weightedTargetSum += pct * (accValue / portfolioTotalValue);
+                    overriddenValueByAtId[String(atId)] = (Number(overriddenValueByAtId[String(atId)] ?? 0) + accValue);
+                }
+            });
+
+            const defaultInputs = row.querySelectorAll('input.default-input[data-at-id][data-ac-id]');
+            defaultInputs.forEach(inp => {
+                const atId = Number(inp.getAttribute('data-at-id'));
+                const atValueTotal = Number(atValues[String(atId)] ?? 0);
+                const overriddenValue = Number(overriddenValueByAtId[String(atId)] ?? 0);
+                const atValue = Math.max(0, atValueTotal - overriddenValue);
+                const pct = getInputNumber(inp);
+                if (atValue > 0 && portfolioTotalValue > 0) {
+                    weightedTargetSum += pct * (atValue / portfolioTotalValue);
+                }
+            });
+
+            cell.textContent = formatPercent(weightedTargetSum);
+
+            const rowVarCell = percentTable.querySelector(`#row-var-${cell.id.replace('row-total-', '')}`);
+            const portfolioCurrentCell = row.querySelector('td.table-active');
+            const currentPct = parsePercentText(portfolioCurrentCell?.textContent);
+            const varPct = currentPct - weightedTargetSum;
+            if (rowVarCell) {
+                rowVarCell.textContent = formatPercent(varPct);
+            }
+
+            const catCode = cell.getAttribute('data-category-code') || '';
+            if (catCode) {
+                const current = categoryTotals.get(catCode) || { sum: 0, count: 0 };
+                current.sum += weightedTargetSum;
+                current.count += 1;
+                categoryTotals.set(catCode, current);
+
+                const currAgg = categoryCurrents.get(catCode) || { sum: 0, count: 0 };
+                currAgg.sum += currentPct;
+                currAgg.count += 1;
+                categoryCurrents.set(catCode, currAgg);
+            }
+
+            // Cash residual uses all non-cash rows; cash row itself is handled separately.
+            if (cell.id !== 'cash-total') {
+                nonCashPortfolioTargetSum += weightedTargetSum;
+            }
+        });
+
+        // Update category subtotal target cells
+        categoryTotals.forEach((val, catCode) => {
+            const subtotal = percentTable.querySelector(`#sub-total-target-${catCode}`);
+            if (subtotal) {
+                subtotal.textContent = formatPercent(val.sum);
+            }
+
+            const subVar = percentTable.querySelector(`#sub-total-var-${catCode}`);
+            if (subVar) {
+                const curr = categoryCurrents.get(catCode) || { sum: 0 };
+                subVar.textContent = formatPercent(Number(curr.sum ?? 0) - Number(val.sum ?? 0));
+            }
+        });
+
+        // Update cash residual
+        const cashCell = percentTable.querySelector('#cash-total');
+        if (cashCell) {
+            const cashPct = Math.max(0, 100 - nonCashPortfolioTargetSum);
+            cashCell.textContent = formatPercent(cashPct);
+        }
+
+        const cashVarCell = percentTable.querySelector('#cash-var');
+        if (cashCell && cashVarCell) {
+            const cashRow = cashCell.closest('tr');
+            const portfolioCurrentCell = cashRow?.querySelector('td.table-active');
+            const currentPct = parsePercentText(portfolioCurrentCell?.textContent);
+            const targetPct = parsePercentText(cashCell.textContent);
+            cashVarCell.textContent = formatPercent(currentPct - targetPct);
+        }
+    }
+
+    percentTable.addEventListener('input', (e) => {
+        const target = e.target;
+        if (!(target instanceof HTMLInputElement)) {
+            return;
+        }
+        if (!target.classList.contains('default-input') && !target.classList.contains('override-input')) {
+            return;
+        }
+        recomputePortfolioTargets();
+    });
+
+    recomputePortfolioTargets();
 });
 </script>
+
+{{ at_values|json_script:"at-values-json" }}
+{{ account_totals|json_script:"account-totals-json" }}
+{{ portfolio_total_value|json_script:"portfolio-total-value-json" }}
 {% endblock %}

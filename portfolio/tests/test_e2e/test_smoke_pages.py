@@ -31,6 +31,7 @@ class TestSmokePages(PortfolioTestMixin):
     def setup_data(self) -> None:
         self.setup_portfolio_data()
         self.user = User.objects.create_user(username="testuser", password="password")
+        self.create_portfolio(user=self.user)
 
         self.us_stocks = AssetClass.objects.create(name="US Stocks", category=self.cat_us_eq)
         self.vti = Security.objects.create(
@@ -42,6 +43,7 @@ class TestSmokePages(PortfolioTestMixin):
         self.account = Account.objects.create(
             user=self.user,
             name="Roth IRA",
+            portfolio=self.portfolio,
             account_type=self.type_roth,
             institution=self.institution,
         )
