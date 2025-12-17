@@ -3,15 +3,31 @@
         <tr>
             <th scope="col" class="ps-4" rowspan="2" style="width: 250px; min-width: 250px; white-space: nowrap;">Asset Class</th>
             {% for group in account_types %}
-                <th scope="col" class="text-center border-bottom-0 position-relative" colspan="4">
-                    {{ group.label }}
+                <th scope="col" class="text-center border-bottom-0 position-relative pb-3" colspan="4">
+                    <div>{{ group.label }}</div>
+                    <div class="fw-normal mt-1">
+                        <select name="strategy_at_{{ group.id }}" class="form-select form-select-sm d-inline-block w-auto py-0 px-2" style="font-size: 0.75rem;">
+                            <option value="">-- Unassigned --</option>
+                            {% for s in strategies %}
+                                <option value="{{ s.id }}" {% if group.target_map and s.id == group.active_strategy_id %}selected{% endif %}>{{ s.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                     {% if group.active_accounts and mode == 'percent' %}
-                    <button type="button" class="btn btn-sm btn-link p-0 ms-2 text-decoration-none expand-btn" data-at-id="{{ group.id }}" title="Show/Hide Individual Accounts">[+]</button>
+                    <button type="button" class="btn btn-sm btn-link p-0 ms-2 text-decoration-none expand-btn position-absolute top-0 end-0 mt-1 me-1" data-at-id="{{ group.id }}" title="Show/Hide Individual Accounts">[+]</button>
                     {% endif %}
                 </th>
                 {% for acc in group.active_accounts %}
-                    <th scope="col" class="text-center border-bottom-0 table-warning d-none col-acc-{{ group.id }}" colspan="3">
-                        <small>{{ acc.name }}</small>
+                    <th scope="col" class="text-center border-bottom-0 table-warning d-none col-acc-{{ group.id }} pb-3" colspan="3">
+                        <div><small>{{ acc.name }}</small></div>
+                        <div class="fw-normal mt-1">
+                            <select name="strategy_acc_{{ acc.id }}" class="form-select form-select-sm d-inline-block w-auto py-0 px-2" style="font-size: 0.75rem;">
+                                <option value="">-- Use Default (Type Strategy) --</option>
+                                {% for s in strategies %}
+                                    <option value="{{ s.id }}" {% if acc.allocation_strategy_id == s.id %}selected{% endif %}>{{ s.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
                     </th>
                 {% endfor %}
             {% endfor %}
@@ -42,22 +58,8 @@
             {% for group in row.groups %}
                 <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.account_type.current|safe }}</td>
 
-                <td class="{% if group.account_type.is_input %}p-1{% else %}text-end pe-1 small{% endif %}">
-                    {% if group.account_type.is_input %}
-                        <input type="number"
-                               name="{{ group.account_type.target_input_name }}"
-                               step="0.01"
-                               min="0"
-                               max="100"
-                               class="form-control form-control-sm text-end default-input px-1"
-                               data-at-id="{{ group.account_type.account_type_id }}"
-                               data-at-label="{{ group.account_type.label }}"
-                               data-ac-id="{{ row.asset_class_id }}"
-                               value="{{ group.account_type.target_input_value }}"
-                               placeholder="--">
-                    {% else %}
-                        {{ group.account_type.target_input_value|default:"--" }}
-                    {% endif %}
+                <td class="text-end pe-1 small">
+                    {{ group.account_type.target_input_value|default:"--" }}
                 </td>
 
                 <td class="text-end pe-1 small fw-bold text-muted d-none d-md-table-cell">{{ group.account_type.weighted_target|safe }}</td>
@@ -65,22 +67,8 @@
 
                 {% for acc in group.accounts %}
                     <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.account_type.account_type_id }}">{{ acc.current|safe }}</td>
-                    <td class="{% if acc.is_input %}p-1{% else %}text-end pe-1 small{% endif %} table-warning d-none col-acc-{{ group.account_type.account_type_id }}">
-                        {% if acc.is_input %}
-                            <input type="number"
-                                   name="{{ acc.input_name }}"
-                                   step="0.01"
-                                   min="0"
-                                   max="100"
-                                   class="form-control form-control-sm text-end override-input px-1"
-                                   data-acc-id="{{ acc.account_id }}"
-                                   data-at-id="{{ group.account_type.account_type_id }}"
-                                   data-ac-id="{{ row.asset_class_id }}"
-                                   value="{{ acc.input_value }}"
-                                   placeholder="--">
-                        {% else %}
-                            {{ acc.target|safe }}
-                        {% endif %}
+                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.account_type.account_type_id }}">
+                        {{ acc.target|safe }}
                     </td>
                     <td class="text-end pe-2 small table-warning d-none col-acc-{{ group.account_type.account_type_id }}">{{ acc.vtarget|safe }}</td>
                 {% endfor %}

@@ -6,7 +6,6 @@ from typing import Any, cast
 
 from django.db import transaction
 
-from portfolio.forms import TargetAllocationForm
 from portfolio.models import (
     Account,
     AccountType,
@@ -79,6 +78,8 @@ class TargetAllocationViewService:
 
         at_totals = summary.account_type_grand_totals
 
+        strategies = AllocationStrategy.objects.filter(user=user).order_by("name")
+
         at_values: dict[int, Decimal] = {}
         account_types: list[Any] = []
 
@@ -93,6 +94,11 @@ class TargetAllocationViewService:
             for acc in at_accounts:
                 acc.current_total_value = account_totals.get(acc.id, Decimal("0.00"))  # type: ignore[attr-defined]
                 acc.target_map = overrides_map.get(acc.id, {})  # type: ignore[attr-defined]
+
+            if at.id in assignment_by_at_id:
+                at.active_strategy_id = assignment_by_at_id[at.id].allocation_strategy_id
+            else:
+                at.active_strategy_id = None
 
             at.active_accounts = at_accounts
             account_types.append(at)
@@ -173,6 +179,7 @@ class TargetAllocationViewService:
             "account_totals": account_totals,
             "defaults_map": defaults_map,
             "cash_asset_class_id": cash_ac.id if cash_ac else None,
+            "strategies": strategies,
         }
 
     def save_from_post(self, *, request: Any) -> tuple[bool, list[str]]:
@@ -183,169 +190,51 @@ class TargetAllocationViewService:
         user = cast(Any, user)
 
         account_types = AccountType.objects.filter(accounts__user=user).distinct()
-
-        try:
-            cash_ac = AssetClass.objects.get(name="Cash")
-        except AssetClass.DoesNotExist:
-            return False, ["Cash asset class not found."]
-
-        input_asset_classes = list(AssetClass.objects.exclude(name="Cash").all())
-
-        form = TargetAllocationForm(
-            request.POST or None,
-            account_types=account_types,
-            asset_classes=input_asset_classes,
-        )
-
-        if not form.is_valid():
-            form_errors: list[str] = []
-            for field, field_errors in form.errors.items():
-                for err in field_errors:
-                    form_errors.append(f"{field}: {err}")
-            return False, form_errors
-
-        default_updates: dict[int, dict[int, Decimal]] = defaultdict(dict)
-        override_updates: dict[int, dict[int, Decimal]] = defaultdict(dict)
-
-        errors: list[str] = []
-
-        parsed_defaults = form.get_parsed_targets()
-
-        for at in account_types:
-            total_pct = Decimal("0.00")
-            at_defaults = parsed_defaults.get(at.id, {})
-
-            for ac in input_asset_classes:
-                val = at_defaults.get(ac.id, Decimal("0.00"))
-                if val < 0:
-                    errors.append(f"Negative allocation for {at.label}")
-                default_updates[at.id][ac.id] = val
-                total_pct += val
-
-            cash_residual = Decimal("100.00") - total_pct
-            if cash_residual < 0:
-                if cash_residual < Decimal("-0.01"):
-                    errors.append(f"Total allocation for {at.label} exceeds 100% ({total_pct}%)")
-                cash_residual = Decimal("0.00")
-
-            default_updates[at.id][cash_ac.id] = cash_residual
-
         accounts = Account.objects.filter(user=user)
 
-        for acc in accounts:
-            has_explicit_input = False
+        with transaction.atomic():
+            # 1. Update Account Type Strategies
+            for at in account_types:
+                strategy_id_str = request.POST.get(f"strategy_at_{at.id}")
 
-            for ac in input_asset_classes:
-                input_key = f"target_account_{acc.id}_{ac.id}"
-                val_str = request.POST.get(input_key, "").strip()
-                if val_str:
-                    has_explicit_input = True
-                    break
+                # If "Select Strategy" (empty string) is chosen, we remove the assignment
+                if not strategy_id_str:
+                     AccountTypeStrategyAssignment.objects.filter(
+                         user=user, account_type=at
+                     ).delete()
+                     continue
 
-            if not has_explicit_input:
-                cash_input_key = f"target_account_{acc.id}_{cash_ac.id}"
-                if request.POST.get(cash_input_key, "").strip():
-                    has_explicit_input = True
-
-            if has_explicit_input:
-                effective_values: dict[int, Decimal] = {}
-
-                for ac in input_asset_classes:
-                    input_key = f"target_account_{acc.id}_{ac.id}"
-                    val_str = request.POST.get(input_key, "").strip()
-
-                    if val_str:
-                        try:
-                            val = Decimal(val_str)
-                            override_updates[acc.id][ac.id] = val
-                            effective_values[ac.id] = val
-                        except ValueError:
-                            errors.append(f"Invalid value for {acc.name} - {ac.name}")
-                    else:
-                        effective_values[ac.id] = Decimal("0.00")
-
-                cash_input_key = f"target_account_{acc.id}_{cash_ac.id}"
-                cash_val_str = request.POST.get(cash_input_key, "").strip()
-
-                total_standard = sum(effective_values.values(), Decimal("0.00"))
-
-                if cash_val_str:
-                    try:
-                        cash_val = Decimal(cash_val_str)
-                        override_updates[acc.id][cash_ac.id] = cash_val
-                    except ValueError:
-                        errors.append(f"Invalid value for {acc.name} - Cash")
-                else:
-                    cash_residual = Decimal("100.00") - total_standard
-                    override_updates[acc.id][cash_ac.id] = max(Decimal("0.00"), cash_residual)
-
-        if errors:
-            return False, errors
-
-        try:
-            with transaction.atomic():
-                account_types_by_id = {at.id: at for at in account_types}
-
-                for at_id, ac_map in default_updates.items():
-                    at = account_types_by_id.get(at_id)
-                    if at is None:
-                        continue
-
-                    strategy, _ = AllocationStrategy.objects.update_or_create(
-                        user=user,
-                        name=f"{at.label} Strategy",
-                        defaults={"description": f"Default strategy for {at.label}"},
-                    )
-
-                    strategy.target_allocations.all().delete()
-                    TargetAllocation.objects.bulk_create(
-                        [
-                            TargetAllocation(
-                                strategy=strategy,
-                                asset_class_id=ac_id,
-                                target_percent=val,
-                            )
-                            for ac_id, val in ac_map.items()
-                        ]
-                    )
+                try:
+                    strategy_id = int(strategy_id_str)
+                    strategy = AllocationStrategy.objects.get(id=strategy_id, user=user)
 
                     AccountTypeStrategyAssignment.objects.update_or_create(
                         user=user,
                         account_type=at,
                         defaults={"allocation_strategy": strategy},
                     )
+                except (ValueError, AllocationStrategy.DoesNotExist):
+                    # Invalid input or strategy doesn't exist/belong to user
+                    pass
 
-                accounts_by_id = {a.id: a for a in accounts}
-                for acc in accounts:
-                    if acc.id in override_updates:
-                        strategy, _ = AllocationStrategy.objects.update_or_create(
-                            user=user,
-                            name=f"{acc.name} Strategy",
-                            defaults={"description": f"Account override strategy for {acc.name}"},
-                        )
+            # 2. Update Account Overrides
+            for acc in accounts:
+                strategy_id_str = request.POST.get(f"strategy_acc_{acc.id}")
 
-                        strategy.target_allocations.all().delete()
-                        TargetAllocation.objects.bulk_create(
-                            [
-                                TargetAllocation(
-                                    strategy=strategy,
-                                    asset_class_id=ac_id,
-                                    target_percent=val,
-                                )
-                                for ac_id, val in override_updates[acc.id].items()
-                            ]
-                        )
+                if not strategy_id_str:
+                    if acc.allocation_strategy:
+                        acc.allocation_strategy = None
+                        acc.save(update_fields=["allocation_strategy"])
+                    continue
 
-                        if acc.allocation_strategy_id != strategy.id:
-                            acc.allocation_strategy = strategy
-                            acc.save(update_fields=["allocation_strategy"])
-                    else:
-                        if acc.allocation_strategy_id:
-                            acc.allocation_strategy = None
-                            acc.save(update_fields=["allocation_strategy"])
+                try:
+                    strategy_id = int(strategy_id_str)
+                    strategy = AllocationStrategy.objects.get(id=strategy_id, user=user)
 
-                _ = accounts_by_id
+                    if acc.allocation_strategy_id != strategy.id:
+                        acc.allocation_strategy = strategy
+                        acc.save(update_fields=["allocation_strategy"])
+                except (ValueError, AllocationStrategy.DoesNotExist):
+                     pass
 
-            return True, []
-        except Exception as e:  # pragma: no cover
-            return False, [f"Error saving targets: {e}"]
+        return True, []
