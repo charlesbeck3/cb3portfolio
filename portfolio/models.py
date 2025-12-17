@@ -99,7 +99,7 @@ class Portfolio(models.Model):
 
         Returns:
             DataFrame where:
-            - Rows: MultiIndex(Account_Type, Account_Category, Account_Name)
+            - Rows: MultiIndex(Account_Type, Account_Category, Account_Name, Account_ID)
             - Cols: MultiIndex(Asset_Class, Asset_Category, Security)
             - Values: Dollar amounts (shares * current_price)
         """
@@ -123,6 +123,7 @@ class Portfolio(models.Model):
                 holding.account.account_type.label,  # e.g., "Taxable"
                 holding.account.account_type.group.name,  # e.g., "Brokerage"
                 holding.account.name,  # e.g., "Merrill Lynch"
+                holding.account.id,  # Include ID for precise mapping
             )
 
             # Column: Asset hierarchy
@@ -140,7 +141,7 @@ class Portfolio(models.Model):
             # Empty portfolio - return empty DataFrame with correct structure
             return pd.DataFrame(
                 index=pd.MultiIndex.from_tuples(
-                    [], names=["Account_Type", "Account_Category", "Account_Name"]
+                    [], names=["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
                 ),
                 columns=pd.MultiIndex.from_tuples(
                     [], names=["Asset_Class", "Asset_Category", "Security"]
@@ -156,7 +157,7 @@ class Portfolio(models.Model):
         # Set MultiIndex for rows
         df.index = pd.MultiIndex.from_tuples(
             df.index,
-            names=["Account_Type", "Account_Category", "Account_Name"],
+            names=["Account_Type", "Account_Category", "Account_Name", "Account_ID"],
         )
 
         # Set MultiIndex for columns
@@ -324,9 +325,6 @@ class Account(models.Model):
     def to_dataframe(self) -> pd.DataFrame:
         """
         Convert account holdings to DataFrame.
-
-        Returns:
-            DataFrame with single row (this account) and MultiIndex columns.
         """
         holdings = self.holdings.select_related(
             "security__asset_class__category"
@@ -345,8 +343,21 @@ class Account(models.Model):
 
         if not data:
             # Empty account
+            # Match Portfolio structure partially or fully?
+            # For consistent concatenation, we should match levels if possible,
+            # but Account Type doesn't have ID level naturally.
+            # However, Portfolio.to_dataframe (which calls this indirectly via AccountType?)
+            # No, Portfolio iterates holdings directly.
+            # AccountType calls Account.to_dataframe.
+
+            # If AccountType concatenates these, they must have same Index Names.
+            # Let's check AccountType.to_dataframe... it concats.
+            # If we change Account.to_dataframe index, we must ensure consistency.
+
             return pd.DataFrame(
-                index=pd.Index([self.name], name="Account_Name"),
+                index=pd.MultiIndex.from_tuples(
+                    [], names=["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
+                ),
                 columns=pd.MultiIndex.from_tuples(
                     [], names=["Asset_Class", "Asset_Category", "Security"]
                 ),
@@ -361,8 +372,20 @@ class Account(models.Model):
             names=["Asset_Class", "Asset_Category", "Security"],
         )
 
-        # Set index to account name
-        df.index = pd.Index([self.name], name="Account_Name")
+        # Set index to account hierarchy with ID
+        # We need Type/Group info here to match Portfolio structure if we want consistency?
+        # Actually Portfolio.to_dataframe constructs it itself.
+        # AccountType.to_dataframe relies on Account.to_dataframe.
+        row_key = (
+            self.account_type.label,
+            self.account_type.group.name,
+            self.name,
+            self.id
+        )
+        df.index = pd.MultiIndex.from_tuples(
+            [row_key],
+            names=["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
+        )
 
         df = df.fillna(0.0).sort_index(axis=1)
 

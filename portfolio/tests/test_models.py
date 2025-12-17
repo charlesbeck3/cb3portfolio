@@ -43,8 +43,11 @@ class AccountTypeTests(TestCase, PortfolioTestMixin):
 
         df = type_obj.to_dataframe()
         self.assertEqual(len(df), 2)
-        self.assertIn('Acc 1', df.index)
-        self.assertIn('Acc 2', df.index)
+        # Index is now MultiIndex with (Type, Category, Name, ID)
+        # Check that account names appear in the index
+        account_names = [idx[2] for idx in df.index]  # Name is at position 2
+        self.assertIn('Acc 1', account_names)
+        self.assertIn('Acc 2', account_names)
 
 
 
@@ -72,7 +75,7 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
     def test_to_dataframe_structure(self) -> None:
         """Portfolio DataFrame has correct MultiIndex structure."""
         df = self.portfolio.to_dataframe()
-        assert df.index.names == ['Account_Type', 'Account_Category', 'Account_Name']
+        assert df.index.names == ['Account_Type', 'Account_Category', 'Account_Name', 'Account_ID']
         assert df.columns.names == ['Asset_Class', 'Asset_Category', 'Security']
         assert not df.empty
 
@@ -83,7 +86,8 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
         assert ('Bonds', 'Fixed Income', 'BND') in df.columns
 
         # Value check: 50 * 100 = 5000
-        val = df.loc[('Taxable', 'Investments', 'Test Account'), ('US Stk', 'US Equities', 'VTI')]
+        # Index now includes Account_ID, so we need to match on all 4 levels
+        val = df.loc[('Taxable', 'Investments', 'Test Account', self.account.id), ('US Stk', 'US Equities', 'VTI')]
         self.assertEqual(val, 5000.0)
 
     def test_empty_portfolio_dataframe(self) -> None:
@@ -91,7 +95,7 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
         empty = Portfolio.objects.create(name="Empty", user=self.user)
         df = empty.to_dataframe()
         assert df.empty
-        assert df.index.names == ['Account_Type', 'Account_Category', 'Account_Name']
+        assert df.index.names == ['Account_Type', 'Account_Category', 'Account_Name', 'Account_ID']
 
 
 class AssetClassTests(TestCase, PortfolioTestMixin):
@@ -282,8 +286,10 @@ class AccountTests(TestCase, PortfolioTestMixin):
 
         df = account.to_dataframe()
         self.assertEqual(len(df), 1)
-        self.assertEqual(df.index[0], 'My Solitary Account')
-        val = df.loc['My Solitary Account', ('US Stk Ac', 'US Equities', 'VTI_AC')]
+        # Index is now MultiIndex with (Type, Category, Name, ID)
+        expected_index = ('Roth IRA', 'Retirement', 'My Solitary Account', account.id)
+        self.assertEqual(df.index[0], expected_index)
+        val = df.loc[expected_index, ('US Stk Ac', 'US Equities', 'VTI_AC')]
         self.assertEqual(val, 1000.0)
 
 

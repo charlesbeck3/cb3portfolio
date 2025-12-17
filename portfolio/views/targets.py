@@ -26,8 +26,7 @@ class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateVi
             return context
 
         user = cast(Any, user)
-        summary_service = self.get_portfolio_services()["summary"]
-        context.update(self._service.build_context(user=user, summary_service=summary_service))
+        context.update(self._service.build_context(user=user))
         return context
 
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Any:

@@ -342,7 +342,7 @@ class HoldingsViewTests(TestCase, PortfolioTestMixin):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertTemplateUsed(response, "portfolio/holdings.html")
-        self.assertIn("holding_groups", response.context)
+        self.assertIn("holdings_rows", response.context)
         self.assertIn("sidebar_data", response.context)
         # Account should not be in context
         self.assertNotIn("account", response.context)
@@ -361,3 +361,22 @@ class HoldingsViewTests(TestCase, PortfolioTestMixin):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("account", response.context)
+
+    def test_target_allocations_has_sidebar_context(self) -> None:
+        """Test that Target Allocations view includes sidebar data."""
+        url = reverse("portfolio:target_allocations")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("sidebar_data", response.context, "sidebar_data missing from context")
+        self.assertIsNotNone(response.context["sidebar_data"]["groups"], "Sidebar groups missing")
+        self.assertGreater(len(response.context["sidebar_data"]["groups"]), 0, "Sidebar should have groups")
+
+    def test_dashboard_has_sidebar_context(self) -> None:
+        """Test that Dashboard view includes sidebar data."""
+        url = reverse("portfolio:dashboard")
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("sidebar_data", response.context)
+

@@ -2,7 +2,6 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from portfolio.models import Account, AccountGroup, AccountType
-from portfolio.services import PortfolioSummaryService
 
 from .base import PortfolioTestMixin
 
@@ -84,13 +83,18 @@ class AccountGroupTests(TestCase, PortfolioTestMixin):
             institution=self.institution,
         )
 
-        summary = PortfolioSummaryService().get_account_summary(self.user)
-        groups = summary["groups"]
+        # Verify using Dashboard View
+        # Since logic is in get_sidebar_context mixin used by Dashboard
+
+        response = self.client.get("/") # Dashboard URL
+        self.assertEqual(response.status_code, 200)
+
+        sidebar_data = response.context["sidebar_data"]
+        groups = sidebar_data["groups"]
 
         # Check Retirement
         self.assertIn("Retirement", groups)
         self.assertEqual(len(groups["Retirement"]["accounts"]), 2)
-        # self.assertEqual(groups['Retirement']['accounts'][0]['name'], 'Roth') # Ordering depends on sort, maybe check sets of names
 
         # Check Investments
         self.assertIn("Investments", groups)

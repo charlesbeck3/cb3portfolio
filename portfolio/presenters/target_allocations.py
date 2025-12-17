@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -69,519 +70,847 @@ class TargetAllocationTableBuilder:
     def build_rows(
         self,
         *,
-        summary: Any,
+        allocations: dict[str, Any],  # expected to be dict of DataFrames from engine
+        ac_meta: dict[str, Any],  # Name -> {id, group_code, group_label, category_code, category_label}
+        hierarchy: dict[str, dict[str, list[str]]], # GroupCode -> CatCode -> [AC Names]
         account_types: list[Any],
         portfolio_total_value: Decimal,
         mode: str,
         cash_asset_class_id: int | None,
+        account_targets: dict[int, dict[int, Decimal]], # Account ID -> AC ID -> Target Dollars (for variance)
     ) -> list[TargetAllocationTableRow]:
         rows: list[TargetAllocationTableRow] = []
-
-        category_labels = getattr(summary, "category_labels", {})
-        group_labels = getattr(summary, "group_labels", {})
-
         effective_mode = "money" if mode == "dollar" else mode
 
-        for group_code, group_data in summary.groups.items():
-            for category_code, cat_data in group_data.categories.items():
-                for ac_name, ac_data in cat_data.asset_classes.items():
-                    if cash_asset_class_id is not None and ac_data.id == cash_asset_class_id:
-                        continue
-                    rows.append(
-                        self._build_asset_row(
-                            ac_name=ac_name,
-                            ac_data=ac_data,
-                            category_code=category_code,
-                            account_types=account_types,
-                            portfolio_total_value=portfolio_total_value,
-                            mode=effective_mode,
-                            summary=summary,
-                        )
-                    )
+        # DataFrames
+        df_asset_class = allocations.get("by_asset_class") # Index: Asset_Class
+        df_account_type = allocations.get("by_account_type") # Index: Account_Type, Cols: AC_dollars...
+        df_account = allocations.get("by_account") # Index: Account_Name (Careful map via ID/Name)
 
-                if len(cat_data.asset_classes) > 1:
-                    category_label = category_labels.get(category_code, category_code)
-                    rows.append(
-                        self._build_category_row(
-                            label=f"{category_label} Total",
-                            category_code=category_code,
-                            current_by_at=cat_data.account_type_totals,
-                            target_by_at=cat_data.account_type_target_totals,
-                            variance_pct_by_at=cat_data.account_type_variance_pct,
-                            current_by_account=cat_data.account_totals,
-                            target_by_account=cat_data.account_target_totals,
-                            portfolio_current=cat_data.total,
-                            portfolio_target=cat_data.target_total,
-                            portfolio_variance=cat_data.variance_total,
-                            account_types=account_types,
-                            portfolio_total_value=portfolio_total_value,
-                            mode=effective_mode,
-                            is_subtotal=True,
-                            is_group_total=False,
-                            is_grand_total=False,
-                            is_cash=False,
-                            summary=summary,
-                        )
-                    )
+        # We need to map Account ID -> DataFrame Column/Index?
+        # df_account index is "Account_Name". We have Account objects in `account_types`.
+        # Account objects have `.name`.
 
-            if group_data.asset_class_count > 1 and len(group_data.categories) > 1:
-                group_label = group_data.label or group_labels.get(group_code, group_code)
-                rows.append(
-                    self._build_category_row(
-                        label=f"{group_label} Total",
-                        category_code="",
-                        current_by_at=group_data.account_type_totals,
-                        target_by_at=group_data.account_type_target_totals,
-                        variance_pct_by_at=group_data.account_type_variance_pct,
-                        current_by_account=group_data.account_totals,
-                        target_by_account=group_data.account_target_totals,
-                        portfolio_current=group_data.total,
-                        portfolio_target=group_data.target_total,
-                        portfolio_variance=group_data.variance_total,
+        # Iterate Hierarchy
+        # Hierarchy: Group -> Category -> AssetClasses
+
+        # We need a defined sort order for Groups?
+        # Typically passed in hierarchy should be sorted, or we sort by keys/metadata.
+        # Assuming hierarchy keys are sorted or we rely on insertion order if py3.7+ (valid).
+
+        # To match previous behavior (sort by total value?), we might need to sort 'hierarchy' keys based on df totals.
+        # Let's assume hierarchy passed in is already sorted or we iterate simply.
+        # Previous service sorted by value.
+
+        # Let's iterate what we were given.
+
+        for group_code, categories in hierarchy.items():
+            # Calculate Group Subtotal Data
+            # We need to sum up all ACs in this group from the DataFrames
+            group_acs = [ac for cats in categories.values() for ac in cats]
+            self._sum_asset_classes(df_asset_class, df_account_type, df_account, group_acs, account_types)
+
+            # Check if we need a Group Total row (at the end usually, but we need data for it)
+            # The loop structure in previous was: Categories -> ACs -> CategoryTotal -> (GroupTotal)
+
+            sum(len(acs) for acs in categories.values())
+
+            for category_code, ac_names in categories.items():
+                # Filter out Cash if needed
+                ac_names_filtered = [
+                    ac for ac in ac_names
+                    if not (cash_asset_class_id is not None and ac_meta.get(ac, {}).get('id') == cash_asset_class_id)
+                ]
+
+                if not ac_names_filtered:
+                    continue
+
+                for ac_name in ac_names_filtered:
+                     meta = ac_meta.get(ac_name, {})
+                     # Get Current Values from DataFrames
+                     # Portfolio Level
+                     # Lookup df_asset_class.loc[ac_name]
+                     portfolio_current = Decimal("0.00")
+                     if df_asset_class is not None and ac_name in df_asset_class.index:
+                         portfolio_current = Decimal(float(df_asset_class.loc[ac_name, "Dollar_Amount"]))
+
+                     # Account Type Level
+                     # df_account_type columns are "Asset_Class_dollars" ... no wait.
+                     # index is AccountType Label. Columns are AC names?
+                     # Let's re-verify `_calculate_by_account_type`.
+                     # Result: Index=Account_Type, Cols="AC_Name_dollars", "AC_Name_pct"
+
+                     at_currents = {}
+                     for at in account_types:
+                         col_name = f"{ac_name}_dollars"
+                         val = Decimal("0.00")
+                         if df_account_type is not None and at.label in df_account_type.index:
+                              if col_name in df_account_type.columns:
+                                   val = Decimal(float(df_account_type.loc[at.label, col_name]))
+                         at_currents[at.id] = val
+
+                     # Account Level
+                     # df_account: Index=Account_Name, Cols="AC_Name_dollars"
+                     acc_currents = {}
+                     for at in account_types:
+                         for acc in getattr(at, "active_accounts", []):
+                             col_name = f"{ac_name}_dollars"
+                             val = Decimal("0.00")
+                             if df_account is not None and acc.name in df_account.index:
+                                 if col_name in df_account.columns:
+                                     val = Decimal(float(df_account.loc[acc.name, col_name]))
+                             acc_currents[acc.id] = val
+
+                     rows.append(self._build_asset_row(
+                         ac_name=ac_name,
+                         ac_id=meta.get('id', 0),
+                         category_code=category_code,
+                         portfolio_current=portfolio_current,
+                         at_currents=at_currents,
+                         acc_currents=acc_currents,
+                         account_types=account_types,
+                         portfolio_total_value=portfolio_total_value,
+                         mode=effective_mode,
+                         account_targets=account_targets
+                     ))
+
+                # Category Subtotal
+                if len(ac_names_filtered) > 1:
+                    cat_label = ac_meta.get(ac_names_filtered[0], {}).get('category_label', category_code)
+
+                    # Sum for category
+                    cat_total_row = self._sum_asset_classes(df_asset_class, df_account_type, df_account, ac_names_filtered, account_types)
+
+                    rows.append(self._build_calculated_row(
+                        label=f"{cat_label} Total",
+                        category_code=category_code,
+                        data=cat_total_row,
                         account_types=account_types,
                         portfolio_total_value=portfolio_total_value,
                         mode=effective_mode,
-                        is_subtotal=False,
-                        is_group_total=True,
-                        is_grand_total=False,
-                        is_cash=False,
-                        summary=summary,
-                    )
-                )
+                        is_subtotal=True,
+                        account_targets=account_targets,
+                        ac_names=ac_names_filtered,
+                        ac_meta=ac_meta,  # ADDED
+                    ))
 
+            # Group Total
+            # Condition: >1 asset class total in group AND >1 category (implied by previous logic, roughly)
+            # Logic from old builder: if group_data.asset_class_count > 1 and len(group_data.categories) > 1
+            filtered_cats = [c for c, acs in categories.items() if any(
+                not (cash_asset_class_id is not None and ac_meta.get(ac, {}).get('id') == cash_asset_class_id)
+                for ac in acs
+            )]
+
+            total_filtered_acs = 0
+            for cats in categories.values():
+                 total_filtered_acs += len([
+                    ac for ac in cats
+                    if not (cash_asset_class_id is not None and ac_meta.get(ac, {}).get('id') == cash_asset_class_id)
+                ])
+
+            if total_filtered_acs > 1 and len(filtered_cats) > 1:
+                group_label = ac_meta.get(group_acs[0], {}).get('group_label', group_code)
+                # Re-calculate filtered group total data (exclude cash)
+                filtered_group_acs = [
+                    ac for ac in group_acs
+                    if not (cash_asset_class_id is not None and ac_meta.get(ac, {}).get('id') == cash_asset_class_id)
+                ]
+                group_data_sum = self._sum_asset_classes(df_asset_class, df_account_type, df_account, filtered_group_acs, account_types)
+
+                rows.append(self._build_calculated_row(
+                    label=f"{group_label} Total",
+                    category_code="",
+                    data=group_data_sum,
+                    account_types=account_types,
+                    portfolio_total_value=portfolio_total_value,
+                    mode=effective_mode,
+                    is_group_total=True,
+                    account_targets=account_targets,
+                    ac_names=filtered_group_acs,
+                    ac_meta=ac_meta,  # ADDED
+                ))
+
+        # Cash Row
         if cash_asset_class_id is not None:
-            cash_group = summary.groups.get("CASH")
-            if cash_group is not None:
-                rows.append(
-                    self._build_cash_row(
-                        cash_asset_class_id=cash_asset_class_id,
-                        cash_group=cash_group,
-                        account_types=account_types,
-                        portfolio_total_value=portfolio_total_value,
-                        mode=effective_mode,
-                        summary=summary,
-                    )
-                )
+             # Find cash AC name
+             cash_ac_name = next((name for name, m in ac_meta.items() if m.get('id') == cash_asset_class_id), None)
+             if cash_ac_name:
+                 # Get Cash Data
+                 portfolio_current = Decimal("0.00")
+                 if df_asset_class is not None and cash_ac_name in df_asset_class.index:
+                     portfolio_current = Decimal(float(df_asset_class.loc[cash_ac_name, "Dollar_Amount"]))
 
-        rows.append(
-            self._build_grand_total_row(
-                summary=summary,
-                account_types=account_types,
-                portfolio_total_value=portfolio_total_value,
-                mode=effective_mode,
-            )
-        )
+                 at_currents = {}
+                 for at in account_types:
+                     col_name = f"{cash_ac_name}_dollars"
+                     val = Decimal("0.00")
+                     if df_account_type is not None and at.label in df_account_type.index and col_name in df_account_type.columns:
+                         val = Decimal(float(df_account_type.loc[at.label, col_name]))
+                     at_currents[at.id] = val
+
+                 acc_currents = {}
+                 for at in account_types:
+                     for acc in getattr(at, "active_accounts", []):
+                         col_name = f"{cash_ac_name}_dollars"
+                         val = Decimal("0.00")
+                         if df_account is not None and acc.name in df_account.index and col_name in df_account.columns:
+                             val = Decimal(float(df_account.loc[acc.name, col_name]))
+                         acc_currents[acc.id] = val
+
+                 rows.append(self._build_cash_row(
+                     cash_asset_class_id=cash_asset_class_id,
+                     current_data={'portfolio': portfolio_current, 'at': at_currents, 'acc': acc_currents},
+                     account_types=account_types,
+                     portfolio_total_value=portfolio_total_value,
+                     mode=effective_mode
+                 ))
+
+        # Grand Total
+        # Sum of everything in df_asset_class 'Dollar_Amount'
+        grand_total = Decimal("0.00")
+        if df_asset_class is not None and not df_asset_class.empty:
+            grand_total = Decimal(float(df_asset_class["Dollar_Amount"].sum()))
+
+        # AT Grand Totals
+        at_grand_totals = {}
+        for at in account_types:
+            at_grand_totals[at.id] = getattr(at, "current_total_value", Decimal("0.00"))
+
+        # Account Grand Totals (implied from at.active_accounts)
+
+        rows.append(self._build_grand_total_row(
+            grand_total=grand_total,
+            at_grand_totals=at_grand_totals,
+            account_types=account_types,
+            portfolio_total_value=portfolio_total_value,
+            mode=effective_mode
+        ))
 
         return rows
+
+    def _sum_asset_classes(self, df_ac, df_at, df_acc, ac_names, account_types):
+        """Helper to sum values for a list of asset classes."""
+        res = {
+            'portfolio': Decimal("0.00"),
+            'at': defaultdict(Decimal),
+            'acc': defaultdict(Decimal)
+        }
+
+        for ac in ac_names:
+            # Portfolio
+            if df_ac is not None and ac in df_ac.index:
+                res['portfolio'] += Decimal(float(df_ac.loc[ac, "Dollar_Amount"]))
+
+            col_name = f"{ac}_dollars"
+
+            # AT
+            if df_at is not None and col_name in df_at.columns:
+                for at in account_types:
+                    if at.label in df_at.index:
+                        res['at'][at.id] += Decimal(float(df_at.loc[at.label, col_name]))
+
+            # Acc
+            if df_acc is not None and col_name in df_acc.columns:
+                for at in account_types:
+                    for acc in getattr(at, "active_accounts", []):
+                        if acc.name in df_acc.index:
+                            res['acc'][acc.id] += Decimal(float(df_acc.loc[acc.name, col_name]))
+
+        return res
 
     def _build_asset_row(
         self,
         *,
         ac_name: str,
-        ac_data: Any,
+        ac_id: int,
         category_code: str,
+        portfolio_current: Decimal,
+        at_currents: dict[int, Decimal],
+        acc_currents: dict[int, Decimal],
         account_types: list[Any],
         portfolio_total_value: Decimal,
         mode: str,
-        summary: Any,
+        account_targets: dict[int, dict[int, Decimal]],
     ) -> TargetAllocationTableRow:
-        return self._build_category_row(
-            label=ac_name,
-            summary=summary,
+
+        # Calculate Targets & Variances "on the fly" since they depend on configuration (Target Map)
+        # AC Data
+        portfolio_target = Decimal("0.00")
+
+        # Build Groups (AT Columns)
+        groups = []
+
+        for at in account_types:
+            at_current = at_currents.get(at.id, Decimal("0.00"))
+
+            # AT Target Logic
+            # Asset Row: we don't display a single "AT Target" for the asset?
+            # Actually we do: Weighted Target column in "Account Type" section.
+            # But the logic for that in `_build_category_row` was:
+            # `at_target` (sum of defaults?)
+            # Wait, `TargetAllocationTableBuilder` logic for "Weighted Target":
+            # "Weighted Target is the target %"
+            # It uses `at.target_map.get(ac_id)`.
+
+            at_configured_pct = at.target_map.get(ac_id, Decimal("0.00"))
+            at_total_val = getattr(at, "current_total_value", Decimal("0.00"))
+
+            # Calculate what the target *value* would be based on default
+            at_total_val * (at_configured_pct / Decimal("100.00"))
+
+            # Wait, the "Weighted Target" displayed should be the sum of ACTUAL targets of the accounts?
+            # Or the Default Target?
+            # In the previous code `_build_row`:
+            # `tgt_pct = ac_targets.get(at.code)` -> Sum of target % map.
+            # It seems it was calculating based on the *assignments*.
+
+            # Let's match the visual expectation.
+            # If I override an account, does the AT column update?
+            # Yes, usually.
+            # But here `at_configured_pct` is the DEFAULT.
+            # The "Weighted Target" column usually shows the *aggregate* target of all accounts?
+            # Or just the setting?
+            # In `_build_asset_row` (old): `target_by_at` came from `ac_data.account_types[code].target`.
+            # `ac_data` came from SummaryService which aggregated Account targets.
+
+            # So, we must aggregate Account Targets to get AT Target.
+            at_target_val = Decimal("0.00")
+
+            accounts_data = []
+            for acc in getattr(at, "active_accounts", []):
+                acc_current = acc_currents.get(acc.id, Decimal("0.00"))
+                acc_total_val = getattr(acc, "current_total_value", Decimal("0.00"))
+
+                # Acc Target
+                # Check override
+                if acc.target_map and ac_id in acc.target_map:
+                    pct = acc.target_map[ac_id]
+                else:
+                    # Check acc specific override map (if strategy applied) logic is handled by ViewService populating target_map
+                    # ViewService populates `acc.target_map` with the effective strategy targets.
+                    # If empty, it means use AT defaults?
+                    # `TargetAllocationViewService` line 96: `acc.target_map = overrides_map.get(acc.id, {})`.
+                    # If acc has strategy -> overrides_map has it.
+                    # If acc has NO strategy -> overrides_map is empty.
+                    # Logic in old builder line 444: `configured_pct = account.target_map.get(...)`.
+                    # `if configured_pct is None: fallback to at.target_map`.
+
+                    pct = acc.target_map.get(ac_id)
+                    if pct is None:
+                        pct = at.target_map.get(ac_id, Decimal("0.00"))
+
+                acc_target_val = acc_total_val * (pct / Decimal("100.00"))
+
+                # Check for explicit input via `account_targets` (passed from View/Calc?)
+                # Actually, `account_targets` arg is mostly for Variance calc if we wanted to use pre-calc.
+                # But here we are calculating strictly from `pct`.
+                # Why did I add `account_targets` arg? To replace `summary.account_asset_targets`.
+                # Let's use `acc_target_val` calculated here.
+
+                at_target_val += acc_target_val
+
+                # Acc Variance
+                acc_variance = acc_current - acc_target_val
+
+                input_name = f"target_account_{acc.id}_{ac_id}"
+                input_val = str(pct)
+
+                # Formatting
+                if mode == "percent":
+                   c_disp = str(accounting_percent((acc_current/acc_total_val*100) if acc_total_val else 0, 1))
+                   t_disp = str(accounting_percent((acc_target_val/acc_total_val*100) if acc_total_val else 0, 1))
+                   v_disp = str(accounting_percent(((acc_current/acc_total_val*100) - (acc_target_val/acc_total_val*100)) if acc_total_val else 0, 1))
+                else:
+                   c_disp = str(accounting_amount(acc_current, 0))
+                   t_disp = str(accounting_amount(acc_target_val, 0))
+                   v_disp = str(accounting_amount(acc_variance, 0))
+
+                accounts_data.append(TargetAccountColumnData(
+                    account_id=acc.id,
+                    account_name=acc.name,
+                    account_type_id=at.id,
+                    current=c_disp,
+                    target=t_disp,
+                    vtarget=v_disp,
+                    current_raw=acc_current,
+                    target_raw=acc_target_val,
+                    vtarget_raw=acc_variance,
+                    input_name=input_name,
+                    input_value=input_val,
+                    is_input=True
+                ))
+
+            # AT Level Display
+            at_variance = at_current - at_target_val
+            portfolio_target += at_target_val
+
+            at_input_name = f"target_{at.id}_{ac_id}"
+            at_input_val = str(at_configured_pct)
+
+            if mode == "percent":
+                at_current_pct = (at_current / at_total_val * 100) if at_total_val else Decimal("0.00")
+                at_target_pct = (at_target_val / at_total_val * 100) if at_total_val else Decimal("0.00")
+
+                c_disp = str(accounting_percent(at_current_pct, 1))
+                w_disp = str(accounting_percent(at_target_pct, 1)) # Weighted Target
+                v_disp = str(accounting_percent(at_current_pct - at_target_pct, 1))
+            else:
+                c_disp = str(accounting_amount(at_current, 0))
+                w_disp = str(accounting_amount(at_target_val, 0))
+                v_disp = str(accounting_amount(at_variance, 0))
+
+            groups.append(TargetAccountTypeGroupData(
+                account_type=TargetAccountTypeColumnData(
+                    account_type_id=at.id,
+                    code=at.code,
+                    label=at.label,
+                    current=c_disp,
+                    target_input_name=at_input_name,
+                    target_input_value=at_input_val,
+                    weighted_target=w_disp,
+                    vtarget=v_disp,
+                    current_raw=at_current,
+                    target_input_raw=at_configured_pct,
+                    weighted_target_raw=at_target_val, # Pct or Money depending on mode? Struct says raw...
+                    vtarget_raw=at_variance,
+                    is_input=True
+                ),
+                accounts=accounts_data
+            ))
+
+        # Portfolio Variance
+        portfolio_variance = portfolio_current - portfolio_target
+
+        if mode == "percent":
+             p_current_pct = (portfolio_current / portfolio_total_value * 100) if portfolio_total_value else Decimal(0)
+             p_target_pct = (portfolio_target / portfolio_total_value * 100) if portfolio_total_value else Decimal(0)
+
+             p_c_disp = str(accounting_percent(p_current_pct, 1))
+             p_t_disp = str(accounting_percent(p_target_pct, 1))
+             p_v_disp = str(accounting_percent(p_current_pct - p_target_pct, 1))
+        else:
+             p_c_disp = str(accounting_amount(portfolio_current, 0))
+             p_t_disp = str(accounting_amount(portfolio_target, 0))
+             p_v_disp = str(accounting_amount(portfolio_variance, 0))
+
+        return TargetAllocationTableRow(
+            asset_class_id=ac_id,
+            asset_class_name=ac_name,
             category_code=category_code,
-            current_by_at={
-                at.code: getattr(ac_data.account_types.get(at.code), "current", Decimal("0.00"))
-                for at in account_types
-            },
-            target_by_at={
-                at.code: getattr(ac_data.account_types.get(at.code), "target", Decimal("0.00"))
-                for at in account_types
-            },
-            variance_pct_by_at={
-                at.code: getattr(
-                    ac_data.account_types.get(at.code), "variance_pct", Decimal("0.00")
-                )
-                for at in account_types
-            },
-            current_by_account={},
-            target_by_account={},
-            portfolio_current=ac_data.total,
-            portfolio_target=ac_data.target_total,
-            portfolio_variance=ac_data.variance_total,
-            account_types=account_types,
-            portfolio_total_value=portfolio_total_value,
-            mode=mode,
             is_subtotal=False,
             is_group_total=False,
             is_grand_total=False,
             is_cash=False,
-            asset_class_id=ac_data.id or 0,
+            groups=groups,
+            portfolio_current=p_c_disp,
+            portfolio_target=p_t_disp,
+            portfolio_vtarget=p_v_disp,
+            row_css_class=""
+        )
+
+    def _build_calculated_row(
+        self,
+        label,
+        category_code,
+        data,
+        account_types,
+        portfolio_total_value,
+        mode,
+        ac_names,
+        ac_meta,  # ADDED
+        is_subtotal=False,
+        is_group_total=False,
+        account_targets=None,
+    ) -> TargetAllocationTableRow:
+        # data: {'portfolio': val, 'at': {id: val}, 'acc': {id: val}} (Current Values only)
+
+        portfolio_current = data['portfolio']
+        portfolio_target = Decimal("0.00")
+
+        groups = []
+
+        for at in account_types:
+            at_current = data['at'].get(at.id, Decimal("0.00"))
+
+            at_target_val = Decimal("0.00")
+
+            at_total_val = getattr(at, "current_total_value", Decimal("0.00"))
+
+            accounts_data = []
+
+            for acc in getattr(at, "active_accounts", []):
+                acc_current = data['acc'].get(acc.id, Decimal("0.00"))
+                acc_total_val = getattr(acc, "current_total_value", Decimal("0.00"))
+
+                # Calculate Acc Target
+                acc_target_val = Decimal("0.00")
+
+                for ac_name in ac_names:
+                    # Look up AC ID
+                    meta = ac_meta.get(ac_name)
+                    if meta:
+                        ac_id = meta.get('id')
+                        if ac_id:
+                            # Use acc.target_map
+                            pct = Decimal("0.00")
+                            if acc.target_map and ac_id in acc.target_map:
+                                pct = acc.target_map[ac_id]
+                            else:
+                                pct = acc.target_map.get(ac_id, Decimal("0.00"))
+
+                            acc_target_val += acc_total_val * (pct / Decimal("100.00"))
+
+                at_target_val += acc_target_val
+
+                acc_variance = acc_current - acc_target_val
+
+                # Formatting
+                if mode == "percent":
+                   c_disp = str(accounting_percent((acc_current/acc_total_val*100) if acc_total_val else 0, 1))
+                   t_disp = str(accounting_percent((acc_target_val/acc_total_val*100) if acc_total_val else 0, 1))
+                   v_disp = str(accounting_percent(((acc_current/acc_total_val*100) - (acc_target_val/acc_total_val*100)) if acc_total_val else 0, 1))
+                else:
+                   c_disp = str(accounting_amount(acc_current, 0))
+                   t_disp = str(accounting_amount(acc_target_val, 0))
+                   v_disp = str(accounting_amount(acc_variance, 0))
+
+                accounts_data.append(TargetAccountColumnData(
+                    account_id=acc.id,
+                    account_name=acc.name,
+                    account_type_id=at.id,
+                    current=c_disp,
+                    target=t_disp,
+                    vtarget=v_disp,
+                    current_raw=acc_current,
+                    target_raw=acc_target_val,
+                    vtarget_raw=acc_variance,
+                    input_name="",
+                    input_value="",
+                    is_input=False
+                ))
+
+            portfolio_target += at_target_val
+            at_variance = at_current - at_target_val
+
+            # Formatting AT
+            weighted_target_raw_val = at_target_val
+
+            if mode == "percent":
+                at_current_pct = (at_current / at_total_val * 100) if at_total_val else Decimal("0.00")
+                at_target_pct = (at_target_val / at_total_val * 100) if at_total_val else Decimal("0.00")
+
+                c_disp = str(accounting_percent(at_current_pct, 1))
+                w_disp = str(accounting_percent(at_target_pct, 1))
+                v_disp = str(accounting_percent(at_current_pct - at_target_pct, 1))
+
+                weighted_target_raw_val = at_target_pct
+            else:
+                c_disp = str(accounting_amount(at_current, 0))
+                w_disp = str(accounting_amount(at_target_val, 0))
+                v_disp = str(accounting_amount(at_variance, 0))
+
+            groups.append(TargetAccountTypeGroupData(
+                account_type=TargetAccountTypeColumnData(
+                    account_type_id=at.id,
+                    code=at.code,
+                    label=at.label,
+                    current=c_disp,
+                    target_input_name="",
+                    target_input_value="",
+                    weighted_target=w_disp,
+                    vtarget=v_disp,
+                    current_raw=at_current,
+                    target_input_raw=Decimal(0),
+                    weighted_target_raw=weighted_target_raw_val,
+                    vtarget_raw=at_variance,
+                    is_input=False
+                ),
+                accounts=accounts_data
+            ))
+
+        # Portfolio Formatting
+        portfolio_variance = portfolio_current - portfolio_target
+        if mode == "percent":
+             p_current_pct = (portfolio_current / portfolio_total_value * 100) if portfolio_total_value else Decimal(0)
+             p_target_pct = (portfolio_target / portfolio_total_value * 100) if portfolio_total_value else Decimal(0)
+
+             p_c_disp = str(accounting_percent(p_current_pct, 1))
+             p_t_disp = str(accounting_percent(p_target_pct, 1))
+             p_v_disp = str(accounting_percent(p_current_pct - p_target_pct, 1))
+        else:
+             p_c_disp = str(accounting_amount(portfolio_current, 0))
+             p_t_disp = str(accounting_amount(portfolio_target, 0))
+             p_v_disp = str(accounting_amount(portfolio_variance, 0))
+
+        return TargetAllocationTableRow(
+             asset_class_id=0,
+             asset_class_name=label,
+             category_code=category_code,
+             is_subtotal=is_subtotal,
+             is_group_total=is_group_total,
+             is_grand_total=False,
+             is_cash=False,
+             groups=groups,
+             portfolio_current=p_c_disp,
+             portfolio_target=p_t_disp,
+             portfolio_vtarget=p_v_disp,
+             row_css_class="table-secondary fw-bold" if is_subtotal else "table-primary fw-bold"
         )
 
     def _build_cash_row(
         self,
         *,
         cash_asset_class_id: int,
-        cash_group: Any,
+        current_data: dict, # {portfolio, at, acc}
         account_types: list[Any],
         portfolio_total_value: Decimal,
         mode: str,
-        summary: Any,
     ) -> TargetAllocationTableRow:
-        current_by_at = {}
-        target_by_at = {}
-        variance_pct_by_at = {}
-        target_by_account = {}
+        # Cash Row Logic
+        portfolio_current = current_data['portfolio']
+        portfolio_target = Decimal("0.00")
 
-        portfolio_target_total = Decimal("0.00")
+        groups = []
 
         for at in account_types:
-            at_total_value = getattr(at, "current_total_value", Decimal("0.00"))
+            at_current = current_data['at'].get(at.id, Decimal("0.00"))
+            at_total_val = getattr(at, "current_total_value", Decimal("0.00"))
 
-            # Calculate account type level target
+            # Calculate AT Target (Cash remainder)
+            # Sum non-cash targets
             non_cash_target_total = Decimal("0.00")
             for ac_id, val in at.target_map.items():
                 if ac_id != cash_asset_class_id:
                     non_cash_target_total += val
 
             cash_target_pct = Decimal("100.00") - non_cash_target_total
-            if cash_target_pct < 0:
-                cash_target_pct = Decimal("0.00")
+            if cash_target_pct < 0: cash_target_pct = Decimal("0.00")
 
-            cash_current_val = cash_group.account_type_totals.get(at.code, Decimal("0.00"))
-            current_by_at[at.code] = cash_current_val
+            # AT Target Value
+            at_target_val = at_total_val * (cash_target_pct / Decimal("100.00"))
+            portfolio_target += at_target_val
+
+            # Accounts
+            accounts_data = []
+            at_agg_target_val = Decimal("0.00")
+
+            for acc in getattr(at, "active_accounts", []):
+                acc_current = current_data['acc'].get(acc.id, Decimal("0.00"))
+                acc_total_val = getattr(acc, "current_total_value", Decimal("0.00"))
+
+                # Acc Target
+                if acc.target_map:
+                    acc_non_cash = sum(v for k, v in acc.target_map.items() if k != cash_asset_class_id)
+                    acc_cash_pct = Decimal("100.00") - acc_non_cash
+                else:
+                    acc_cash_pct = cash_target_pct
+
+                if acc_cash_pct < 0: acc_cash_pct = Decimal("0.00")
+
+                acc_target_val = acc_total_val * (acc_cash_pct / Decimal("100.00"))
+                at_agg_target_val += acc_target_val
+
+                acc_variance = acc_current - acc_target_val
+
+                # Formatting
+                if mode == "percent":
+                   c_disp = str(accounting_percent((acc_current/acc_total_val*100) if acc_total_val else 0, 1))
+                   t_disp = str(accounting_percent((acc_target_val/acc_total_val*100) if acc_total_val else 0, 1))
+                   v_disp = str(accounting_percent(((acc_current/acc_total_val*100) - (acc_target_val/acc_total_val*100)) if acc_total_val else 0, 1))
+                else:
+                   c_disp = str(accounting_amount(acc_current, 0))
+                   t_disp = str(accounting_amount(acc_target_val, 0))
+                   v_disp = str(accounting_amount(acc_variance, 0))
+
+                accounts_data.append(TargetAccountColumnData(
+                    account_id=acc.id,
+                    account_name=acc.name,
+                    account_type_id=at.id,
+                    current=c_disp,
+                    target=t_disp,
+                    vtarget=v_disp,
+                    current_raw=acc_current,
+                    target_raw=acc_target_val,
+                    vtarget_raw=acc_variance,
+                    input_name="",
+                    input_value="",
+                    is_input=False
+                ))
+
+            # AT Display
+            # Use aggregated target from accounts?
+            # Or theoretical target?
+            # Usage in asset row was: aggregated.
+            # Let's use aggregated here too for consistency.
+            at_display_target = at_agg_target_val
+            at_variance = at_current - at_display_target
 
             if mode == "percent":
-                target_by_at[at.code] = Decimal("0.00")  # Not used for display in PCT mode
-                current_pct = (
-                    (cash_current_val / at_total_value) * 100
-                    if at_total_value > 0
-                    else Decimal("0.00")
-                )
-                variance_pct_by_at[at.code] = current_pct - cash_target_pct
-                portfolio_target_total += at_total_value * (cash_target_pct / Decimal("100.00"))
+                at_current_pct = (at_current / at_total_val * 100) if at_total_val else Decimal("0.00")
+                at_target_pct = (at_display_target / at_total_val * 100) if at_total_val else Decimal("0.00")
+
+                c_disp = str(accounting_percent(at_current_pct, 1))
+                w_disp = str(accounting_percent(at_target_pct, 1))
+                v_disp = str(accounting_percent(at_current_pct - at_target_pct, 1))
             else:
-                target_val = at_total_value * (cash_target_pct / Decimal("100.00"))
-                target_by_at[at.code] = target_val
-                variance_pct_by_at[at.code] = Decimal("0.00")  # Not used in dollar mode
-                portfolio_target_total += target_val
+                c_disp = str(accounting_amount(at_current, 0))
+                w_disp = str(accounting_amount(at_display_target, 0))
+                v_disp = str(accounting_amount(at_variance, 0))
 
-            # Calculate individual account targets
-            for account in getattr(at, "active_accounts", []):
-                acc_total_value = getattr(account, "current_total_value", Decimal("0.00"))
+            groups.append(TargetAccountTypeGroupData(
+                account_type=TargetAccountTypeColumnData(
+                    account_type_id=at.id,
+                    code=at.code,
+                    label=at.label,
+                    current=c_disp,
+                    target_input_name="",
+                    target_input_value="",
+                    weighted_target=w_disp,
+                    vtarget=v_disp,
+                    current_raw=at_current,
+                    target_input_raw=Decimal(0),
+                    weighted_target_raw=at_display_target,
+                    vtarget_raw=at_variance,
+                    is_input=False
+                ),
+                accounts=accounts_data
+            ))
 
-                # Check for account override
-                if account.target_map:
-                    acc_non_cash_target_total = Decimal("0.00")
-                    for ac_id, val in account.target_map.items():
-                         if ac_id != cash_asset_class_id:
-                             acc_non_cash_target_total += val
-                    acc_cash_target_pct = Decimal("100.00") - acc_non_cash_target_total
-                else:
-                    # Fallback to account type default
-                    acc_cash_target_pct = cash_target_pct
+        # Portfolio Variance
+        portfolio_variance = portfolio_current - portfolio_target
 
-                if acc_cash_target_pct < 0:
-                    acc_cash_target_pct = Decimal("0.00")
+        if mode == "percent":
+             p_current_pct = (portfolio_current / portfolio_total_value * 100) if portfolio_total_value else Decimal(0)
+             p_target_pct = (portfolio_target / portfolio_total_value * 100) if portfolio_total_value else Decimal(0)
 
-                target_by_account[account.id] = acc_total_value * (acc_cash_target_pct / Decimal("100.00"))
+             p_c_disp = str(accounting_percent(p_current_pct, 1))
+             p_t_disp = str(accounting_percent(p_target_pct, 1))
+             p_v_disp = str(accounting_percent(p_current_pct - p_target_pct, 1))
+        else:
+             p_c_disp = str(accounting_amount(portfolio_current, 0))
+             p_t_disp = str(accounting_amount(portfolio_target, 0))
+             p_v_disp = str(accounting_amount(portfolio_variance, 0))
 
-        return self._build_category_row(
-            label="Cash",
+        return TargetAllocationTableRow(
+            asset_class_id=cash_asset_class_id,
+            asset_class_name="Cash",
             category_code="CASH",
-            current_by_at=current_by_at,
-            target_by_at=target_by_at,
-            variance_pct_by_at=variance_pct_by_at,
-            current_by_account=cash_group.account_totals,
-            target_by_account=target_by_account,
-            portfolio_current=cash_group.total,
-            portfolio_target=portfolio_target_total,
-            portfolio_variance=cash_group.total - portfolio_target_total,
-            account_types=account_types,
-            portfolio_total_value=portfolio_total_value,
-            mode=mode,
             is_subtotal=False,
             is_group_total=False,
             is_grand_total=False,
             is_cash=True,
-            asset_class_id=cash_asset_class_id,
-            summary=summary,
+            groups=groups,
+            portfolio_current=p_c_disp,
+            portfolio_target=p_t_disp,
+            portfolio_vtarget=p_v_disp,
+            row_css_class="table-info"
         )
 
     def _build_grand_total_row(
         self,
         *,
-        summary: Any,
+        grand_total: Decimal,
+        at_grand_totals: dict[int, Decimal],
         account_types: list[Any],
         portfolio_total_value: Decimal,
         mode: str,
     ) -> TargetAllocationTableRow:
-        current_by_at = {}
-        target_by_at = {}
-        variance_pct_by_at = {}
+        # Grand Total Row
+        groups = []
 
         for at in account_types:
-            current_val = summary.account_type_grand_totals.get(at.code, Decimal("0.00"))
-            current_by_at[at.code] = current_val
-            target_by_at[at.code] = current_val  # Target = Current for Grand Total
-            variance_pct_by_at[at.code] = Decimal("0.00")
+            at_current = at_grand_totals.get(at.id, Decimal("0.00"))
 
-        return self._build_category_row(
-            label="Total",
+            # Grand total target = current (variance 0)
+            at_target = at_current
+            Decimal("0.00")
+
+            accounts_data = []
+            for acc in getattr(at, "active_accounts", []):
+                # We need acc current
+                # Pass data? Or assume we can look it up?
+                # We didn't pass account data.
+                # But grand total logic implies we sum everything?
+                # Actually, account.current_total_value IS the grand total for that account.
+                acc_current = getattr(acc, "current_total_value", Decimal("0.00"))
+                acc_target = acc_current
+
+                # Formatting
+                if mode == "percent":
+                   # % of Account Total (100%)
+                   c_disp = "100.0%"
+                   t_disp = "100.0%"
+                   v_disp = "0.0%"
+                else:
+                   c_disp = str(accounting_amount(acc_current, 0))
+                   t_disp = str(accounting_amount(acc_target, 0))
+                   v_disp = "0"
+
+                accounts_data.append(TargetAccountColumnData(
+                    account_id=acc.id,
+                    account_name=acc.name,
+                    account_type_id=at.id,
+                    current=c_disp,
+                    target=t_disp,
+                    vtarget=v_disp,
+                    current_raw=acc_current,
+                    target_raw=acc_target,
+                    vtarget_raw=Decimal(0),
+                    input_name="",
+                    input_value="",
+                    is_input=False
+                ))
+
+            if mode == "percent":
+                   c_disp = "100.0%"
+                   w_disp = "100.0%"
+                   v_disp = "0.0%"
+            else:
+                   c_disp = str(accounting_amount(at_current, 0))
+                   w_disp = str(accounting_amount(at_target, 0))
+                   v_disp = "0"
+
+            groups.append(TargetAccountTypeGroupData(
+                account_type=TargetAccountTypeColumnData(
+                    account_type_id=at.id,
+                    code=at.code,
+                    label=at.label,
+                    current=c_disp,
+                    target_input_name="",
+                    target_input_value="",
+                    weighted_target=w_disp,
+                    vtarget=v_disp,
+                    current_raw=at_current,
+                    target_input_raw=Decimal(0),
+                    weighted_target_raw=at_target,
+                    vtarget_raw=Decimal(0),
+                    is_input=False
+                ),
+                accounts=accounts_data
+            ))
+
+        # Portfolio
+        if mode == "percent":
+             p_c_disp = "100.0%"
+             p_t_disp = "100.0%"
+             p_v_disp = "0.0%"
+        else:
+             p_c_disp = str(accounting_amount(grand_total, 0))
+             p_t_disp = str(accounting_amount(grand_total, 0))
+             p_v_disp = "0"
+
+        return TargetAllocationTableRow(
+            asset_class_id=0,
+            asset_class_name="Total",
             category_code="",
-            current_by_at=current_by_at,
-            target_by_at=target_by_at,
-            variance_pct_by_at=variance_pct_by_at,
-            current_by_account={},
-            target_by_account={},
-            portfolio_current=summary.grand_total,
-            portfolio_target=summary.grand_total,
-            portfolio_variance=Decimal("0.00"),
-            account_types=account_types,
-            portfolio_total_value=portfolio_total_value,
-            mode=mode,
             is_subtotal=False,
             is_group_total=False,
             is_grand_total=True,
             is_cash=False,
-            summary=summary,
-        )
-
-    def _build_category_row(
-        self,
-        *,
-        label: str,
-        category_code: str,
-        current_by_at: dict[str, Decimal],
-        target_by_at: dict[str, Decimal],
-        variance_pct_by_at: dict[str, Decimal],
-        current_by_account: dict[int, Decimal],
-        target_by_account: dict[int, Decimal],
-        portfolio_current: Decimal,
-        portfolio_target: Decimal,
-        portfolio_variance: Decimal,
-        account_types: list[Any],
-        portfolio_total_value: Decimal,
-        mode: str,
-        is_subtotal: bool,
-        is_group_total: bool,
-        is_grand_total: bool,
-        is_cash: bool,
-        summary: Any,
-        asset_class_id: int = 0,
-    ) -> TargetAllocationTableRow:
-        groups = []
-
-        # Create CSS class for row highlighting/styling
-        row_css_class = ""
-        if is_subtotal:
-            row_css_class = "table-secondary fw-bold"
-        elif is_group_total:
-            row_css_class = "table-primary fw-bold"
-        elif is_grand_total:
-            row_css_class = "table-dark fw-bold"
-
-        if is_cash:
-            row_css_class += " table-info"
-
-        # Calculate Portfolio Variance
-        if mode == "percent":
-            portfolio_current_fmt = str(
-                accounting_percent(
-                    (portfolio_current / portfolio_total_value) * 100
-                    if portfolio_total_value
-                    else 0,
-                    1,
-                )
-            )
-            portfolio_target_fmt = str(
-                accounting_percent(
-                    (portfolio_target / portfolio_total_value) * 100
-                    if portfolio_total_value
-                    else 0,
-                    1,
-                )
-            )
-            # Variance for portfolio total in percent mode
-            # For asset rows: calculated by SummaryService?
-            # For calculated rows above: passed in.
-            # But wait, `portfolio_variance` passed in is DOLLAR variance for some calls?
-            # Recheck `_build_cash_row`: passes `cash_group.total - portfolio_target_total`. That's dollars.
-            # So we need to convert to percent if mode is percent.
-            # SummaryService calculates `ac_data.variance_total` as dollars.
-            p_var_pct = (
-                (portfolio_variance / portfolio_total_value) * 100
-                if portfolio_total_value > 0
-                else Decimal("0.00")
-            )
-            portfolio_vtarget_fmt = str(accounting_percent(p_var_pct, 1))
-
-        else:
-            portfolio_current_fmt = str(accounting_amount(portfolio_current, 0))
-            portfolio_target_fmt = str(accounting_amount(portfolio_target, 0))
-            portfolio_vtarget_fmt = str(accounting_amount(portfolio_variance, 0))
-
-        for at in account_types:
-            accounts = []
-            # Iterate accounts within type
-            for account in getattr(at, "active_accounts", []):
-                # Get current value for account
-                acc_current = current_by_account.get(account.id, Decimal("0.00"))
-                # Get target (only if not grand total/calculated?)
-                acc_target = target_by_account.get(account.id, Decimal("0.00"))
-
-                # Determine raw values
-                # For input fields (Asset Rows), we need to check if there is an input value.
-                # But inputs are only for Asset Rows?
-                # Yes, `is_subtotal` etc are False.
-
-                is_input = not (is_subtotal or is_group_total or is_grand_total or is_cash)
-                input_name = f"target_account_{account.id}_{asset_class_id}"
-                input_val = ""
-
-                if is_input:
-                    # Check for override first
-                    configured_pct = account.target_map.get(asset_class_id)
-                    if configured_pct is None:
-                        # Fallback to account type default
-                        configured_pct = at.target_map.get(asset_class_id, Decimal("0.00"))
-
-                    input_val = str(configured_pct)
-
-                # Variance
-                # If row is asset, variance is per account?
-                # SummaryService calculates variance per account-type, but maybe not per account-asset-class?
-                # `cat_data.account_variance_totals` exists.
-                # But `ac_data` doesn't seem to have per-account variance in `SummaryService`.
-                # Wait, step 19 doesn't show per-account variance on AssetClassEntry.
-                # It shows `account_asset_targets` on summary.
-                # So we can calculate it: Current - TargetDollars.
-                # TargetDollars = AccountTotal * (ConfiguredPct / 100).
-
-                acc_total_val = getattr(account, "current_total_value", Decimal("0.00"))
-                acc_current_pct = (
-                    (acc_current / acc_total_val * 100) if acc_total_val > 0 else Decimal("0.00")
-                )
-
-                acc_target_dollars = Decimal("0.00")
-                if is_input:
-                    acc_target_dollars = summary.account_asset_targets[account.id].get(
-                        asset_class_id, Decimal("0.00")
-                    )
-                else:
-                    acc_target_dollars = acc_target
-
-                acc_target_pct = (
-                    (acc_target_dollars / acc_total_val * 100)
-                    if acc_total_val > 0
-                    else Decimal("0.00")
-                )
-                acc_variance = acc_current - acc_target_dollars
-                acc_variance_pct = acc_current_pct - acc_target_pct
-
-                if mode == "percent":
-                    current_disp = str(accounting_percent(acc_current_pct, 1))
-                    target_disp = str(accounting_percent(acc_target_pct, 1))
-                    vtarget_disp = str(accounting_percent(acc_variance_pct, 1))
-                else:
-                    current_disp = str(accounting_amount(acc_current, 0))
-                    target_disp = str(accounting_amount(acc_target_dollars, 0))
-                    vtarget_disp = str(accounting_amount(acc_variance, 0))
-
-                accounts.append(
-                    TargetAccountColumnData(
-                        account_id=account.id,
-                        account_name=account.name,
-                        account_type_id=at.id,
-                        current=current_disp,
-                        target=target_disp,
-                        vtarget=vtarget_disp,
-                        current_raw=acc_current,
-                        target_raw=acc_target_dollars,
-                        vtarget_raw=acc_variance,
-                        input_name=input_name,
-                        input_value=input_val,
-                        is_input=is_input,
-                    )
-                )
-
-            # Account Type Group Columns
-            at_code = at.code
-            at_current = current_by_at.get(at_code, Decimal("0.00"))
-            at_target = target_by_at.get(at_code, Decimal("0.00"))  # Dollars
-
-            at_variance_pct = variance_pct_by_at.get(at_code, Decimal("0.00"))
-
-            # Weighted Target (Asset Class Only)
-            # If subtotal, we sum?
-            # If asset class, it's the "Average" target?
-            # Or just "Target %"?
-            # Existing template logic: `{{ at_data.target_pct }}`.
-            # In `AllocationTableBuilder`: we calculated `target_pct`.
-            # Here: `at_target` is dollars (from summary).
-            # Convert to % of AccountType Total.
-            at_total_val = getattr(at, "current_total_value", Decimal("0.00"))
-
-            if at_total_val > 0:
-                at_weighted_target_pct = (at_target / at_total_val) * 100
-                at_current_pct = (at_current / at_total_val) * 100
-            else:
-                at_weighted_target_pct = Decimal("0.00")
-                at_current_pct = Decimal("0.00")
-
-            # Input for Account Type (Apply to All - Default Target)
-            at_input_name = f"target_{at.id}_{asset_class_id}"
-            at_configured_pct = at.target_map.get(asset_class_id, Decimal("0.00"))
-            at_input_val = str(at_configured_pct)
-
-            if mode == "percent":
-                # Display Percentages
-                current_disp = str(accounting_percent(at_current_pct, 1))
-                # Weighted Target is the target %
-                weighted_disp = str(accounting_percent(at_weighted_target_pct, 1))
-                vtarget_disp = str(accounting_percent(at_current_pct - at_weighted_target_pct, 1))
-            else:
-                # Display Dollars
-                current_disp = str(accounting_amount(at_current, 0))
-                weighted_disp = str(accounting_amount(at_target, 0))
-                vtarget_disp = str(accounting_amount(at_current - at_target, 0))
-
-            groups.append(
-                TargetAccountTypeGroupData(
-                    account_type=TargetAccountTypeColumnData(
-                        account_type_id=at.id,
-                        code=at.code,
-                        label=at.label,
-                        current=current_disp,
-                        target_input_name=at_input_name,
-                        target_input_value=at_input_val,
-                        weighted_target=weighted_disp,
-                        vtarget=vtarget_disp,
-                        current_raw=at_current,
-                        target_input_raw=Decimal("0.00"),  # placeholder
-                        weighted_target_raw=at_weighted_target_pct
-                        if mode == "percent"
-                        else at_target,
-                        vtarget_raw=at_variance_pct
-                        if mode == "percent"
-                        else (at_current - at_target),
-                        is_input=is_input,
-                    ),
-                    accounts=accounts,
-                )
-            )
-
-        return TargetAllocationTableRow(
-            asset_class_id=asset_class_id,
-            asset_class_name=label,
-            category_code=category_code,
-            is_subtotal=is_subtotal,
-            is_group_total=is_group_total,
-            is_grand_total=is_grand_total,
-            is_cash=is_cash,
             groups=groups,
-            portfolio_current=portfolio_current_fmt,
-            portfolio_target=portfolio_target_fmt,
-            portfolio_vtarget=portfolio_vtarget_fmt,
-            row_css_class=row_css_class,
+            portfolio_current=p_c_disp,
+            portfolio_target=p_t_disp,
+            portfolio_vtarget=p_v_disp,
+            row_css_class="table-dark fw-bold"
         )

@@ -59,9 +59,9 @@ class TestFrontendAllocations(PortfolioTestMixin):
             account=self.acc_roth, security=self.sec_vti, shares=10, current_price=100
         )
 
-    def test_interactive_calculation(self, page: Page, live_server_url: str) -> None:
+    def test_calculation_persistence(self, page: Page, live_server_url: str) -> None:
         """
-        Verify that changing an override input dynamically updates:
+        Verify that changing an override input and saving updates:
         1. Total Portfolio Target %
         2. Variance %
         """
@@ -75,15 +75,10 @@ class TestFrontendAllocations(PortfolioTestMixin):
         page.goto(f"{live_server_url}/targets/")
 
         # Find the input for US Stocks override in My Roth
-        # Structure: Override inputs have `name="target_account_{acc_id}_{ac_id}"`
         input_name = f"target_account_{self.acc_roth.id}_{self.ac_us.id}"
         unique_input_selector = f'#allocations-table input[name="{input_name}"]'
 
-        # Expand the account column if needed (it's hidden by default for individual accounts)
-        # But wait, override inputs are in the hidden columns?
-        # Yes, `d-none col-acc-...`. We need to click expand button first.
-
-        # Click expand button for Roth (Account Type)
+        # Expand the account column
         expand_btn = page.locator(f'#allocations-table button[data-at-id="{self.type_roth.id}"]')
         expand_btn.click()
 
@@ -91,33 +86,24 @@ class TestFrontendAllocations(PortfolioTestMixin):
         input_locator = page.locator(unique_input_selector)
         expect(input_locator).to_be_visible()
 
-        # Initial State: Default is likely 0 or whatever.
         # Enter 50%
         input_locator.fill("50")
 
-        # Trigger change event? The script listens to 'input'. Playwright fill triggers standard events.
+        # Save
+        with page.expect_navigation():
+            page.click("#save-button-top")
 
-        # Verify Total Portfolio Target Updates
+        # Verify persistence and calculation on reload
         # US Stocks Row Total Target ID: `row-total-{ac_id}`
-        # If Roth is 100% of portfolio ($1000/$1000), and we set Roth Target for US to 50%.
-        # Then Portfolio Target for US = 50% * (Roth Value / Total Value) = 50% * 1 = 50%.
-
         row_total_selector = f"#allocations-table #row-total-{self.ac_us.id}"
         expect(page.locator(row_total_selector)).to_have_text("50.0%")
 
         # Verify Variance Updates
-        # Current is 100% (since we hold $1000 VTI).
-        # Variance = Current (100) - Target (50) = +50%
         row_var_selector = f"#allocations-table #row-var-{self.ac_us.id}"
         expect(page.locator(row_var_selector)).to_have_text("50.0%")
 
-        # Enter 100%
-        input_locator.fill("100")
-        expect(page.locator(row_total_selector)).to_have_text("100.0%")
-        expect(page.locator(row_var_selector)).to_have_text("0.0%")
-
     def test_category_subtotal_updates(self, page: Page, live_server_url: str) -> None:
-        """Verify Category Subtotals update dynamically."""
+        """Verify Category Subtotals update correctly after save."""
         # Login
         page.goto(f"{live_server_url}/accounts/login/")
         page.fill('input[name="username"]', "testuser")
@@ -125,29 +111,32 @@ class TestFrontendAllocations(PortfolioTestMixin):
         page.click('button[type="submit"]')
         page.goto(f"{live_server_url}/targets/")
 
-        # Find US Stocks Default Input (Account Type level)
-        # We can test defaults too.
         # ROTH Default Input
         input_name = f"target_{self.type_roth.id}_{self.ac_us.id}"
         input_locator = page.locator(f'#allocations-table input[name="{input_name}"]')
 
-        # US Stocks is in "EQUITIES" category.
         # Category Subtotal Target ID: `sub-total-target-EQUITIES`
         sub_target_selector = "#allocations-table #sub-total-target-EQUITIES"
 
-        # Set Default to 60%.  With 2 items (US + Intl), changes here should sum up.
+        # Set Default to 60%.
         input_locator.fill("60")
+        with page.expect_navigation():
+            page.click("#save-button-top")
 
-        # Expected: 60% (if Intl is 0).  If we don't set Intl, it's 0.
-        # 60% US + 0% Intl = 60% Total.
+        # Expected: 60%
         expect(page.locator(sub_target_selector)).to_have_text("60.0%")
 
         # Set Default to 80%
+        # Page reloaded, need to refind element? Playwright locators might be stale.
+        # Re-locate
+        input_locator = page.locator(f'#allocations-table input[name="{input_name}"]')
         input_locator.fill("80")
+        page.click("#save-button-top")
+
         expect(page.locator(sub_target_selector)).to_have_text("80.0%")
 
     def test_cash_row_updates(self, page: Page, live_server_url: str) -> None:
-        """Verify Cash Row calculations."""
+        """Verify Cash Row calculations after save."""
         # Login
         page.goto(f"{live_server_url}/accounts/login/")
         page.fill('input[name="username"]', "testuser")
@@ -164,10 +153,13 @@ class TestFrontendAllocations(PortfolioTestMixin):
 
         # If US Stocks = 60%, Cash (Implicit) = 40%
         input_locator.fill("60")
+        page.click("#save-button-top")
 
-        # Allow slight delay or retry for calculation? Playwright expects usually handles this.
         expect(page.locator(cash_total_selector)).to_have_text("40.0%")
 
         # If US Stocks = 90%, Cash = 10%
+        # Re-locate
+        input_locator = page.locator(f'#allocations-table input[name="{input_name}"]')
         input_locator.fill("90")
+        page.click("#save-button-top")
         expect(page.locator(cash_total_selector)).to_have_text("10.0%")

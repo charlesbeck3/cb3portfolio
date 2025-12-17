@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 from collections import defaultdict
 from decimal import Decimal
 from typing import Any, cast
 
 from django.db import transaction
+
+import pandas as pd
 
 from portfolio.models import (
     Account,
@@ -12,15 +15,17 @@ from portfolio.models import (
     AccountTypeStrategyAssignment,
     AllocationStrategy,
     AssetClass,
-    Holding,
     TargetAllocation,
 )
 from portfolio.presenters import TargetAllocationTableBuilder
+from portfolio.services.allocation_calculations import AllocationCalculationEngine
 from users.models import CustomUser
 
 
 class TargetAllocationViewService:
-    def build_context(self, *, user: CustomUser, summary_service: Any) -> dict[str, Any]:
+    def build_context(self, *, user: CustomUser) -> dict[str, Any]:
+        engine = AllocationCalculationEngine()
+
         defaults_map: dict[int, dict[int, Decimal]] = defaultdict(dict)
         overrides_map: dict[int, dict[int, Decimal]] = defaultdict(dict)
 
@@ -46,7 +51,7 @@ class TargetAllocationViewService:
             .select_related("account_type", "allocation_strategy")
             .all()
         )
-        account_map = {a.id: a for a in accounts}
+        {a.id: a for a in accounts}
 
         override_accounts = [a for a in accounts if a.allocation_strategy_id]
         strategy_ids.update(cast(int, a.allocation_strategy_id) for a in override_accounts)
@@ -67,33 +72,71 @@ class TargetAllocationViewService:
         for acc in override_accounts:
             overrides_map[acc.id] = alloc_map.get(cast(int, acc.allocation_strategy_id), {})
 
-        summary = summary_service.get_holdings_summary(user)
+        # Fetch Portfolio and convert to DataFrame
+        portfolio = accounts[0].portfolio if accounts else None
+        holdings_df = pd.DataFrame()
 
-        sidebar_data = summary_service.get_account_summary(user)
+        if portfolio:
+            portfolios = list({acc.portfolio for acc in accounts if acc.portfolio})
+            dfs = []
+            for p in portfolios:
+                dfs.append(p.to_dataframe())
+
+            if dfs:
+                holdings_df = pd.concat(dfs)
+
+        # Calculate Allocations
+        allocations = engine.calculate_allocations(holdings_df)
 
         account_totals: dict[int, Decimal] = {}
-        for group in sidebar_data["groups"].values():
-            for acc in group["accounts"]:
-                account_totals[acc["id"]] = acc["total"]
-
-        at_totals = summary.account_type_grand_totals
-
-        strategies = AllocationStrategy.objects.filter(user=user).order_by("name")
-
         at_values: dict[int, Decimal] = {}
-        account_types: list[Any] = []
 
+        df_at = allocations.get("by_account_type")
+        df_acc = allocations.get("by_account")
+
+        # Handle MultiIndex for by_account (index is [Type, Cat, Name])
+        if df_acc is not None and isinstance(df_acc.index, pd.MultiIndex):
+            # Reset index to make accessing by Name easier, assuming Name is unique per user/portfolio context
+            # or minimally we index by it.
+            # We keep other columns if needed, but we mostly need values.
+            # Level 2 is Account_Name.
+            with contextlib.suppress(IndexError, ValueError):
+                df_acc = df_acc.reset_index(level=[0, 1])
+
+            # Update allocations dict so Builder receives normalized DF
+            allocations['by_account'] = df_acc
+
+        account_types = []
         for at_obj in account_types_qs:
             at: Any = at_obj
             at_accounts = [a for a in accounts if a.account_type_id == at.id]
 
-            at.current_total_value = at_totals.get(at.code, Decimal("0.00"))
+            at_total = Decimal("0.00")
+            if df_at is not None and at.label in df_at.index:
+                dollar_cols = [c for c in df_at.columns if c.endswith("_dollars")]
+                at_total = Decimal(float(df_at.loc[at.label, dollar_cols].sum()))
+
+            at.current_total_value = at_total
             at.target_map = defaults_map.get(at.id, {})
-            at_values[at.id] = at.current_total_value
+            at_values[at.id] = at_total
 
             for acc in at_accounts:
-                acc.current_total_value = account_totals.get(acc.id, Decimal("0.00"))  # type: ignore[attr-defined]
-                acc.target_map = overrides_map.get(acc.id, {})  # type: ignore[attr-defined]
+                acc_total = Decimal("0.00")
+                if df_acc is not None and acc.name in df_acc.index:
+                     dollar_cols = [c for c in df_acc.columns if c.endswith("_dollars")]
+                     # Could be Series or DataFrame if name partial match? Exact match on Index expected.
+                     rows = df_acc.loc[acc.name, dollar_cols]
+                     if isinstance(rows, pd.Series):
+                         acc_total = Decimal(float(rows.sum()))
+                     else:
+                         # Ensure we sum scalar values if it's single row DF
+                         acc_total = Decimal(float(rows.sum().sum())) # sum columns then rows?
+                         # Usually distinct names, so single row.
+                         pass
+
+                acc.current_total_value = acc_total
+                account_totals[acc.id] = acc_total
+                acc.target_map = overrides_map.get(acc.id, {})
 
             if at.id in assignment_by_at_id:
                 at.active_strategy_id = assignment_by_at_id[at.id].allocation_strategy_id
@@ -103,74 +146,81 @@ class TargetAllocationViewService:
             at.active_accounts = at_accounts
             account_types.append(at)
 
-        holdings = (
-            Holding.objects.filter(account__user=user)
-            .select_related("security", "account")
-            .only("account_id", "security__asset_class_id", "shares", "current_price")
-        )
+        # Build Metadata & Hierarchy
+        ac_qs = AssetClass.objects.select_related('category__parent').all()
+        ac_meta = {}
+        hierarchy: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
 
-        account_ac_map: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
-        at_ac_map: dict[int, dict[int, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+        sorted_acs = sorted(ac_qs, key=lambda x: (
+            x.category.parent.sort_order if x.category.parent else x.category.sort_order,
+            x.category.parent.code if x.category.parent else x.category.code,
+            x.category.sort_order,
+            x.category.code,
+            x.name
+        ))
 
-        for h in holdings:
-            if h.current_price:
-                val = h.shares * h.current_price
-                if val > 0:
-                    ac_id = h.security.asset_class_id
-                    acc_id = h.account.id
-                    at_id = account_map[acc_id].account_type_id
+        for ac in sorted_acs:
+            if ac.category.parent:
+                grp_code = ac.category.parent.code
+                grp_label = ac.category.parent.label
+            else:
+                grp_code = ac.category.code
+                grp_label = ac.category.label
 
-                    account_ac_map[acc_id][ac_id] += val
-                    at_ac_map[at_id][ac_id] += val
+            cat_code = ac.category.code
+            cat_label = ac.category.label
 
-        ac_id_to_cat: dict[int, str] = {}
-        for group in summary.groups.values():
-            for cat_code, cat_data in group.categories.items():
-                for _ac_name, ac_data in cat_data.asset_classes.items():
-                    if ac_data.id:
-                        ac_id_to_cat[ac_data.id] = cat_code
+            ac_meta[ac.name] = {
+                'id': ac.id,
+                'group_code': grp_code,
+                'group_label': grp_label,
+                'category_code': cat_code,
+                'category_label': cat_label
+            }
 
-        for at in account_types:
-            at.dollar_map = at_ac_map[at.id]
-            at.allocation_map = {}
-            if at.current_total_value > 0:
-                for ac_id, val in at.dollar_map.items():
-                    at.allocation_map[ac_id] = (val / at.current_total_value) * 100
-
-            for acc in at.active_accounts:
-                acc.dollar_map = account_ac_map[acc.id]
-                acc.allocation_map = {}
-                if acc.current_total_value > 0:
-                    for ac_id, val in acc.dollar_map.items():
-                        acc.allocation_map[ac_id] = (val / acc.current_total_value) * 100
-
-                acc.category_map = defaultdict(Decimal)
-                for ac_id, val in acc.dollar_map.items():
-                    holding_cat_code = ac_id_to_cat.get(ac_id)
-                    if holding_cat_code:
-                        acc.category_map[holding_cat_code] += val
+            hierarchy[grp_code][cat_code].append(ac.name)
 
         cash_ac = AssetClass.objects.filter(name="Cash").first()
 
         builder = TargetAllocationTableBuilder()
+
+        # Determine total value
+        total_val = Decimal("0.00")
+        if allocations['portfolio_summary'] is not None and not allocations['portfolio_summary'].empty:
+             val = allocations['portfolio_summary'].iloc[0].get('Total_Value')
+             if val is not None:
+                 total_val = Decimal(float(val))
+
         allocation_rows_percent = builder.build_rows(
-            summary=summary,
+            allocations=allocations,
+            ac_meta=ac_meta,
+            hierarchy=hierarchy,
             account_types=account_types,
-            portfolio_total_value=summary.grand_total,
+            portfolio_total_value=total_val,
             mode="percent",
             cash_asset_class_id=cash_ac.id if cash_ac else None,
+            account_targets={}
         )
         allocation_rows_money = builder.build_rows(
-            summary=summary,
+            allocations=allocations,
+            ac_meta=ac_meta,
+            hierarchy=hierarchy,
             account_types=account_types,
-            portfolio_total_value=summary.grand_total,
+            portfolio_total_value=total_val,
             mode="dollar",
             cash_asset_class_id=cash_ac.id if cash_ac else None,
+            account_targets={}
         )
+
+        strategies = AllocationStrategy.objects.filter(user=user).order_by("name")
+
+        class SimpleSummary:
+            grand_total = total_val
+
+        summary = SimpleSummary()
 
         return {
             "summary": summary,
-            "sidebar_data": sidebar_data,
             "account_types": account_types,
             "portfolio_total_value": summary.grand_total,
             "allocation_rows_percent": allocation_rows_percent,
