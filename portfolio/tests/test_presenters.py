@@ -21,7 +21,7 @@ class HoldingsTableBuilderTests(TestCase):
         holding_1.shares = Decimal("10.00")
         holding_1.target_shares = Decimal("12.00")  # Variance: -2 shares
         holding_1.value = Decimal("1500.00")
-        holding_1.target_value = Decimal("2000.00") # Variance: -500 value
+        holding_1.target_value = Decimal("2000.00")  # Variance: -500 value
         # Portfolio Total is 5000.
         # Alloc: 1500/5000 = 30%. Target Alloc: 2000/5000 = 40%. Var: -10%
 
@@ -41,7 +41,7 @@ class HoldingsTableBuilderTests(TestCase):
         cat_data.label = "US Stocks"
         cat_data.holdings = [holding_1, holding_2]
         cat_data.total = Decimal("4300.00")  # 1500 + 2800
-        cat_data.total_target_value = Decimal("4500.00") # 2000 + 2500
+        cat_data.total_target_value = Decimal("4500.00")  # 2000 + 2500
 
         # Group Mock
         group_data = MagicMock()

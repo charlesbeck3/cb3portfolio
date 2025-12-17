@@ -223,7 +223,9 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
             defaults={"description": f"Default strategy for {acc_tax.account_type.label}"},
         )
         strategy.target_allocations.all().delete()
-        TargetAllocation.objects.create(strategy=strategy, asset_class=ac_us, target_percent=Decimal("50.00"))
+        TargetAllocation.objects.create(
+            strategy=strategy, asset_class=ac_us, target_percent=Decimal("50.00")
+        )
         AccountTypeStrategyAssignment.objects.update_or_create(
             user=self.user,
             account_type=acc_tax.account_type,
@@ -269,7 +271,9 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         )
         Holding.objects.create(account=acc_tax, security=sec_intl, shares=10, current_price=50)
         # Add target for Intl: 40%
-        TargetAllocation.objects.create(strategy=strategy, asset_class=ac_intl, target_percent=Decimal("40.00"))
+        TargetAllocation.objects.create(
+            strategy=strategy, asset_class=ac_intl, target_percent=Decimal("40.00")
+        )
 
         # New Totals:
         # VTI: $1000. Target (50% of $1500? No, 50% of Account Total).

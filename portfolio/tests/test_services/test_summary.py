@@ -138,7 +138,9 @@ class PortfolioSummaryServiceTests(TestCase, PortfolioTestMixin):
         """Target allocations should produce target dollar amounts and zero variance when aligned."""
 
         roth_strategy = AllocationStrategy.objects.create(user=self.user, name="Roth Strategy")
-        taxable_strategy = AllocationStrategy.objects.create(user=self.user, name="Taxable Strategy")
+        taxable_strategy = AllocationStrategy.objects.create(
+            user=self.user, name="Taxable Strategy"
+        )
         TargetAllocation.objects.create(
             strategy=roth_strategy,
             asset_class=self.asset_class_us,

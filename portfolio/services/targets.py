@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from portfolio.domain.allocation import AssetAllocation
 from portfolio.models import Account, AllocationStrategy
 from users.models import CustomUser
 
@@ -41,8 +42,41 @@ class TargetAllocationService:
 
             allocations = strategy.target_allocations.select_related("asset_class").all()
             effective_targets[account.id] = {
-                a.asset_class.name: a.target_percent
-                for a in allocations
+                a.asset_class.name: a.target_percent for a in allocations
             }
 
         return effective_targets
+
+    @staticmethod
+    def get_effective_allocations(user: CustomUser) -> dict[int, list[AssetAllocation]]:
+        """Return mapping ``{account_id: [AssetAllocation, ...]}``.
+
+        Returns rich AssetAllocation domain objects instead of raw dicts.
+        Use this when you need variance/target calculations.
+        """
+
+        accounts = Account.objects.filter(user=user).select_related(
+            "account_type",
+            "portfolio",
+            "allocation_strategy",
+            "portfolio__allocation_strategy",
+        )
+
+        result: dict[int, list[AssetAllocation]] = {}
+
+        for account in accounts:
+            strategy: AllocationStrategy | None = account.get_effective_allocation_strategy()
+            if strategy is None:
+                result[account.id] = []
+                continue
+
+            allocations = strategy.target_allocations.select_related("asset_class").all()
+            result[account.id] = [
+                AssetAllocation(
+                    asset_class_name=a.asset_class.name,
+                    target_pct=a.target_percent,
+                )
+                for a in allocations
+            ]
+
+        return result

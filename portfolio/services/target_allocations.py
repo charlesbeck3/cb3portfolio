@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 from collections import defaultdict
 from decimal import Decimal
 from typing import Any, cast
@@ -33,7 +32,9 @@ class TargetAllocationViewService:
         )
 
         assignments = (
-            AccountTypeStrategyAssignment.objects.filter(user=user, account_type__in=account_types_qs)
+            AccountTypeStrategyAssignment.objects.filter(
+                user=user, account_type__in=account_types_qs
+            )
             .select_related("account_type", "allocation_strategy")
             .all()
         )

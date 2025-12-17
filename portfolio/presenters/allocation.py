@@ -509,9 +509,7 @@ class AllocationTableBuilder:
         else:
             portfolio_current = str(accounting_amount(cash_group.total, 0))
             portfolio_target = str(accounting_amount(portfolio_target_total, 0))
-            portfolio_vtarget = str(
-                accounting_amount(cash_group.total - portfolio_target_total, 0)
-            )
+            portfolio_vtarget = str(accounting_amount(cash_group.total - portfolio_target_total, 0))
 
         return AllocationTableRow(
             asset_class_id=cash_asset_class_id,

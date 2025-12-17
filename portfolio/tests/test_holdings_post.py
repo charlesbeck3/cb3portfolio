@@ -9,6 +9,7 @@ from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
 
+
 class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
     def setUp(self):
         self.setup_portfolio_data()
@@ -25,16 +26,19 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
         )
 
         # Create a security to add
-        self.cat_eq, _ = AssetClassCategory.objects.get_or_create(code="EQUITIES", defaults={"label": "Equities"})
-        self.ac_us, _ = AssetClass.objects.get_or_create(name="US Stocks", defaults={"category": self.cat_eq})
-        self.sec_us, _ = Security.objects.get_or_create(ticker="VTI", defaults={"name": "VTI", "asset_class": self.ac_us})
+        self.cat_eq, _ = AssetClassCategory.objects.get_or_create(
+            code="EQUITIES", defaults={"label": "Equities"}
+        )
+        self.ac_us, _ = AssetClass.objects.get_or_create(
+            name="US Stocks", defaults={"category": self.cat_eq}
+        )
+        self.sec_us, _ = Security.objects.get_or_create(
+            ticker="VTI", defaults={"name": "VTI", "asset_class": self.ac_us}
+        )
 
     def test_add_holding_success(self):
         url = reverse("portfolio:account_holdings", args=[self.account.id])
-        data = {
-            "security_id": self.sec_us.id,
-            "initial_shares": "10.00"
-        }
+        data = {"security_id": self.sec_us.id, "initial_shares": "10.00"}
         response = self.client.post(url, data, follow=True)
         self.assertContains(response, f"Added {self.sec_us.ticker} to account.")
 
@@ -48,7 +52,7 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
         url = reverse("portfolio:account_holdings", args=[self.account.id])
         data = {
             "security_id": self.sec_us.id,
-            "initial_shares": "10.00" # Attempt to add duplicate
+            "initial_shares": "10.00",  # Attempt to add duplicate
         }
         response = self.client.post(url, data, follow=True)
         self.assertContains(response, f"Holding for {self.sec_us.ticker} already exists")
@@ -72,12 +76,12 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
         Holding.objects.create(account=self.account, security=self.sec_us, shares=5)
 
         url = reverse("portfolio:account_holdings", args=[self.account.id])
-        data = {
-            "delete_ticker": "VTI"
-        }
+        data = {"delete_ticker": "VTI"}
         response = self.client.post(url, data, follow=True)
         self.assertContains(response, "Removed VTI from account")
-        self.assertFalse(Holding.objects.filter(account=self.account, security=self.sec_us).exists())
+        self.assertFalse(
+            Holding.objects.filter(account=self.account, security=self.sec_us).exists()
+        )
 
     def test_bulk_update_shares(self):
         h1 = Holding.objects.create(account=self.account, security=self.sec_us, shares=5)

@@ -7,7 +7,12 @@ from typing import Any
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import TemplateView
 
-from portfolio.models import AccountType, AccountTypeStrategyAssignment, AssetClass, TargetAllocation
+from portfolio.models import (
+    AccountType,
+    AccountTypeStrategyAssignment,
+    AssetClass,
+    TargetAllocation,
+)
 from portfolio.presenters import AllocationTableBuilder
 from portfolio.views.mixins import PortfolioContextMixin
 
@@ -37,7 +42,9 @@ class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         )
 
         assignments = (
-            AccountTypeStrategyAssignment.objects.filter(user=user, account_type__in=account_types_qs)
+            AccountTypeStrategyAssignment.objects.filter(
+                user=user, account_type__in=account_types_qs
+            )
             .select_related("account_type", "allocation_strategy")
             .all()
         )

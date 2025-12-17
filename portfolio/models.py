@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 from decimal import Decimal
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from django.conf import settings
+
+if TYPE_CHECKING:
+    from portfolio.domain.allocation import AssetAllocation
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
@@ -140,7 +145,9 @@ class AccountTypeStrategyAssignment(models.Model):
         ordering = ["account_type__label"]
 
     def __str__(self) -> str:
-        return f"{self.user.username} - {self.account_type.label} -> {self.allocation_strategy.name}"
+        return (
+            f"{self.user.username} - {self.account_type.label} -> {self.allocation_strategy.name}"
+        )
 
 
 class Institution(models.Model):
@@ -213,7 +220,7 @@ class Account(models.Model):
     def tax_treatment(self) -> str:
         return self.account_type.tax_treatment
 
-    def get_effective_allocation_strategy(self) -> Optional[AllocationStrategy]:
+    def get_effective_allocation_strategy(self) -> AllocationStrategy | None:
         if self.allocation_strategy_id:
             return self.allocation_strategy
 
@@ -253,16 +260,32 @@ class Account(models.Model):
             targets: Mapping of asset class name to target percentage (0-100).
         """
 
+        from portfolio.domain.allocation import AssetAllocation
+
+        allocations = [
+            AssetAllocation(asset_class_name=name, target_pct=pct) for name, pct in targets.items()
+        ]
+        return self.calculate_deviation_from_allocations(allocations)
+
+    def calculate_deviation_from_allocations(self, allocations: list[AssetAllocation]) -> Decimal:
+        """Calculate sum of absolute deviations from target allocation.
+
+        Args:
+            allocations: List of AssetAllocation domain objects.
+        """
         account_total = self.total_value()
         holdings_by_ac = self.holdings_by_asset_class()
 
+        # Build targets dict from allocations
+        targets_by_name = {a.asset_class_name: a for a in allocations}
+
         total_deviation = Decimal("0.00")
-        all_asset_classes = set(targets.keys()) | set(holdings_by_ac.keys())
+        all_asset_classes = set(targets_by_name.keys()) | set(holdings_by_ac.keys())
 
         for ac_name in all_asset_classes:
             actual = holdings_by_ac.get(ac_name, Decimal("0.00"))
-            target_pct = targets.get(ac_name, Decimal("0.00"))
-            target_value = account_total * target_pct / Decimal("100")
+            alloc = targets_by_name.get(ac_name)
+            target_value = alloc.target_value_for(account_total) if alloc else Decimal("0.00")
             total_deviation += abs(actual - target_value)
 
         return total_deviation
@@ -317,7 +340,7 @@ class TargetAllocation(models.Model):
         return (current_value - target_value) / account_total * Decimal("100")
 
     @classmethod
-    def validate_allocation_set(cls, allocations: list["TargetAllocation"]) -> tuple[bool, str]:
+    def validate_allocation_set(cls, allocations: list[TargetAllocation]) -> tuple[bool, str]:
         """Validate that a set of allocations does not exceed 100%."""
 
         total = sum((a.target_percent for a in allocations), Decimal("0.00"))

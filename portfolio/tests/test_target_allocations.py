@@ -213,7 +213,9 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         if the category has only 1 asset class.
         """
         # Let's create a new Category 'Bonds' with only 'US Bond'
-        bond_cat = AssetClassCategory.objects.create(label="Fixed Income", code="BONDS", sort_order=2)
+        bond_cat = AssetClassCategory.objects.create(
+            label="Fixed Income", code="BONDS", sort_order=2
+        )
         AssetClass.objects.create(name="US Bond", category=bond_cat)
 
         # Create Cash Asset Class if not exists (tests usually clear DB, but setUp might create some)

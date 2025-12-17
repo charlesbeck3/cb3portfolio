@@ -216,8 +216,6 @@ class TargetAllocationTableBuilder:
             is_grand_total=False,
             is_cash=False,
             asset_class_id=ac_data.id or 0,
-
-
         )
 
     def _build_cash_row(
@@ -280,7 +278,6 @@ class TargetAllocationTableBuilder:
             is_grand_total=False,
             is_cash=True,
             asset_class_id=cash_asset_class_id,
-
             summary=summary,
         )
 
@@ -435,7 +432,9 @@ class TargetAllocationTableBuilder:
                 # TargetDollars = AccountTotal * (ConfiguredPct / 100).
 
                 acc_total_val = getattr(account, "current_total_value", Decimal("0.00"))
-                acc_current_pct = (acc_current / acc_total_val * 100) if acc_total_val > 0 else Decimal("0.00")
+                acc_current_pct = (
+                    (acc_current / acc_total_val * 100) if acc_total_val > 0 else Decimal("0.00")
+                )
 
                 acc_target_dollars = Decimal("0.00")
                 if is_input:
@@ -445,7 +444,11 @@ class TargetAllocationTableBuilder:
                 else:
                     acc_target_dollars = acc_target
 
-                acc_target_pct = (acc_target_dollars / acc_total_val * 100) if acc_total_val > 0 else Decimal("0.00")
+                acc_target_pct = (
+                    (acc_target_dollars / acc_total_val * 100)
+                    if acc_total_val > 0
+                    else Decimal("0.00")
+                )
                 acc_variance = acc_current - acc_target_dollars
                 acc_variance_pct = acc_current_pct - acc_target_pct
 
@@ -453,7 +456,7 @@ class TargetAllocationTableBuilder:
                     current_disp = str(accounting_percent(acc_current_pct, 1))
                     if is_input:
                         # Input fields handle their own display value (input_val)
-                        target_disp = str(accounting_amount(acc_target_dollars, 0)) # Not used?
+                        target_disp = str(accounting_amount(acc_target_dollars, 0))  # Not used?
                     else:
                         target_disp = str(accounting_percent(acc_target_pct, 1))
                     vtarget_disp = str(accounting_percent(acc_variance_pct, 1))
@@ -536,7 +539,9 @@ class TargetAllocationTableBuilder:
                         weighted_target_raw=at_weighted_target_pct
                         if mode == "percent"
                         else at_target,
-                        vtarget_raw=at_variance_pct if mode == "percent" else (at_current - at_target),
+                        vtarget_raw=at_variance_pct
+                        if mode == "percent"
+                        else (at_current - at_target),
                         is_input=is_input,
                     ),
                     accounts=accounts,

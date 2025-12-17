@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from portfolio.domain.allocation import AssetAllocation
+
 if TYPE_CHECKING:
     from portfolio.models import Account
     from users.models import CustomUser
@@ -69,6 +71,52 @@ class Portfolio:
         """Get all accounts of a specific type."""
 
         return [acc for acc in self.accounts if acc.account_type.code == account_type_code]
+
+    def get_account_totals(self) -> dict[int, Decimal]:
+        """Get total value for each account by account ID."""
+
+        return {acc.id: acc.total_value() for acc in self.accounts}
+
+    def get_account_type_map(self) -> dict[int, str]:
+        """Get mapping of account ID to account type code."""
+
+        return {acc.id: acc.account_type.code for acc in self.accounts}
+
+    def variance_from_allocations(
+        self,
+        effective_allocations: dict[int, list[AssetAllocation]],
+    ) -> dict[str, Decimal]:
+        """Calculate variance (current - target) by asset class across portfolio.
+
+        Uses AssetAllocation domain objects for calculations.
+
+        Args:
+            effective_allocations: {account_id: [AssetAllocation, ...]}
+
+        Returns:
+            {asset_class_name: variance_in_dollars}
+        """
+
+        target_by_ac: dict[str, Decimal] = {}
+
+        for account in self.accounts:
+            account_total = account.total_value()
+            allocations = effective_allocations.get(account.id, [])
+
+            for alloc in allocations:
+                target_dollars = alloc.target_value_for(account_total)
+                target_by_ac[alloc.asset_class_name] = (
+                    target_by_ac.get(alloc.asset_class_name, Decimal("0.00")) + target_dollars
+                )
+
+        current_by_ac = self.value_by_asset_class()
+        all_asset_classes = set(current_by_ac.keys()) | set(target_by_ac.keys())
+
+        return {
+            ac_name: current_by_ac.get(ac_name, Decimal("0.00"))
+            - target_by_ac.get(ac_name, Decimal("0.00"))
+            for ac_name in all_asset_classes
+        }
 
     @classmethod
     def load_for_user(cls, user: CustomUser) -> Portfolio:

@@ -144,4 +144,3 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             messages.info(request, "No changes saved.")
 
         return redirect("portfolio:account_holdings", account_id=account.id)
-

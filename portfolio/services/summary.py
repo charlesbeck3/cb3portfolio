@@ -5,7 +5,8 @@ from collections import OrderedDict, defaultdict
 from decimal import Decimal
 from typing import Any
 
-from portfolio.models import Account, AssetClassCategory, Holding
+from portfolio.domain.portfolio import Portfolio
+from portfolio.models import AssetClassCategory, Holding
 from portfolio.services.pricing import PricingService
 from portfolio.services.targets import TargetAllocationService
 from portfolio.structs import AggregatedHolding, HoldingsCategory, HoldingsGroup, PortfolioSummary
@@ -44,26 +45,32 @@ class PortfolioSummaryService:
     def get_holdings_summary(self, user: CustomUser) -> PortfolioSummary:
         """Aggregate holdings and targets into a PortfolioSummary struct.
 
-        Currently reuses the existing aggregation logic while routing all
-        service calls through injected collaborators. A later refactor step
-        can replace the internals with logic based on the Portfolio aggregate.
+        Uses the Portfolio aggregate to provide account-level data, while
+        the service handles the detailed category/asset-class breakdown
+        required by the PortfolioSummary view model.
         """
 
-        # Ensure prices are up to date. Use the static wrapper so tests that
-        # patch PortfolioSummaryService.update_prices continue to work.
+        # Ensure prices are up to date
         self.update_prices(user)
+
+        # Load portfolio aggregate for account-level data
+        portfolio = Portfolio.load_for_user(user)
 
         holdings = Holding.objects.get_for_summary(user)
         categories = AssetClassCategory.objects.select_related("parent").all()
-        return self._build_summary(user, holdings, categories)
+        return self._build_summary(user, holdings, categories, portfolio)
 
-    def _build_summary(self, user: CustomUser, holdings: Any, categories: Any) -> PortfolioSummary:
+    def _build_summary(
+        self,
+        user: CustomUser,
+        holdings: Any,
+        categories: Any,
+        portfolio: Portfolio,
+    ) -> PortfolioSummary:
         """Build a PortfolioSummary from holdings and category data.
 
-        This helper encapsulates the construction of the PortfolioSummary
-        struct from the raw querysets. A later refactor can change the
-        parameters to operate on a Portfolio aggregate instead, while keeping
-        callers stable.
+        Uses the Portfolio aggregate for account-level totals and type mappings,
+        while performing detailed per-holding aggregation for the view model.
         """
 
         category_labels, category_group_map, group_labels = self._build_category_maps(categories)
@@ -86,8 +93,9 @@ class PortfolioSummaryService:
             ac_entry = summary.categories[cat_code].asset_classes[ac.name]
             ac_entry.id = ac.id
 
-        account_totals: dict[int, Decimal] = defaultdict(Decimal)
-        account_type_map: dict[int, str] = {}
+        # Get account-level data from Portfolio aggregate
+        account_totals = portfolio.get_account_totals()
+        account_type_map = portfolio.get_account_type_map()
 
         self._aggregate_holdings(
             summary, holdings, category_group_map, group_labels, account_totals, account_type_map
@@ -124,15 +132,21 @@ class PortfolioSummaryService:
         account_totals: dict[int, Decimal],
         account_type_map: dict[int, str],
     ) -> None:
+        """Aggregate holdings into the PortfolioSummary struct.
+
+        Note: account_totals and account_type_map are pre-computed by the
+        Portfolio aggregate and passed in read-only.
+        """
+
         for holding in holdings:
             if not holding.has_price:
                 continue
 
             value = holding.market_value
-
-            account_totals[holding.account_id] += value
-            if holding.account_id not in account_type_map:
-                account_type_map[holding.account_id] = holding.account.account_type.code
+            account_type_code = account_type_map.get(holding.account_id, "")
+            if not account_type_code:
+                # Fallback for holdings without pre-computed account type
+                account_type_code = holding.account.account_type.code
 
             asset_class = holding.security.asset_class
             category = asset_class.category
@@ -140,7 +154,6 @@ class PortfolioSummaryService:
                 continue
             category_code = category.code
             asset_class_name = asset_class.name
-            account_type_code = holding.account.account_type.code
 
             ac_entry = summary.categories[category_code].asset_classes[asset_class_name]
             if ac_entry.id is None:
@@ -362,12 +375,11 @@ class PortfolioSummaryService:
         # Ensure prices are up to date
         self.update_prices(user)
 
-        # Prefetch data using Manager
-        accounts = Account.objects.get_summary_data(user)
+        # Load portfolio aggregate - handles prefetching via Account.objects.get_summary_data
+        portfolio = Portfolio.load_for_user(user)
 
-        # 1. Fetch Effective Targets
-        effective_targets_map = self.get_effective_targets(user)
-        # Map: account_id -> asset_class_name -> target_pct
+        # Fetch effective allocations as domain objects
+        effective_allocations = self._targets.get_effective_allocations(user)
 
         from portfolio.models import AccountGroup
 
@@ -380,14 +392,11 @@ class PortfolioSummaryService:
         if "Other" not in groups:
             groups["Other"] = {"label": "Other", "total": Decimal("0.00"), "accounts": []}
 
-        grand_total = Decimal("0.00")
-
-        for account in accounts:
+        for account in portfolio:
             account_total = account.total_value()
+            account_allocations = effective_allocations.get(account.id, [])
 
-            account_targets = effective_targets_map.get(account.id, {})
-
-            absolute_deviation = account.calculate_deviation(account_targets)
+            absolute_deviation = account.calculate_deviation_from_allocations(account_allocations)
             absolute_deviation_pct = Decimal("0.00")
             if account_total > 0:
                 absolute_deviation_pct = (absolute_deviation / account_total) * Decimal("100.00")
@@ -410,7 +419,6 @@ class PortfolioSummaryService:
                 }
             )
             groups[group_name]["total"] += account_total
-            grand_total += account_total
 
         if "Other" in groups and not groups["Other"]["accounts"]:
             del groups["Other"]
@@ -425,11 +433,13 @@ class PortfolioSummaryService:
         )
 
         return {
-            "grand_total": grand_total,
+            "grand_total": portfolio.total_value,
             "groups": sorted_groups,
         }
 
-    def get_holdings_by_category(self, user: CustomUser, account_id: int | None = None) -> dict[str, Any]:
+    def get_holdings_by_category(
+        self, user: CustomUser, account_id: int | None = None
+    ) -> dict[str, Any]:
         """Get holdings grouped by category/group, including target and variance data."""
 
         self.update_prices(user)
