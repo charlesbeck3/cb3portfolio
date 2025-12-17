@@ -208,3 +208,193 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
 
         # Multi asset category -> Has subtotal
         self.assertIn("Stocks Total", content)
+
+    def test_all_cash_strategy_allocation(self) -> None:
+        """Verify 'All Cash' strategy calculation (repro for cash zero bug)."""
+        # Create Deposit Account Type (if not exists)
+        type_dep, _ = AssetClassCategory.objects.get_or_create(
+             code="CASH_ACCOUNTS", defaults={"label": "Cash & Equivalents", "sort_order": 10}
+        )
+        # Note: In mixin typ_dep might differ, using explicit creation for safety or relying on mixin if standard.
+        # Actually, let's reuse the existing ac_cash / sec_cash setup from setUp,
+        # but we need an account with pure CASH strategy.
+
+        # Create "All Cash" Strategy
+        strategy_cash = AllocationStrategy.objects.create(
+            user=self.user, name="All Cash"
+        )
+        # 100% to Cash Asset Class
+        TargetAllocation.objects.create(
+            strategy=strategy_cash, asset_class=self.ac_cash, target_percent=Decimal("100.00")
+        )
+
+        # Create specific cash account
+        acc_cash = Account.objects.create(
+            user=self.user,
+            name="WF Cash",
+            portfolio=self.portfolio,
+            account_type=self.type_taxable, # Can use taxable for simplicity, or type_dep if strict
+            institution=self.institution,
+            allocation_strategy=strategy_cash # Assign strategy
+        )
+
+        # Add Value to account (via holding)
+        Holding.objects.create(
+            account=acc_cash, security=self.sec_cash, shares=Decimal("150000"), current_price=1
+        )
+
+        # Mock prices (needed for view/service)
+        with unittest.mock.patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
+             mock_prices.return_value = {"VTI": Decimal("100.00"), "CASH": Decimal("1.00")}
+
+             # We can test via the Service directly (as per repro) OR via the View.
+             # Testing via View is more integration-testy.
+             # Let's inspect the Context from the view.
+             response = self.client.get(reverse("portfolio:target_allocations"))
+
+        self.assertEqual(response.status_code, 200)
+        context = response.context
+
+        # Verify Cash Row Calculation
+        rows = context["allocation_rows_money"]
+        cash_row = next((r for r in rows if r.asset_class_name == "Cash"), None)
+        self.assertIsNotNone(cash_row)
+        if cash_row:
+             # Find our account in the groups
+             # Since account_type is type_taxable (from setup above), look there.
+             # Wait, strict repro used type_dep. Let's find where acc_cash ended up.
+
+             target_col = None
+             for g in cash_row.groups:
+                 for acc in g.accounts:
+                     if acc.account_id == acc_cash.id:
+                         target_col = acc
+                         break
+                 if target_col:
+                     break
+
+             self.assertIsNotNone(target_col, "Account column not found in Cash row")
+             assert target_col is not None
+
+             # Assert Target == Current (150k)
+             # target_raw is Decimal
+             self.assertEqual(target_col.target_raw, Decimal("150000.00"))
+             self.assertEqual(target_col.target_raw, Decimal("150000.00"))
+             self.assertGreater(target_col.current_raw, 0)
+
+    def test_fixed_income_subtotal_and_display(self) -> None:
+        """Verify subtotal aggregation and percent display format (repro for partial subtotal & dollar sign bug)."""
+        # Create FI Category
+        cat_fi, _ = AssetClassCategory.objects.get_or_create(code="FIXED_INCOME", defaults={"label": "Fixed Income", "sort_order": 5})
+
+        # Create Assets: TIPS and TotalBond
+        ac_tips, _ = AssetClass.objects.get_or_create(name="Inflation Adjusted Bond", defaults={"category": cat_fi})
+        ac_bnd, _ = AssetClass.objects.get_or_create(name="Total Bond Market", defaults={"category": cat_fi})
+
+        # Create reusable 'Cash' asset/category if needed (already in setUp? yes ac_cash)
+        # Using self.ac_cash from setUp
+
+        # Create dedicated Account Type to isolate calculation
+        type_fi, _ = AssetClassCategory.objects.get_or_create(code="FI_TYPE_GROUP", defaults={"label": "FI Group", "sort_order": 99})
+        # Note: AccountType is a model, AssetClassCategory is for assets.
+        # Mistake in my previous thought process or just typo in variable name?
+        # AccountType model check:
+        from portfolio.models import AccountType
+        type_fi_obj, _ = AccountType.objects.get_or_create(
+            code="FI_TEST_TYPE",
+            defaults={
+                "label": "FI Test Accounts",
+                "group": self.group_dep, # Use existing group from mixin
+                "tax_treatment": "TAXABLE"
+            }
+        )
+
+        # Create Account (using dedicated type)
+        acc_fi = Account.objects.create(
+            user=self.user,
+            name="My FI Account",
+            portfolio=self.portfolio,
+            account_type=type_fi_obj,
+            institution=self.institution
+        )
+
+        # Add Cash Holding to give account value
+        # 150k value
+        Holding.objects.create(
+            account=acc_fi, security=self.sec_cash, shares=Decimal("150000"), current_price=1
+        )
+
+        # Create Strategy: 50% TIPS, 50% Cash
+        strategy_fi = AllocationStrategy.objects.create(user=self.user, name="Half TIPS")
+        TargetAllocation.objects.create(strategy=strategy_fi, asset_class=ac_tips, target_percent=Decimal("50.00"))
+        TargetAllocation.objects.create(strategy=strategy_fi, asset_class=self.ac_cash, target_percent=Decimal("50.00"))
+
+        # Assign Strategy
+        acc_fi.allocation_strategy = strategy_fi
+        acc_fi.save()
+
+        # Mock Prices
+        with unittest.mock.patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
+             mock_prices.return_value = {"CASH": Decimal("1.00"), "VTI": Decimal("100.00")} # VTI needed for other accounts in setUp?
+
+             # Get Context (Percent Mode)
+             response = self.client.get(reverse("portfolio:target_allocations") + "?mode=percent")
+
+        self.assertEqual(response.status_code, 200)
+        context = response.context
+        rows_pct = context["allocation_rows_percent"]
+
+        # 1. Verify Subtotal Calculation (50% of account)
+        # Find FI subtotal
+        fi_row_pct = next((r for r in rows_pct if "Fixed Income" in r.asset_class_name and r.is_subtotal), None)
+        self.assertIsNotNone(fi_row_pct, "Fixed Income Total row not found")
+
+        if fi_row_pct:
+            # Find group for our account type (type_fi_obj)
+            group_fi = next((g for g in fi_row_pct.groups if g.account_type.code == "FI_TEST_TYPE"), None)
+            self.assertIsNotNone(group_fi)
+            if group_fi:
+                # Should be "50.0" raw (percent value)
+                self.assertAlmostEqual(group_fi.account_type.weighted_target_raw, Decimal("50.0"), places=1)
+
+        # 2. Verify Individual Account Display (No Dollar Signs)
+        tips_row = next((r for r in rows_pct if r.asset_class_name == "Inflation Adjusted Bond"), None)
+        self.assertIsNotNone(tips_row)
+        if tips_row:
+             group_tips = next((g for g in tips_row.groups if g.account_type.code == "FI_TEST_TYPE"), None)
+             if group_tips:
+                 acc_col = next((a for a in group_tips.accounts if a.account_id == acc_fi.id), None)
+                 self.assertIsNotNone(acc_col)
+                 if acc_col:
+                     # Check display string
+                     self.assertIn("%", acc_col.target)
+                     # Check display string
+                     self.assertIn("%", acc_col.target)
+                     self.assertNotIn("$", acc_col.target)
+
+    def test_assign_account_strategy_persists_and_renders(self) -> None:
+        """Verify individual account strategy assignment persists and renders in select box (repro for display bug)."""
+        url = reverse("portfolio:target_allocations")
+
+        # 1. Assign strategy to account via POST
+        data = {
+            f"strategy_acc_{self.acc_roth.id}": str(self.strategy_conservative.id),
+        }
+
+        response = self.client.post(url, data)
+        self.assertRedirects(response, url)
+
+        # 2. Verify persistence in DB
+        self.acc_roth.refresh_from_db()
+        self.assertEqual(self.acc_roth.allocation_strategy, self.strategy_conservative)
+
+        # 3. Verify rendering in GET response
+        with unittest.mock.patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
+             mock_prices.return_value = {"VTI": Decimal("100.00"), "CASH": Decimal("1.00")}
+             response = self.client.get(url)  # Default mode is percent, which has the select box
+
+        content = response.content.decode()
+
+        # The option should be selected
+        expected_selected = f'value="{self.strategy_conservative.id}" selected'
+        self.assertIn(expected_selected, content)

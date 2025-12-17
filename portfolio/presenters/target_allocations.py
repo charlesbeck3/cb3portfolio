@@ -231,12 +231,19 @@ class TargetAllocationTableBuilder:
         current_by_at = {}
         target_by_at = {}
         variance_pct_by_at = {}
+        target_by_account = {}
 
         portfolio_target_total = Decimal("0.00")
 
         for at in account_types:
             at_total_value = getattr(at, "current_total_value", Decimal("0.00"))
-            non_cash_target_total = sum(at.target_map.values(), Decimal("0.00"))
+
+            # Calculate account type level target
+            non_cash_target_total = Decimal("0.00")
+            for ac_id, val in at.target_map.items():
+                if ac_id != cash_asset_class_id:
+                    non_cash_target_total += val
+
             cash_target_pct = Decimal("100.00") - non_cash_target_total
             if cash_target_pct < 0:
                 cash_target_pct = Decimal("0.00")
@@ -259,14 +266,34 @@ class TargetAllocationTableBuilder:
                 variance_pct_by_at[at.code] = Decimal("0.00")  # Not used in dollar mode
                 portfolio_target_total += target_val
 
+            # Calculate individual account targets
+            for account in getattr(at, "active_accounts", []):
+                acc_total_value = getattr(account, "current_total_value", Decimal("0.00"))
+
+                # Check for account override
+                if account.target_map:
+                    acc_non_cash_target_total = Decimal("0.00")
+                    for ac_id, val in account.target_map.items():
+                         if ac_id != cash_asset_class_id:
+                             acc_non_cash_target_total += val
+                    acc_cash_target_pct = Decimal("100.00") - acc_non_cash_target_total
+                else:
+                    # Fallback to account type default
+                    acc_cash_target_pct = cash_target_pct
+
+                if acc_cash_target_pct < 0:
+                    acc_cash_target_pct = Decimal("0.00")
+
+                target_by_account[account.id] = acc_total_value * (acc_cash_target_pct / Decimal("100.00"))
+
         return self._build_category_row(
             label="Cash",
             category_code="CASH",
             current_by_at=current_by_at,
             target_by_at=target_by_at,
             variance_pct_by_at=variance_pct_by_at,
-            current_by_account={},
-            target_by_account={},
+            current_by_account=cash_group.account_totals,
+            target_by_account=target_by_account,
             portfolio_current=cash_group.total,
             portfolio_target=portfolio_target_total,
             portfolio_variance=cash_group.total - portfolio_target_total,
@@ -454,11 +481,7 @@ class TargetAllocationTableBuilder:
 
                 if mode == "percent":
                     current_disp = str(accounting_percent(acc_current_pct, 1))
-                    if is_input:
-                        # Input fields handle their own display value (input_val)
-                        target_disp = str(accounting_amount(acc_target_dollars, 0))  # Not used?
-                    else:
-                        target_disp = str(accounting_percent(acc_target_pct, 1))
+                    target_disp = str(accounting_percent(acc_target_pct, 1))
                     vtarget_disp = str(accounting_percent(acc_variance_pct, 1))
                 else:
                     current_disp = str(accounting_amount(acc_current, 0))

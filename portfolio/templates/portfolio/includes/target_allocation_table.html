@@ -6,12 +6,23 @@
                 <th scope="col" class="text-center border-bottom-0 position-relative pb-3" colspan="4">
                     <div>{{ group.label }}</div>
                     <div class="fw-normal mt-1">
+                        {% if mode == 'percent' %}
                         <select name="strategy_at_{{ group.id }}" class="form-select form-select-sm d-inline-block w-auto py-0 px-2" style="font-size: 0.75rem;">
                             <option value="">-- Unassigned --</option>
                             {% for s in strategies %}
                                 <option value="{{ s.id }}" {% if group.target_map and s.id == group.active_strategy_id %}selected{% endif %}>{{ s.name }}</option>
                             {% endfor %}
                         </select>
+                        {% else %}
+                            <span class="badge bg-light text-dark border fw-normal">
+                                {% for s in strategies %}
+                                    {% if group.target_map and s.id == group.active_strategy_id %}{{ s.name }}{% endif %}
+                                {% empty %}
+                                    -- Unassigned --
+                                {% endfor %}
+                                {% if not group.active_strategy_id %}-- Unassigned --{% endif %}
+                            </span>
+                        {% endif %}
                     </div>
                     {% if group.active_accounts and mode == 'percent' %}
                     <button type="button" class="btn btn-sm btn-link p-0 ms-2 text-decoration-none expand-btn position-absolute top-0 end-0 mt-1 me-1" data-at-id="{{ group.id }}" title="Show/Hide Individual Accounts">[+]</button>
@@ -21,12 +32,24 @@
                     <th scope="col" class="text-center border-bottom-0 table-warning d-none col-acc-{{ group.id }} pb-3" colspan="3">
                         <div><small>{{ acc.name }}</small></div>
                         <div class="fw-normal mt-1">
+                            {% if mode == 'percent' %}
                             <select name="strategy_acc_{{ acc.id }}" class="form-select form-select-sm d-inline-block w-auto py-0 px-2" style="font-size: 0.75rem;">
                                 <option value="">-- Use Default (Type Strategy) --</option>
                                 {% for s in strategies %}
                                     <option value="{{ s.id }}" {% if acc.allocation_strategy_id == s.id %}selected{% endif %}>{{ s.name }}</option>
                                 {% endfor %}
                             </select>
+                            {% else %}
+                                <span class="badge bg-light text-dark border fw-normal">
+                                    {% if acc.allocation_strategy_id %}
+                                        {% for s in strategies %}
+                                            {% if s.id == acc.allocation_strategy_id %}{{ s.name }}{% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        Use Default
+                                    {% endif %}
+                                </span>
+                            {% endif %}
                         </div>
                     </th>
                 {% endfor %}
