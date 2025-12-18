@@ -2,9 +2,14 @@
 {% load portfolio_filters %}
 
 <div class="sidebar">
-    <div class="sidebar-header mb-3">
-        <h5 class="fw-bold">Net Worth</h5>
-        <h3 class="fw-bold">${{ sidebar_data.grand_total|floatformat:0|intcomma }}</h3>
+    <div class="sidebar-header mb-3 d-flex justify-content-between align-items-center">
+        <div>
+            <h5 class="fw-bold mb-0">Net Worth</h5>
+            <h3 class="fw-bold mb-0">${{ sidebar_data.grand_total|floatformat:0|intcomma }}</h3>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary d-none d-md-block" onclick="document.getElementById('sidebar-toggle').click()" title="Collapse Sidebar">
+            <i class="bi bi-chevron-left"></i>
+        </button>
     </div>
 
     <div class="accordion" id="sidebarAccordion">

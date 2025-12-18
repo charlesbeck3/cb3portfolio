@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Portfolio Manager{% endblock %}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css">
   <style>
     .table {
       font-size: 0.9rem;
@@ -13,12 +14,47 @@
     .card {
       box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
     }
+
+    /* Sidebar Collapsible Styles */
+    #sidebar-column {
+      transition: all 0.3s ease;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    body.sidebar-collapsed #sidebar-column {
+      width: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      flex: 0 0 0 !important;
+      max-width: 0 !important;
+    }
+
+    body.sidebar-collapsed #main-content-column {
+      width: 100% !important;
+      flex: 0 0 100% !important;
+      max-width: 100% !important;
+    }
+
+    @media (max-width: 768px) {
+      #sidebar-column {
+        display: none !important;
+      }
+      #main-content-column {
+        width: 100% !important;
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+      }
+    }
   </style>
 </head>
 
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
     <div class="container-fluid">
+      <button class="btn btn-dark me-2" id="sidebar-toggle" title="Toggle Sidebar">
+        <i class="bi bi-layout-sidebar"></i>
+      </button>
       <a class="navbar-brand" href="{% url 'portfolio:dashboard' %}">Portfolio Manager</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse"
         aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation">
@@ -69,6 +105,24 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const body = document.body;
+      const toggle = document.getElementById('sidebar-toggle');
+      
+      // Load saved state
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        body.classList.add('sidebar-collapsed');
+      }
+
+      if (toggle) {
+        toggle.addEventListener('click', function() {
+          body.classList.toggle('sidebar-collapsed');
+          localStorage.setItem('sidebar-collapsed', body.classList.contains('sidebar-collapsed'));
+        });
+      }
+    });
+  </script>
 </body>
 
 </html>
