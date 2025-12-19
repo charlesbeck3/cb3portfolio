@@ -115,7 +115,9 @@ class Portfolio(models.Model):
 
         # Build nested dict structure for DataFrame
         # data[row_key][col_key] = value
-        data: dict[tuple[Any, ...], dict[tuple[Any, ...], float]] = defaultdict(lambda: defaultdict(float))
+        data: dict[tuple[Any, ...], dict[tuple[Any, ...], float]] = defaultdict(
+            lambda: defaultdict(float)
+        )
 
         for holding in holdings:
             # Row: Account hierarchy
@@ -326,9 +328,7 @@ class Account(models.Model):
         """
         Convert account holdings to DataFrame.
         """
-        holdings = self.holdings.select_related(
-            "security__asset_class__category"
-        ).all()
+        holdings = self.holdings.select_related("security__asset_class__category").all()
 
         # Build column dict
         data = {}
@@ -376,15 +376,9 @@ class Account(models.Model):
         # We need Type/Group info here to match Portfolio structure if we want consistency?
         # Actually Portfolio.to_dataframe constructs it itself.
         # AccountType.to_dataframe relies on Account.to_dataframe.
-        row_key = (
-            self.account_type.label,
-            self.account_type.group.name,
-            self.name,
-            self.id
-        )
+        row_key = (self.account_type.label, self.account_type.group.name, self.name, self.id)
         df.index = pd.MultiIndex.from_tuples(
-            [row_key],
-            names=["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
+            [row_key], names=["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
         )
 
         df = df.fillna(0.0).sort_index(axis=1)
@@ -498,7 +492,7 @@ class TargetAllocation(models.Model):
     def target_value_for(self, account_total: Decimal) -> Decimal:
         """Calculate the target dollar amount for a given account total."""
 
-        return account_total * self.target_percent / Decimal("100")
+        return (account_total * self.target_percent / Decimal("100")).quantize(Decimal("0.01"))
 
     def variance_for(self, current_value: Decimal, account_total: Decimal) -> Decimal:
         """Calculate variance between current and target values."""
@@ -545,7 +539,7 @@ class Holding(models.Model):
     account = models.ForeignKey(Account, on_delete=models.CASCADE, related_name="holdings")
     security = models.ForeignKey(Security, on_delete=models.PROTECT, related_name="holdings")
     shares = models.DecimalField(
-        max_digits=15, decimal_places=4, validators=[MinValueValidator(Decimal("0"))]
+        max_digits=20, decimal_places=8, validators=[MinValueValidator(Decimal("0"))]
     )
     as_of_date = models.DateField(auto_now=True)
     current_price = models.DecimalField(
@@ -576,7 +570,7 @@ class Holding(models.Model):
 
         if self.current_price is None:
             return Decimal("0.00")
-        return self.shares * self.current_price
+        return (self.shares * self.current_price).quantize(Decimal("0.01"))
 
     @property
     def has_price(self) -> bool:

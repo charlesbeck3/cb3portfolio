@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 import pytest
 from playwright.sync_api import Page, expect
 
-from portfolio.models import Account, AssetClass, Holding, Security
+from portfolio.models import Account, AssetClass, Holding
 
 from ..base import PortfolioTestMixin
 
@@ -34,11 +34,8 @@ class TestSmokePages(PortfolioTestMixin):
         self.create_portfolio(user=self.user)
 
         self.us_stocks = AssetClass.objects.create(name="US Stocks", category=self.cat_us_eq)
-        self.vti = Security.objects.create(
-            ticker="VTI",
-            name="Vanguard Total Stock Market ETF",
-            asset_class=self.us_stocks,
-        )
+        self.vti.asset_class = self.us_stocks
+        self.vti.save()
 
         self.account = Account.objects.create(
             user=self.user,

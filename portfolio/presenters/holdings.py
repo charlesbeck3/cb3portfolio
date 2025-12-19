@@ -58,14 +58,14 @@ class HoldingsTableRow:
 class HoldingsTableBuilder:
     def build_rows(
         self,
-        holdings_detail_df: Any, # pd.DataFrame
-        ac_meta: dict[str, Any]
+        holdings_detail_df: Any,  # pd.DataFrame
+        ac_meta: dict[str, Any],
     ) -> list[HoldingsTableRow]:
         rows: list[HoldingsTableRow] = []
         df = holdings_detail_df
 
         if df.empty:
-             return []
+            return []
 
         # Calculate Grand Total
         grand_total = Decimal(float(df["Value"].sum()))
@@ -83,7 +83,9 @@ class HoldingsTableBuilder:
         df["Group_Code"] = df["Asset_Class"].apply(lambda x: get_meta(x, "group_code"))
         df["Group_Label"] = df["Asset_Class"].apply(lambda x: get_meta(x, "group_label"))
         df["Category_Code"] = df["Asset_Class"].apply(lambda x: get_meta(x, "category_code"))
-        df["Category_Label"] = df["Asset_Class"].apply(lambda x: get_meta(x, "category_label")) # Use hierarchy label or DF label? metadata is safer.
+        df["Category_Label"] = df["Asset_Class"].apply(
+            lambda x: get_meta(x, "category_label")
+        )  # Use hierarchy label or DF label? metadata is safer.
 
         # Sort Order: Group Label (or priority?), Category Label, Asset Class?, Ticker
         # We don't have explicit sort order here easily unless we passed it.
@@ -123,55 +125,65 @@ class HoldingsTableBuilder:
                     # Target shares? Sum of target_shares_per_holding?
                     # calculate_holdings_detail doesn't calculate target_shares yet, only value.
                     # We can calc it here: Target Value / Price
-                    price = Decimal(float(t_df["Price"].iloc[0])) # Assume same price
+                    price = Decimal(float(t_df["Price"].iloc[0]))  # Assume same price
 
                     tgt_shares = tgt_val / price if price else Decimal(0)
 
-                    rows.append(self._build_holding_row(
-                        ticker=ticker,
-                        name=t_df.iloc[0]["Security_Name"] if "Security_Name" in t_df.columns else ticker, # Security Name not in DF yet?
-                        # Wait, calculate_holdings_detail doesn't define Security_Name?
-                        # Models `to_dataframe` has Security (ticker). It doesn't have name.
-                        # Legacy struct had name. We might need to fetch it or drop it.
-                        # Ticker is usually sufficient or we can join.
-                        asset_class=t_df.iloc[0]["Asset_Class"],
-                        category_code=cat_code,
-                        parent_id=group_row_id,
-                        portfolio_total=grand_total,
-                        val=val,
-                        tgt_val=tgt_val,
-                        shares=shares,
-                        tgt_shares=tgt_shares,
-                        price=price
-                    ))
+                    rows.append(
+                        self._build_holding_row(
+                            ticker=ticker,
+                            name=t_df.iloc[0]["Security_Name"]
+                            if "Security_Name" in t_df.columns
+                            else ticker,  # Security Name not in DF yet?
+                            # Wait, calculate_holdings_detail doesn't define Security_Name?
+                            # Models `to_dataframe` has Security (ticker). It doesn't have name.
+                            # Legacy struct had name. We might need to fetch it or drop it.
+                            # Ticker is usually sufficient or we can join.
+                            asset_class=t_df.iloc[0]["Asset_Class"],
+                            category_code=cat_code,
+                            parent_id=group_row_id,
+                            portfolio_total=grand_total,
+                            val=val,
+                            tgt_val=tgt_val,
+                            shares=shares,
+                            tgt_shares=tgt_shares,
+                            price=price,
+                        )
+                    )
 
                 # Category Subtotal
-                if len(group_df["Category_Label"].unique()) > 1 or len(group_df) > 1: # Logic: Show subtotal if useful
-                     # Sum category
+                if (
+                    len(group_df["Category_Label"].unique()) > 1 or len(group_df) > 1
+                ):  # Logic: Show subtotal if useful
+                    # Sum category
                     cat_val = Decimal(float(cat_df["Value"].sum()))
                     cat_tgt = Decimal(float(cat_df["Target_Value"].sum()))
 
-                    rows.append(self._build_category_subtotal_row(
-                        label=cat_label,
-                        category_code=cat_code,
-                        parent_id=group_row_id,
-                        portfolio_total=grand_total,
-                        val=cat_val,
-                        tgt_val=cat_tgt
-                    ))
+                    rows.append(
+                        self._build_category_subtotal_row(
+                            label=cat_label,
+                            category_code=cat_code,
+                            parent_id=group_row_id,
+                            portfolio_total=grand_total,
+                            val=cat_val,
+                            tgt_val=cat_tgt,
+                        )
+                    )
 
             # Group Total
             grp_val = Decimal(float(group_df["Value"].sum()))
             grp_tgt = Decimal(float(group_df["Target_Value"].sum()))
 
-            rows.append(self._build_group_total_row(
-                label=group_label,
-                group_code=group_code,
-                row_id=group_row_id,
-                portfolio_total=grand_total,
-                val=grp_val,
-                tgt_val=grp_tgt
-            ))
+            rows.append(
+                self._build_group_total_row(
+                    label=group_label,
+                    group_code=group_code,
+                    row_id=group_row_id,
+                    portfolio_total=grand_total,
+                    val=grp_val,
+                    tgt_val=grp_tgt,
+                )
+            )
 
         # Grand Total
         rows.append(self._build_grand_total_row(grand_total, grand_total_target))
@@ -190,7 +202,7 @@ class HoldingsTableBuilder:
         tgt_val: Decimal,
         shares: Decimal,
         tgt_shares: Decimal,
-        price: Decimal
+        price: Decimal,
     ) -> HoldingsTableRow:
         val_var = val - tgt_val
         shares_var = shares - tgt_shares
@@ -238,7 +250,7 @@ class HoldingsTableBuilder:
         parent_id: str,
         portfolio_total: Decimal,
         val: Decimal,
-        tgt_val: Decimal
+        tgt_val: Decimal,
     ) -> HoldingsTableRow:
         val_var = val - tgt_val
 
@@ -285,7 +297,7 @@ class HoldingsTableBuilder:
         row_id: str,
         portfolio_total: Decimal,
         val: Decimal,
-        tgt_val: Decimal
+        tgt_val: Decimal,
     ) -> HoldingsTableRow:
         val_var = val - tgt_val
 

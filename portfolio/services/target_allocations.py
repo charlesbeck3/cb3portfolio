@@ -104,7 +104,7 @@ class TargetAllocationViewService:
                 df_acc = df_acc.reset_index(level=[0, 1])
 
             # Update allocations dict so Builder receives normalized DF
-            allocations['by_account'] = df_acc
+            allocations["by_account"] = df_acc
 
         account_types = []
         for at_obj in account_types_qs:
@@ -148,17 +148,20 @@ class TargetAllocationViewService:
             account_types.append(at_any)
 
         # Build Metadata & Hierarchy
-        ac_qs = AssetClass.objects.select_related('category__parent').all()
+        ac_qs = AssetClass.objects.select_related("category__parent").all()
         ac_meta = {}
         hierarchy: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
 
-        sorted_acs = sorted(ac_qs, key=lambda x: (
-            x.category.parent.sort_order if x.category.parent else x.category.sort_order,
-            x.category.parent.code if x.category.parent else x.category.code,
-            x.category.sort_order,
-            x.category.code,
-            x.name
-        ))
+        sorted_acs = sorted(
+            ac_qs,
+            key=lambda x: (
+                x.category.parent.sort_order if x.category.parent else x.category.sort_order,
+                x.category.parent.code if x.category.parent else x.category.code,
+                x.category.sort_order,
+                x.category.code,
+                x.name,
+            ),
+        )
 
         for ac in sorted_acs:
             if ac.category.parent:
@@ -172,11 +175,11 @@ class TargetAllocationViewService:
             cat_label = ac.category.label
 
             ac_meta[ac.name] = {
-                'id': ac.id,
-                'group_code': grp_code,
-                'group_label': grp_label,
-                'category_code': cat_code,
-                'category_label': cat_label
+                "id": ac.id,
+                "group_code": grp_code,
+                "group_label": grp_label,
+                "category_code": cat_code,
+                "category_label": cat_label,
             }
 
             hierarchy[grp_code][cat_code].append(ac.name)
@@ -187,10 +190,13 @@ class TargetAllocationViewService:
 
         # Determine total value
         total_val = Decimal("0.00")
-        if allocations['portfolio_summary'] is not None and not allocations['portfolio_summary'].empty:
-             val = allocations['portfolio_summary'].iloc[0].get('Total_Value')
-             if val is not None:
-                 total_val = Decimal(float(val))
+        if (
+            allocations["portfolio_summary"] is not None
+            and not allocations["portfolio_summary"].empty
+        ):
+            val = allocations["portfolio_summary"].iloc[0].get("Total_Value")
+            if val is not None:
+                total_val = Decimal(float(val))
 
         allocation_rows_percent = builder.build_rows(
             allocations=allocations,
@@ -200,7 +206,7 @@ class TargetAllocationViewService:
             portfolio_total_value=total_val,
             mode="percent",
             cash_asset_class_id=cash_ac.id if cash_ac else None,
-            account_targets={}
+            account_targets={},
         )
         allocation_rows_money = builder.build_rows(
             allocations=allocations,
@@ -210,7 +216,7 @@ class TargetAllocationViewService:
             portfolio_total_value=total_val,
             mode="dollar",
             cash_asset_class_id=cash_ac.id if cash_ac else None,
-            account_targets={}
+            account_targets={},
         )
 
         strategies = AllocationStrategy.objects.filter(user=user).order_by("name")
@@ -250,10 +256,10 @@ class TargetAllocationViewService:
 
                 # If "Select Strategy" (empty string) is chosen, we remove the assignment
                 if not strategy_id_str:
-                     AccountTypeStrategyAssignment.objects.filter(
-                         user=user, account_type=at
-                     ).delete()
-                     continue
+                    AccountTypeStrategyAssignment.objects.filter(
+                        user=user, account_type=at
+                    ).delete()
+                    continue
 
                 try:
                     strategy_id = int(strategy_id_str)
@@ -286,6 +292,6 @@ class TargetAllocationViewService:
                         acc.allocation_strategy = strategy
                         acc.save(update_fields=["allocation_strategy"])
                 except (ValueError, AllocationStrategy.DoesNotExist):
-                     pass
+                    pass
 
         return True, []

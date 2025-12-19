@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from portfolio.domain.portfolio import Portfolio
-from portfolio.models import Account, AssetClass, Holding, Security
+from portfolio.models import Account, AssetClass, Holding
 from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
@@ -19,16 +19,11 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
         self.us_stocks = AssetClass.objects.create(name="US Stocks", category=self.cat_us_eq)
         self.bonds = AssetClass.objects.create(name="Bonds", category=self.cat_fi)
 
-        self.vti = Security.objects.create(
-            ticker="VTI",
-            name="Vanguard Total Stock Market ETF",
-            asset_class=self.us_stocks,
-        )
-        self.bnd = Security.objects.create(
-            ticker="BND",
-            name="Vanguard Total Bond Market ETF",
-            asset_class=self.bonds,
-        )
+        # Update seeded securities to use the test-specific asset classes
+        self.vti.asset_class = self.us_stocks
+        self.vti.save()
+        self.bnd.asset_class = self.bonds
+        self.bnd.save()
 
         self.acc_roth = Account.objects.create(
             user=self.user,

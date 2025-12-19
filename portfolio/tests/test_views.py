@@ -6,13 +6,9 @@ from django.urls import reverse
 
 from portfolio.models import (
     Account,
-    AccountType,
     AccountTypeStrategyAssignment,
     AllocationStrategy,
-    AssetClass,
-    AssetClassCategory,
     Holding,
-    Security,
     TargetAllocation,
 )
 
@@ -66,96 +62,29 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         # --- Setup Data ---
 
         # 1. Single Asset Group (simulating Cash)
-        # Group 'Deposit Accounts' (self.group_dep) created in mixin.
-        # Create Category 'Cash' -> 1 Asset Class 'Cash' -> 1 Security 'CASH'
-        cat_cash, _ = AssetClassCategory.objects.get_or_create(
-            code="CASH", defaults={"label": "Cash", "sort_order": 10}
-        )
-        ac_cash, _ = AssetClass.objects.get_or_create(
-            name="Cash", defaults={"category": cat_cash, "expected_return": 0}
-        )
-        sec_cash, _ = Security.objects.get_or_create(
-            ticker="CASH", defaults={"name": "Cash Holding", "asset_class": ac_cash}
-        )
+        # Seeded data already has Category 'Cash' -> Asset Class 'Cash' -> Security 'CASH'
+        sec_cash = self.sec_cash
 
         # Create Holding in a Deposit Account
         acc_dep = Account.objects.create(
             user=self.user,
             name="My Cash",
             portfolio=self.portfolio,
-            account_type=AccountType.objects.get(
-                code="TAXABLE"
-            ),  # Using TAXABLE for simplicity, technically could be DEPOSIT
+            account_type=self.type_taxable,
             institution=self.institution,
         )
         Holding.objects.create(account=acc_dep, security=sec_cash, shares=100, current_price=1)
 
         # 2. Multi-Asset Group
-        # Group 'Investments' (self.group_inv).
-        # Category 'Equities' -> 2 Asset Classes 'US Stocks', 'Intl Stocks'
-        cat_eq, _ = AssetClassCategory.objects.get_or_create(
-            code="EQUITIES", defaults={"label": "Equities", "sort_order": 1}
-        )
-        # Link category to group? The link is via AssetClassCategory.parent??
-        # Logic in services.py: group = category.parent or category.
-        # But wait, Group is AccountGroup, Category is AssetClassCategory.
-        # services.py maps: group_code = category.parent or category.code
-        # And summary.groups keys are these codes.
-        # BUT AccountGroup logic in get_account_summary is different from get_holdings_summary?
-        # Re-read services.py:
-        # _build_category_maps loops categories. group = category.parent or category.
-        # This means "Group" in the dashboard holdings table is actually the Parent Category (if exists) or the Category itself.
-        # It is NOT AccountGroup.
+        # Category 'Equities' (self.category_equities) has parent None, but US Equities has parent Equities.
+        # Seeded US Equities (self.asset_class_us_equities) -> Cat 'US_EQUITIES' -> Parent 'EQUITIES'.
+        # Seeded Intl Dev Equities (self.asset_class_intl_developed) -> Cat 'INTERNATIONAL_EQUITIES' -> Parent 'EQUITIES'.
 
-        # So "Cash" scenario: Category 'Cash' (parent=None). Group Code = 'CASH'.
-        # It has 1 Asset Class.
-        # So Group 'CASH' has 1 Asset Class.
-
-        # "Investments" scenario?
-        # If we have US Equities (parent=Equities) and Intl Equities (parent=Equities).
-        # Group Code = 'Equities'.
-        # Group 'Equities' has 2 Categories (US, Intl) -> Multiple Asset Classes (>=2).
-        # So Group Total for 'Equities' should be SHOWN.
-
-        # Let's create 'Equities' Parent Category
-        # Note: code='EQUITIES' might already exist from earlier lines or mixin. Ensure label is set.
-        cat_parent_eq, _ = AssetClassCategory.objects.get_or_create(
-            code="EQUITIES", defaults={"label": "Equities Parent", "sort_order": 1}
-        )
-        cat_parent_eq.label = "Equities Parent"
-        cat_parent_eq.save()
-
-        # Sub-category 1: US Equities
-        # Force parent assignment as it might exist from mixin without parent
-        cat_us, _ = AssetClassCategory.objects.get_or_create(
-            code="US_EQ",
-            defaults={"label": "US Equities", "parent": cat_parent_eq, "sort_order": 1},
-        )
-        cat_us.parent = cat_parent_eq
-        cat_us.save()
-
-        ac_us, _ = AssetClass.objects.get_or_create(
-            name="US Stocks", defaults={"category": cat_us, "expected_return": 0.1}
-        )
-        sec_us, _ = Security.objects.get_or_create(
-            ticker="VTI", defaults={"name": "VTI", "asset_class": ac_us}
-        )
+        # Use seeded objects for group comparison
+        sec_us = self.vti
         Holding.objects.create(account=acc_dep, security=sec_us, shares=10, current_price=100)
 
-        # Sub-category 2: Intl Equities
-        cat_intl, _ = AssetClassCategory.objects.get_or_create(
-            code="INTL_EQ",
-            defaults={"label": "Intl Equities", "parent": cat_parent_eq, "sort_order": 2},
-        )
-        cat_intl.parent = cat_parent_eq
-        cat_intl.save()
-
-        ac_intl, _ = AssetClass.objects.get_or_create(
-            name="Intl Stocks", defaults={"category": cat_intl, "expected_return": 0.1}
-        )
-        sec_intl, _ = Security.objects.get_or_create(
-            ticker="VXUS", defaults={"name": "VXUS", "asset_class": ac_intl}
-        )
+        sec_intl = self.vea
         Holding.objects.create(account=acc_dep, security=sec_intl, shares=10, current_price=50)
 
         # --- Execute ---
@@ -174,16 +103,14 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
 
         # 2. Equities Scenario (Multi Asset Class in Group 'EQUITIES')
         # Category 'US Equities' has 1 Asset Class -> 'US Equities Total' should be HIDDEN
-        # The Category Label itself is also hidden in this case because it's only shown in the subtotal row or if explicitly headered (which it isn't).
-        # self.assertIn('US Equities', content)
         self.assertNotIn(
             "US Equities Total",
             content,
             "Redundant Category Total for US Equities should be hidden.",
         )
 
-        # Group 'Equities Parent' has 2 Asset Classes (US Stocks + Intl Stocks) -> Group Total SHOWN
-        self.assertIn("Equities Parent Total", content, "Group Total for Equities should be shown.")
+        # Parent Category 'Equities' has 2 Asset Classes (US Equities + Intl Dev Equities) -> Total SHOWN
+        self.assertIn("Equities Total", content, "Group Total for Equities should be shown.")
 
     def test_dashboard_calculated_values(self) -> None:
         """
@@ -195,28 +122,23 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         """
         # Setup Data
         # Group "Investments"
-        cat_eq, _ = AssetClassCategory.objects.get_or_create(
-            code="EQUITIES", defaults={"label": "Equities", "sort_order": 1}
-        )
-        ac_us, _ = AssetClass.objects.get_or_create(name="US Stocks", defaults={"category": cat_eq})
-        sec_us, _ = Security.objects.get_or_create(
-            ticker="VTI", defaults={"name": "VTI", "asset_class": ac_us}
-        )
+        # Use seeded objects
+        ac_us = self.asset_class_us_equities
+        sec_us = self.vti
 
         # Account
         acc_tax = Account.objects.create(
             user=self.user,
             name="My Taxable",
             portfolio=self.portfolio,
-            account_type=AccountType.objects.get(code="TAXABLE"),
+            account_type=self.type_taxable,
             institution=self.institution,
         )
 
         # Holding: $1000 VTI
         Holding.objects.create(account=acc_tax, security=sec_us, shares=10, current_price=100)
 
-        # Targets: Set US Stocks to 50% for Taxable (implies 50% cash if validated, or just 50 target)
-        # We need to create TargetAllocation objects
+        # Targets: Set US Equities to 50% for Taxable
         strategy, _ = AllocationStrategy.objects.update_or_create(
             user=self.user,
             name=f"{acc_tax.account_type.label} Strategy",
@@ -263,12 +185,9 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         # 1. Category Subtotal for 'Equities': Should match Asset Class total since only 1 AC.
         # Wait, if only 1 AC, Subtotal is HIDDEN? Yes (test_redundant_totals).
         # So we need 2 ACs to test Subtotal Row values.
-        ac_intl, _ = AssetClass.objects.get_or_create(
-            name="Intl Stocks", defaults={"category": cat_eq}
-        )
-        sec_intl, _ = Security.objects.get_or_create(
-            ticker="VXUS", defaults={"name": "VXUS", "asset_class": ac_intl}
-        )
+        ac_intl = self.asset_class_intl_developed
+        sec_intl = self.vxus
+
         Holding.objects.create(account=acc_tax, security=sec_intl, shares=10, current_price=50)
         # Add target for Intl: 40%
         TargetAllocation.objects.create(
@@ -370,7 +289,9 @@ class HoldingsViewTests(TestCase, PortfolioTestMixin):
         self.assertEqual(response.status_code, 200)
         self.assertIn("sidebar_data", response.context, "sidebar_data missing from context")
         self.assertIsNotNone(response.context["sidebar_data"]["groups"], "Sidebar groups missing")
-        self.assertGreater(len(response.context["sidebar_data"]["groups"]), 0, "Sidebar should have groups")
+        self.assertGreater(
+            len(response.context["sidebar_data"]["groups"]), 0, "Sidebar should have groups"
+        )
 
     def test_dashboard_has_sidebar_context(self) -> None:
         """Test that Dashboard view includes sidebar data."""
@@ -379,4 +300,3 @@ class HoldingsViewTests(TestCase, PortfolioTestMixin):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("sidebar_data", response.context)
-

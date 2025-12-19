@@ -28,8 +28,6 @@ class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         user = self.request.user
         assert user.is_authenticated
 
-
-
         # 2. Build Account Types with lightweight context
         account_types_qs = (
             AccountType.objects.filter(accounts__user=user)

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from portfolio.models import Account, AssetClass, Holding, Institution, Security
+from portfolio.models import Account, AssetClass, Holding, Institution
 from portfolio.services import PricingService
 
 from ..base import PortfolioTestMixin
@@ -26,11 +26,9 @@ class PricingServiceTests(TestCase, PortfolioTestMixin):
             account_type=self.type_roth,
             institution=self.institution,
         )
-        self.security = Security.objects.create(
-            ticker="VTI",
-            name="Vanguard Total Stock Market ETF",
-            asset_class=self.asset_class,
-        )
+        self.vti.asset_class = self.asset_class
+        self.vti.save()
+        self.security = self.vti
 
     def test_update_holdings_prices_no_holdings_returns_empty(self) -> None:
         mock_market_data = MagicMock()

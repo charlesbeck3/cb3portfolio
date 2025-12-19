@@ -36,11 +36,9 @@ class AllocationStrategyCreateView(LoginRequiredMixin, PortfolioContextMixin, Cr
 
                 # Only create records for non-zero allocations
                 if raw_value and raw_value > 0:
-                     TargetAllocation.objects.create(
-                         strategy=self.object,
-                         asset_class=ac,
-                         target_percent=raw_value
-                     )
+                    TargetAllocation.objects.create(
+                        strategy=self.object, asset_class=ac, target_percent=raw_value
+                    )
 
         messages.success(self.request, f"Strategy '{self.object.name}' created successfully.")
         return HttpResponseRedirect(self.get_success_url())

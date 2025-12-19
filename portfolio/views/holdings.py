@@ -26,7 +26,9 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         assert user.is_authenticated
 
         # Fetch Accounts to build DataFrame
-        accounts_qs = Account.objects.filter(user=user).select_related("account_type__group", "institution")
+        accounts_qs = Account.objects.filter(user=user).select_related(
+            "account_type__group", "institution"
+        )
         if account_id:
             accounts_qs = accounts_qs.filter(id=account_id)
 
@@ -35,11 +37,13 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
 
         all_holdings = []
         # Pre-fetch for performance
-        holdings_qs = Holding.objects.filter(
-            account__in=accounts_qs
-        ).select_related(
-            'account', 'account__account_type', 'account__account_type__group',
-            'security', 'security__asset_class', 'security__asset_class__category'
+        holdings_qs = Holding.objects.filter(account__in=accounts_qs).select_related(
+            "account",
+            "account__account_type",
+            "account__account_type__group",
+            "security",
+            "security__asset_class",
+            "security__asset_class__category",
         )
 
         for h in holdings_qs:
@@ -52,35 +56,49 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             ac_name = ac.name if ac else "Unclassified"
             ac_cat_lbl = ac.category.label if ac and ac.category else "Unclassified"
 
-            all_holdings.append({
-                "Account_ID": h.account_id,
-                "Account_Name": h.account.name,
-                "Account_Type": act_type_lbl,
-                "Account_Category": act_cat_name,
-                "Asset_Class": ac_name,
-                "Asset_Category": ac_cat_lbl,
-                "Security": h.security.ticker,
-                "Security_Name": h.security.name,
-                "Shares": float(h.shares),
-                "Price": float(h.current_price) if h.current_price is not None else 0.0,
-                "Value": float(h.market_value),
-            })
+            all_holdings.append(
+                {
+                    "Account_ID": h.account_id,
+                    "Account_Name": h.account.name,
+                    "Account_Type": act_type_lbl,
+                    "Account_Category": act_cat_name,
+                    "Asset_Class": ac_name,
+                    "Asset_Category": ac_cat_lbl,
+                    "Security": h.security.ticker,
+                    "Security_Name": h.security.name,
+                    "Shares": float(h.shares),
+                    "Price": float(h.current_price) if h.current_price is not None else 0.0,
+                    "Value": float(h.market_value),
+                }
+            )
 
         if all_holdings:
             holdings_df = pd.DataFrame(all_holdings)
         else:
-            holdings_df = pd.DataFrame(columns=[
-                "Account_ID", "Account_Name", "Account_Type", "Account_Category",
-                "Asset_Class", "Asset_Category", "Security", "Security_Name",
-                "Shares", "Price", "Value"
-            ])
+            holdings_df = pd.DataFrame(
+                columns=[
+                    "Account_ID",
+                    "Account_Name",
+                    "Account_Type",
+                    "Account_Category",
+                    "Asset_Class",
+                    "Asset_Category",
+                    "Security",
+                    "Security_Name",
+                    "Shares",
+                    "Price",
+                    "Value",
+                ]
+            )
 
         # Build Effective Targets Map
         from portfolio.services.targets import TargetAllocationService
+
         effective_targets_map = TargetAllocationService.get_effective_targets(user)
 
         # Calculate Holdings Detail
         from portfolio.services.allocation_calculations import AllocationCalculationEngine
+
         engine = AllocationCalculationEngine()
         # Get detailed calc (merges targets)
         # Pass the DETAILED df now, not the Matrix one.
@@ -89,6 +107,7 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         # Build Metadata Map for Builder
         # We need Asset Class Name -> Group/Category details
         from portfolio.models import AssetClass
+
         ac_qs = AssetClass.objects.select_related("category__parent").all()
         ac_meta = {}
         for ac in ac_qs:
@@ -97,7 +116,7 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
                 "group_code": parent.code if parent else ac.category.code,
                 "group_label": parent.label if parent else ac.category.label,
                 "category_code": ac.category.code,
-                "category_label": ac.category.label
+                "category_label": ac.category.label,
             }
 
         context.update(self.get_sidebar_context())
@@ -106,10 +125,7 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         from portfolio.presenters.holdings import HoldingsTableBuilder
 
         builder = HoldingsTableBuilder()
-        holdings_rows = builder.build_rows(
-            holdings_detail_df=holdings_detail_df,
-            ac_meta=ac_meta
-        )
+        holdings_rows = builder.build_rows(holdings_detail_df=holdings_detail_df, ac_meta=ac_meta)
         context["holdings_rows"] = holdings_rows
 
         if account_id:
@@ -131,28 +147,29 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
                         # Sum across the single account (row)
                         # holdings_df row index: (Type, Cat, Name, ID)
                         # We just want total per asset class
-                        ac_totals = by_asset_class.sum(axis=0) # Series indexed by Asset_Class
+                        ac_totals = by_asset_class.sum(axis=0)  # Series indexed by Asset_Class
 
                         total_val = float(ac_totals.sum())
 
                         if total_val > 0:
-                            percentages = (ac_totals / total_val * 100)
+                            percentages = ac_totals / total_val * 100
                         else:
                             percentages = ac_totals * 0
 
                         # Create summary DataFrame
-                        summary_df = pd.DataFrame({
-                            'Asset_Class': ac_totals.index,
-                            'Dollar_Amount': ac_totals.values,
-                            'Percentage': percentages.values
-                        })
-                        context["account_allocation"] = summary_df.to_dict('records')
+                        summary_df = pd.DataFrame(
+                            {
+                                "Asset_Class": ac_totals.index,
+                                "Dollar_Amount": ac_totals.values,
+                                "Percentage": percentages.values,
+                            }
+                        )
+                        context["account_allocation"] = summary_df.to_dict("records")
                         context["account_total_value"] = total_val
                 except Exception as e:
                     print(f"Error in pandas calculation: {e}")
 
         return context
-
 
     def post(self, request: Any, **kwargs: Any) -> Any:
         account_id = kwargs.get("account_id")

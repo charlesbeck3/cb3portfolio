@@ -18,12 +18,8 @@ class TestAllocationStrategyCreateView(TestCase, PortfolioTestMixin):
         self.create_portfolio(user=self.user)
 
         # Create some asset classes using mixin helpers or manually
-        self.ac1, _ = AssetClass.objects.get_or_create(
-            name="Stocks", category=self.cat_us_eq
-        )
-        self.ac2, _ = AssetClass.objects.get_or_create(
-            name="Bonds", category=self.cat_fi
-        )
+        self.ac1, _ = AssetClass.objects.get_or_create(name="Stocks", category=self.cat_us_eq)
+        self.ac2, _ = AssetClass.objects.get_or_create(name="Bonds", category=self.cat_fi)
 
     def test_get_view_returns_200(self) -> None:
         self.client.force_login(self.user)
@@ -33,7 +29,9 @@ class TestAllocationStrategyCreateView(TestCase, PortfolioTestMixin):
 
         self.assertEqual(response.status_code, HTTPStatus.OK)
         # Check template used (Django 4.x+ response.templates is list)
-        self.assertIn("portfolio/allocation_strategy_form.html", [t.name for t in response.templates])
+        self.assertIn(
+            "portfolio/allocation_strategy_form.html", [t.name for t in response.templates]
+        )
         self.assertIn("form", response.context)
 
         # Verify grouping headers are present

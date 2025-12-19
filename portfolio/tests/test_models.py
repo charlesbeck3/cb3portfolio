@@ -32,10 +32,18 @@ class AccountTypeTests(TestCase, PortfolioTestMixin):
         sec = Security.objects.create(ticker="VTI_TY", asset_class=ac_us)
 
         acc1 = Account.objects.create(
-            name="Acc 1", account_type=type_obj, portfolio=self.portfolio, user=self.user, institution=self.institution
+            name="Acc 1",
+            account_type=type_obj,
+            portfolio=self.portfolio,
+            user=self.user,
+            institution=self.institution,
         )
         acc2 = Account.objects.create(
-            name="Acc 2", account_type=type_obj, portfolio=self.portfolio, user=self.user, institution=self.institution
+            name="Acc 2",
+            account_type=type_obj,
+            portfolio=self.portfolio,
+            user=self.user,
+            institution=self.institution,
         )
 
         Holding.objects.create(account=acc1, security=sec, shares=10, current_price=100)
@@ -46,9 +54,8 @@ class AccountTypeTests(TestCase, PortfolioTestMixin):
         # Index is now MultiIndex with (Type, Category, Name, ID)
         # Check that account names appear in the index
         account_names = [idx[2] for idx in df.index]  # Name is at position 2
-        self.assertIn('Acc 1', account_names)
-        self.assertIn('Acc 2', account_names)
-
+        self.assertIn("Acc 1", account_names)
+        self.assertIn("Acc 2", account_names)
 
 
 class PortfolioTests(TestCase, PortfolioTestMixin):
@@ -59,35 +66,54 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
         # Setup for dataframe tests
         self.us_stocks = AssetClass.objects.create(name="US Stk", category=self.cat_us_eq)
         self.bonds = AssetClass.objects.create(name="Bonds", category=self.cat_fi)
-        self.vti = Security.objects.create(ticker="VTI", name="Vanguard Stock", asset_class=self.us_stocks)
-        self.bnd = Security.objects.create(ticker="BND", name="Vanguard Bond", asset_class=self.bonds)
+        # Update seeded securities
+        self.vti.name = "Vanguard Stock"
+        self.vti.asset_class = self.us_stocks
+        self.vti.save()
+
+        self.bnd.name = "Vanguard Bond"
+        self.bnd.asset_class = self.bonds
+        self.bnd.save()
 
         self.account = Account.objects.create(
             name="Test Account",
             account_type=self.type_taxable,
             portfolio=self.portfolio,
             user=self.user,
-            institution=self.institution
+            institution=self.institution,
         )
-        Holding.objects.create(account=self.account, security=self.vti, shares=Decimal('50'), current_price=Decimal('100.00'))
-        Holding.objects.create(account=self.account, security=self.bnd, shares=Decimal('100'), current_price=Decimal('50.00'))
+        Holding.objects.create(
+            account=self.account,
+            security=self.vti,
+            shares=Decimal("50"),
+            current_price=Decimal("100.00"),
+        )
+        Holding.objects.create(
+            account=self.account,
+            security=self.bnd,
+            shares=Decimal("100"),
+            current_price=Decimal("50.00"),
+        )
 
     def test_to_dataframe_structure(self) -> None:
         """Portfolio DataFrame has correct MultiIndex structure."""
         df = self.portfolio.to_dataframe()
-        assert df.index.names == ['Account_Type', 'Account_Category', 'Account_Name', 'Account_ID']
-        assert df.columns.names == ['Asset_Class', 'Asset_Category', 'Security']
+        assert df.index.names == ["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
+        assert df.columns.names == ["Asset_Class", "Asset_Category", "Security"]
         assert not df.empty
 
     def test_to_dataframe_values(self) -> None:
         """Portfolio DataFrame has correct values."""
         df = self.portfolio.to_dataframe()
-        assert ('US Stk', 'US Equities', 'VTI') in df.columns
-        assert ('Bonds', 'Fixed Income', 'BND') in df.columns
+        assert ("US Stk", "US Equities", "VTI") in df.columns
+        assert ("Bonds", "Fixed Income", "BND") in df.columns
 
         # Value check: 50 * 100 = 5000
         # Index now includes Account_ID, so we need to match on all 4 levels
-        val = df.loc[('Taxable', 'Investments', 'Test Account', self.account.id), ('US Stk', 'US Equities', 'VTI')]
+        val = df.loc[
+            ("Taxable", "Investments", "Test Account", self.account.id),
+            ("US Stk", "US Equities", "VTI"),
+        ]
         self.assertEqual(val, 5000.0)
 
     def test_empty_portfolio_dataframe(self) -> None:
@@ -95,7 +121,7 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
         empty = Portfolio.objects.create(name="Empty", user=self.user)
         df = empty.to_dataframe()
         assert df.empty
-        assert df.index.names == ['Account_Type', 'Account_Category', 'Account_Name', 'Account_ID']
+        assert df.index.names == ["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
 
 
 class AssetClassTests(TestCase, PortfolioTestMixin):
@@ -166,11 +192,9 @@ class AccountTests(TestCase, PortfolioTestMixin):
             name="US Stocks",
             category=self.cat_us_eq,
         )
-        security = Security.objects.create(
-            ticker="VTI",
-            name="Vanguard Total Stock Market ETF",
-            asset_class=asset_class,
-        )
+        self.vti.asset_class = asset_class
+        self.vti.save()
+        security = self.vti
 
         Holding.objects.create(
             account=account,
@@ -197,16 +221,13 @@ class AccountTests(TestCase, PortfolioTestMixin):
             name="Bonds",
             category=self.cat_us_eq,
         )
-        vti = Security.objects.create(
-            ticker="VTI",
-            name="Vanguard Total Stock Market ETF",
-            asset_class=us_stocks,
-        )
-        bnd = Security.objects.create(
-            ticker="BND",
-            name="Vanguard Total Bond Market ETF",
-            asset_class=bonds,
-        )
+        self.vti.asset_class = us_stocks
+        self.vti.save()
+        vti = self.vti
+
+        self.bnd.asset_class = bonds
+        self.bnd.save()
+        bnd = self.bnd
 
         Holding.objects.create(
             account=account,
@@ -241,16 +262,13 @@ class AccountTests(TestCase, PortfolioTestMixin):
             name="Bonds",
             category=self.cat_us_eq,
         )
-        vti = Security.objects.create(
-            ticker="VTI",
-            name="Vanguard Total Stock Market ETF",
-            asset_class=us_stocks,
-        )
-        bnd = Security.objects.create(
-            ticker="BND",
-            name="Vanguard Total Bond Market ETF",
-            asset_class=bonds,
-        )
+        self.vti.asset_class = us_stocks
+        self.vti.save()
+        vti = self.vti
+
+        self.bnd.asset_class = bonds
+        self.bnd.save()
+        bnd = self.bnd
 
         # Current: 600 stocks, 400 bonds, total 1000
         Holding.objects.create(
@@ -279,21 +297,23 @@ class AccountTests(TestCase, PortfolioTestMixin):
         sec = Security.objects.create(ticker="VTI_AC", asset_class=ac_us)
         # Create a new account to avoid side effects from mixin setup if any
         account = Account.objects.create(
-            user=self.user, name="My Solitary Account", portfolio=self.portfolio,
-            account_type=self.type_roth, institution=self.institution
+            user=self.user,
+            name="My Solitary Account",
+            portfolio=self.portfolio,
+            account_type=self.type_roth,
+            institution=self.institution,
         )
-        Holding.objects.create(account=account, security=sec, shares=Decimal('10'), current_price=Decimal('100'))
+        Holding.objects.create(
+            account=account, security=sec, shares=Decimal("10"), current_price=Decimal("100")
+        )
 
         df = account.to_dataframe()
         self.assertEqual(len(df), 1)
         # Index is now MultiIndex with (Type, Category, Name, ID)
-        expected_index = ('Roth IRA', 'Retirement', 'My Solitary Account', account.id)
+        expected_index = ("Roth IRA", "Retirement", "My Solitary Account", account.id)
         self.assertEqual(df.index[0], expected_index)
-        val = df.loc[expected_index, ('US Stk Ac', 'US Equities', 'VTI_AC')]
+        val = df.loc[expected_index, ("US Stk Ac", "US Equities", "VTI_AC")]
         self.assertEqual(val, 1000.0)
-
-
-
 
 
 class SecurityTests(
@@ -308,9 +328,9 @@ class SecurityTests(
 
     def test_create_security(self) -> None:
         """Test creating a security."""
-        security = Security.objects.create(
-            ticker="VTI", name="Vanguard Total Stock Market ETF", asset_class=self.asset_class
-        )
+        self.vti.asset_class = self.asset_class
+        self.vti.save()
+        security = self.vti
         self.assertEqual(security.ticker, "VTI")
         self.assertEqual(str(security), "VTI - Vanguard Total Stock Market ETF")
 
@@ -332,9 +352,9 @@ class HoldingTests(TestCase, PortfolioTestMixin):  # Inherit from PortfolioTestM
             account_type=self.type_roth,  # Replaced string with model instance
             institution=self.institution,
         )
-        self.security = Security.objects.create(
-            ticker="VTI", name="Vanguard Total Stock Market ETF", asset_class=self.asset_class
-        )
+        self.vti.asset_class = self.asset_class
+        self.vti.save()
+        self.security = self.vti
 
     def test_create_holding(self) -> None:
         """Test creating a holding."""
@@ -517,9 +537,9 @@ class RebalancingRecommendationTests(TestCase, PortfolioTestMixin):
             account_type=self.type_roth,
             institution=self.institution,
         )
-        self.security = Security.objects.create(
-            ticker="VTI", name="Vanguard Total Stock Market ETF", asset_class=self.asset_class
-        )
+        self.vti.asset_class = self.asset_class
+        self.vti.save()
+        self.security = self.vti
 
     def test_create_recommendation(self) -> None:
         """Test creating a rebalancing recommendation."""
@@ -533,6 +553,3 @@ class RebalancingRecommendationTests(TestCase, PortfolioTestMixin):
         )
         self.assertEqual(rec.action, "BUY")
         self.assertEqual(str(rec), "BUY 10.00 VTI in Roth IRA")
-
-
-

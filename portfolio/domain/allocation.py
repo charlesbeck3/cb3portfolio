@@ -17,7 +17,7 @@ class AssetAllocation:
     def target_value_for(self, account_total: Decimal) -> Decimal:
         """Return the target dollar amount for a given account total."""
 
-        return account_total * self.target_pct / Decimal("100")
+        return (account_total * self.target_pct / Decimal("100")).quantize(Decimal("0.01"))
 
     def variance_for(self, current_value: Decimal, account_total: Decimal) -> Decimal:
         """Return dollar variance between current and target values."""

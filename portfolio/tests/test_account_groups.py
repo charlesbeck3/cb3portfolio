@@ -86,7 +86,7 @@ class AccountGroupTests(TestCase, PortfolioTestMixin):
         # Verify using Dashboard View
         # Since logic is in get_sidebar_context mixin used by Dashboard
 
-        response = self.client.get("/") # Dashboard URL
+        response = self.client.get("/")  # Dashboard URL
         self.assertEqual(response.status_code, 200)
 
         sidebar_data = response.context["sidebar_data"]
@@ -101,10 +101,10 @@ class AccountGroupTests(TestCase, PortfolioTestMixin):
         self.assertEqual(len(groups["Investments"]["accounts"]), 1)
         self.assertEqual(groups["Investments"]["accounts"][0]["name"], "Taxable")
 
-        # Check Deposit Accounts
-        self.assertIn("Deposit Accounts", groups)
-        self.assertEqual(len(groups["Deposit Accounts"]["accounts"]), 1)
-        self.assertEqual(groups["Deposit Accounts"]["accounts"][0]["name"], "Savings")
+        # Check Deposits
+        self.assertIn("Deposits", groups)
+        self.assertEqual(len(groups["Deposits"]["accounts"]), 1)
+        self.assertEqual(groups["Deposits"]["accounts"][0]["name"], "Savings")
 
         # Check Mystery Group
         self.assertIn("Mystery Group", groups)

@@ -68,7 +68,9 @@ class PortfolioContextMixin:
                     "name": account.name,
                     "institution": account.institution.name if account.institution else "N/A",
                     "total": account_total,
-                    "absolute_deviation_pct": Decimal(0),  # TODO: Calculate drift in future enhancement
+                    "absolute_deviation_pct": Decimal(
+                        0
+                    ),  # TODO: Calculate drift in future enhancement
                 }
             )
             groups[group_name]["total"] += account_total

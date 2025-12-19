@@ -28,18 +28,17 @@ class TestAllocationCalculationEngine(SimpleTestCase):
         # Create mock DataFrame
         # Cols: Asset_Class, Asset_Category, Security
         data = {
-            ('Equities', 'US Large Cap', 'VTI'): [5000.0, 3000.0],
-            ('Fixed Income', 'Bonds', 'BND'): [5000.0, 7000.0]
+            ("Equities", "US Large Cap", "VTI"): [5000.0, 3000.0],
+            ("Fixed Income", "Bonds", "BND"): [5000.0, 7000.0],
         }
         # Rows: Account_Type, Account_Category, Account_Name
-        index = pd.MultiIndex.from_tuples([
-            ('Taxable', 'Brokerage', 'Account1'),
-            ('401k', 'Retirement', 'Account2')
-        ], names=['Account_Type', 'Account_Category', 'Account_Name'])
+        index = pd.MultiIndex.from_tuples(
+            [("Taxable", "Brokerage", "Account1"), ("401k", "Retirement", "Account2")],
+            names=["Account_Type", "Account_Category", "Account_Name"],
+        )
 
         columns = pd.MultiIndex.from_tuples(
-            data.keys(),
-            names=['Asset_Class', 'Asset_Category', 'Security']
+            data.keys(), names=["Asset_Class", "Asset_Category", "Security"]
         )
 
         df = pd.DataFrame(list(data.values()), index=columns).T
@@ -51,31 +50,33 @@ class TestAllocationCalculationEngine(SimpleTestCase):
         result = engine._calculate_by_asset_class(df, df.sum().sum())
 
         # Verify
-        assert 'Equities' in result.index
-        assert 'Fixed Income' in result.index
+        assert "Equities" in result.index
+        assert "Fixed Income" in result.index
 
         # Equities: 8000 / 20000 = 40%
-        assert abs(result.loc['Equities', 'Percentage'] - 40.0) < 0.1
+        assert abs(result.loc["Equities", "Percentage"] - 40.0) < 0.1
 
         # Fixed Income: 12000 / 20000 = 60%
-        assert abs(result.loc['Fixed Income', 'Percentage'] - 60.0) < 0.1
+        assert abs(result.loc["Fixed Income", "Percentage"] - 60.0) < 0.1
 
         # Percentages sum to 100%
-        assert abs(result['Percentage'].sum() - 100.0) < 0.01
+        assert abs(result["Percentage"].sum() - 100.0) < 0.01
 
     def test_calculate_by_account(self) -> None:
         """Engine calculates account-level allocations."""
         data = {
-            ('Equities', 'US Large Cap', 'VTI'): [5000.0],
-            ('Fixed Income', 'Bonds', 'BND'): [5000.0]
+            ("Equities", "US Large Cap", "VTI"): [5000.0],
+            ("Fixed Income", "Bonds", "BND"): [5000.0],
         }
-        index = pd.MultiIndex.from_tuples([
-            ('Taxable', 'Brokerage', 'Account1'),
-        ], names=['Account_Type', 'Account_Category', 'Account_Name'])
+        index = pd.MultiIndex.from_tuples(
+            [
+                ("Taxable", "Brokerage", "Account1"),
+            ],
+            names=["Account_Type", "Account_Category", "Account_Name"],
+        )
 
         columns = pd.MultiIndex.from_tuples(
-            data.keys(),
-            names=['Asset_Class', 'Asset_Category', 'Security']
+            data.keys(), names=["Asset_Class", "Asset_Category", "Security"]
         )
 
         df = pd.DataFrame(list(data.values()), index=columns).T
@@ -86,11 +87,11 @@ class TestAllocationCalculationEngine(SimpleTestCase):
         result = engine._calculate_by_account(df)
 
         # Should have _dollars and _pct for each asset class
-        assert 'Equities_dollars' in result.columns
-        assert 'Equities_pct' in result.columns
-        assert 'Fixed Income_dollars' in result.columns
+        assert "Equities_dollars" in result.columns
+        assert "Equities_pct" in result.columns
+        assert "Fixed Income_dollars" in result.columns
 
-        assert result.loc[('Taxable', 'Brokerage', 'Account1'), 'Equities_pct'] == 50.0
+        assert result.loc[("Taxable", "Brokerage", "Account1"), "Equities_pct"] == 50.0
 
     def test_calculate_allocations_empty(self) -> None:
         """Handles empty DataFrame gracefully."""
@@ -98,8 +99,8 @@ class TestAllocationCalculationEngine(SimpleTestCase):
         engine = AllocationCalculationEngine()
         result = engine.calculate_allocations(df)
 
-        assert result['by_account'].empty
-        assert result['portfolio_summary'].empty
+        assert result["by_account"].empty
+        assert result["portfolio_summary"].empty
 
 
 class TestAllocationDashboardRows(TestCase):
@@ -115,13 +116,9 @@ class TestAllocationDashboardRows(TestCase):
         self.category = AssetClassCategory.objects.create(
             label="US Stocks", code="US_STOCKS", parent=self.group
         )
-        self.asset_class = AssetClass.objects.create(
-            name="Large Cap", category=self.category
-        )
+        self.asset_class = AssetClass.objects.create(name="Large Cap", category=self.category)
 
-        self.cash_ac = AssetClass.objects.create(
-             name="Cash", category=self.category
-        )
+        self.cash_ac = AssetClass.objects.create(name="Cash", category=self.category)
 
         self.security = Security.objects.create(
             ticker="AAPL", name="Apple", asset_class=self.asset_class
@@ -163,7 +160,9 @@ class TestAllocationDashboardRows(TestCase):
         # In a real scenario, this comes from views.
         type_taxable_any: Any = self.type_taxable
         type_taxable_any.current_total_value = Decimal("1500.00")
-        type_taxable_any.target_map = {self.asset_class.id: Decimal("60")}  # 60% Target for Large Cap
+        type_taxable_any.target_map = {
+            self.asset_class.id: Decimal("60")
+        }  # 60% Target for Large Cap
 
         holdings_df = self.portfolio.to_dataframe()
         engine = AllocationCalculationEngine()
@@ -188,7 +187,9 @@ class TestAllocationDashboardRows(TestCase):
 
         # Note: Group Total skipped because only 1 category.
 
-        self.assertTrue(len(rows) >= 3, f"Got {len(rows)} rows: {[r.asset_class_name for r in rows]}")
+        self.assertTrue(
+            len(rows) >= 3, f"Got {len(rows)} rows: {[r.asset_class_name for r in rows]}"
+        )
 
         # 1. Large Cap
         r_lc = next(r for r in rows if r.asset_class_name == "Large Cap")
@@ -196,7 +197,7 @@ class TestAllocationDashboardRows(TestCase):
         self.assertEqual(r_lc.portfolio_target, "$900")
 
         # Check Account Type Column
-        at_col = r_lc.account_type_data[0] # Taxable
+        at_col = r_lc.account_type_data[0]  # Taxable
         self.assertEqual(at_col.current, "$1,500")
         self.assertEqual(at_col.target, "$900")
 
@@ -238,7 +239,7 @@ class TestAllocationDashboardRows(TestCase):
 
         at_col = r_lc.account_type_data[0]
         self.assertEqual(at_col.current, "100.0%")
-        self.assertEqual(at_col.target, "60.0%") # Only one account type, so matches portfolio
+        self.assertEqual(at_col.target, "60.0%")  # Only one account type, so matches portfolio
 
 
 class TestHoldingsDetailCalculation(SimpleTestCase):
@@ -251,24 +252,45 @@ class TestHoldingsDetailCalculation(SimpleTestCase):
         data = [
             # Acct1: VTI, AAPL
             {
-                "Account_ID": acc_id_1, "Account_Name": "Acct1", "Account_Type": "Taxable",
-                "Account_Category": "Brokerage", "Asset_Class": "Equities", "Asset_Category": "Large Cap",
-                "Ticker": "VTI", "Security_Name": "Vanguard Total Stock",
-                "Shares": 10.0, "Price": 100.0, "Value": 1000.0
+                "Account_ID": acc_id_1,
+                "Account_Name": "Acct1",
+                "Account_Type": "Taxable",
+                "Account_Category": "Brokerage",
+                "Asset_Class": "Equities",
+                "Asset_Category": "Large Cap",
+                "Ticker": "VTI",
+                "Security_Name": "Vanguard Total Stock",
+                "Shares": 10.0,
+                "Price": 100.0,
+                "Value": 1000.0,
             },
             {
-                "Account_ID": acc_id_1, "Account_Name": "Acct1", "Account_Type": "Taxable",
-                "Account_Category": "Brokerage", "Asset_Class": "Equities", "Asset_Category": "Large Cap",
-                "Ticker": "AAPL", "Security_Name": "Apple Inc",
-                "Shares": 5.0, "Price": 100.0, "Value": 500.0
+                "Account_ID": acc_id_1,
+                "Account_Name": "Acct1",
+                "Account_Type": "Taxable",
+                "Account_Category": "Brokerage",
+                "Asset_Class": "Equities",
+                "Asset_Category": "Large Cap",
+                "Ticker": "AAPL",
+                "Security_Name": "Apple Inc",
+                "Shares": 5.0,
+                "Price": 100.0,
+                "Value": 500.0,
             },
             # Acct2: BND
             {
-                "Account_ID": acc_id_2, "Account_Name": "Acct2", "Account_Type": "Retirement",
-                "Account_Category": "Roth", "Asset_Class": "Fixed Income", "Asset_Category": "Bonds",
-                "Ticker": "BND", "Security_Name": "Vanguard Bond",
-                "Shares": 20.0, "Price": 100.0, "Value": 2000.0
-            }
+                "Account_ID": acc_id_2,
+                "Account_Name": "Acct2",
+                "Account_Type": "Retirement",
+                "Account_Category": "Roth",
+                "Asset_Class": "Fixed Income",
+                "Asset_Category": "Bonds",
+                "Ticker": "BND",
+                "Security_Name": "Vanguard Bond",
+                "Shares": 20.0,
+                "Price": 100.0,
+                "Value": 2000.0,
+            },
         ]
 
         df = pd.DataFrame(data)
@@ -278,8 +300,8 @@ class TestHoldingsDetailCalculation(SimpleTestCase):
         # Acct2: Fixed Income Target 100% (of 2000 = 2000)
 
         targets_map = {
-            acc_id_1: {'Equities': Decimal('60.0')},
-            acc_id_2: {'Fixed Income': Decimal('100.0')}
+            acc_id_1: {"Equities": Decimal("60.0")},
+            acc_id_2: {"Fixed Income": Decimal("100.0")},
         }
 
         engine = AllocationCalculationEngine()
@@ -300,7 +322,7 @@ class TestHoldingsDetailCalculation(SimpleTestCase):
         self.assertEqual(r_aapl["Ticker"], "AAPL")
         self.assertEqual(r_aapl["Account_ID"], acc_id_1)
         self.assertEqual(r_aapl["Value"], 500.0)
-        self.assertEqual(r_aapl["Shares"], 5.0) # Preserved
+        self.assertEqual(r_aapl["Shares"], 5.0)  # Preserved
 
         # Target Calculation:
         # Account Total = 1500.
@@ -315,7 +337,7 @@ class TestHoldingsDetailCalculation(SimpleTestCase):
         r_vti = res.iloc[1]
         self.assertEqual(r_vti["Ticker"], "VTI")
         self.assertEqual(r_vti["Value"], 1000.0)
-        self.assertAlmostEqual(r_vti["Target_Value"], 450.0) # Equal split
+        self.assertAlmostEqual(r_vti["Target_Value"], 450.0)  # Equal split
         self.assertAlmostEqual(r_vti["Variance"], 1000.0 - 450.0)
 
         # Check BND (Acct2)
@@ -326,4 +348,3 @@ class TestHoldingsDetailCalculation(SimpleTestCase):
         # Target 100% of 2000 = 2000. One security.
         self.assertAlmostEqual(r_bnd["Target_Value"], 2000.0)
         self.assertAlmostEqual(r_bnd["Variance"], 0.0)
-

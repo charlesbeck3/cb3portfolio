@@ -5,7 +5,7 @@ from django.test import TestCase
 
 from portfolio.domain.analysis import PortfolioAnalysis
 from portfolio.domain.portfolio import Portfolio
-from portfolio.models import Account, AssetClass, Holding, Security
+from portfolio.models import Account, AssetClass, Holding
 from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
@@ -20,16 +20,11 @@ class PortfolioAnalysisTests(TestCase, PortfolioTestMixin):
         self.us_stocks = AssetClass.objects.create(name="US Stocks", category=self.cat_us_eq)
         self.bonds = AssetClass.objects.create(name="Bonds", category=self.cat_fi)
 
-        self.vti = Security.objects.create(
-            ticker="VTI",
-            name="Vanguard Total Stock Market ETF",
-            asset_class=self.us_stocks,
-        )
-        self.bnd = Security.objects.create(
-            ticker="BND",
-            name="Vanguard Total Bond Market ETF",
-            asset_class=self.bonds,
-        )
+        # Update seeded securities
+        self.vti.asset_class = self.us_stocks
+        self.vti.save()
+        self.bnd.asset_class = self.bonds
+        self.bnd.save()
 
         self.acc_roth = Account.objects.create(
             user=self.user,
@@ -59,7 +54,9 @@ class PortfolioAnalysisTests(TestCase, PortfolioTestMixin):
             current_price=Decimal("100"),
         )
 
-        self.domain_portfolio = Portfolio(user_id=self.user.id, accounts=[self.acc_roth, self.acc_taxable])
+        self.domain_portfolio = Portfolio(
+            user_id=self.user.id, accounts=[self.acc_roth, self.acc_taxable]
+        )
 
     def test_target_value_and_variance(self) -> None:
         analysis = PortfolioAnalysis(

@@ -87,7 +87,9 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
         h1 = Holding.objects.create(account=self.account, security=self.sec_us, shares=5)
 
         # Another security
-        sec_vxus = Security.objects.create(ticker="VXUS", name="VXUS", asset_class=self.ac_us)
+        sec_vxus, _ = Security.objects.get_or_create(
+            ticker="VXUS", defaults={"name": "VXUS", "asset_class": self.ac_us}
+        )
         h2 = Holding.objects.create(account=self.account, security=sec_vxus, shares=10)
 
         url = reverse("portfolio:account_holdings", args=[self.account.id])
