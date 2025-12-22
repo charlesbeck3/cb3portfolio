@@ -301,6 +301,16 @@ class Command(BaseCommand, PortfolioTestMixin):
             current_price=Decimal("1.00"),
         )
 
+    def format_df_for_display(self, df: pd.DataFrame, left_align_cols: list[str]) -> str:
+        """Helper to ensure left alignment and spacing for terminal output."""
+        # Ensure identifying columns are left-aligned by manual padding
+        for col in left_align_cols:
+            if col in df.columns:
+                max_len = max(df[col].astype(str).str.len().max(), len(col))
+                df[col] = df[col].astype(str).str.ljust(max_len)
+
+        return df.to_string(index=False, justify="left", col_space=4)
+
     def display_portfolio_totals(self, portfolio: DomainPortfolio) -> None:
         self.stdout.write(
             self.style.MIGRATE_HEADING(f"Total Portfolio Value: ${portfolio.total_value:,.2f}")
@@ -319,7 +329,7 @@ class Command(BaseCommand, PortfolioTestMixin):
                 }
             )
         df = pd.DataFrame(data)
-        self.stdout.write(df.to_string(index=False))
+        self.stdout.write(self.format_df_for_display(df, ["Account", "Type"]))
 
     def display_asset_class_breakdown(self, portfolio: DomainPortfolio) -> None:
         self.stdout.write(self.style.MIGRATE_LABEL("\nASSET CLASS ALLOCATION (FULL PORTFOLIO)"))
@@ -385,7 +395,7 @@ class Command(BaseCommand, PortfolioTestMixin):
         for col, fmt in format_mapping.items():
             df[col] = df[col].apply(fmt)
 
-        self.stdout.write(df.to_string(index=False))
+        self.stdout.write(self.format_df_for_display(df, ["Asset Class"]))
 
     def display_account_type_breakdown(self, portfolio: DomainPortfolio) -> None:
         self.stdout.write(self.style.MIGRATE_LABEL("\nACCOUNT TYPE BREAKDOWN"))
@@ -405,7 +415,7 @@ class Command(BaseCommand, PortfolioTestMixin):
         df = pd.DataFrame(data)
         df["Value"] = df["Value"].apply("${:,.2f}".format)
         df["Pct"] = df["Pct"].apply("{:.1f}%".format)
-        self.stdout.write(df.to_string(index=False))
+        self.stdout.write(self.format_df_for_display(df, ["Type"]))
 
     def display_account_variances(self, portfolio: DomainPortfolio) -> None:
         self.stdout.write(self.style.MIGRATE_LABEL("\nACCOUNT-LEVEL VARIANCES"))
@@ -460,7 +470,7 @@ class Command(BaseCommand, PortfolioTestMixin):
                 }
                 for col, fmt in format_mapping.items():
                     df[col] = df[col].apply(fmt)
-                self.stdout.write(df.to_string(index=False))
+                self.stdout.write(self.format_df_for_display(df, ["Asset Class"]))
             else:
                 self.stdout.write("No holdings or targets for this account.")
 
@@ -487,6 +497,6 @@ class Command(BaseCommand, PortfolioTestMixin):
                 df = pd.DataFrame(data)
                 df = df.sort_values(by="Market Value", ascending=False)
                 df["Market Value"] = df["Market Value"].apply("${:,.2f}".format)
-                self.stdout.write(df.to_string(index=False))
+                self.stdout.write(self.format_df_for_display(df, ["Ticker", "Asset Class"]))
             else:
                 self.stdout.write("No holdings in this account.")
