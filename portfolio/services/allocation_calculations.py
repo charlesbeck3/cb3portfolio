@@ -451,7 +451,7 @@ class AllocationCalculationEngine:
                     meta = ac_meta[ac]
                     idx = (ac, meta["category_label"])
                     row_values = df_grid.loc[idx] if idx in df_grid.index else pd.Series()
-                    
+
                     # Determine if this is the cash row
                     is_cash_row = False
                     if cash_asset_class_id and meta["id"] == cash_asset_class_id:
@@ -948,17 +948,7 @@ class AllocationCalculationEngine:
                 )
                 rows.append(group_row)
 
-        # Cash row
-        cash_row = self._build_cash_row_presentation(
-            df_portfolio=df_portfolio,
-            df_account_type=df_account_type,
-            df_account=df_account,
-            accounts_by_type=accounts_by_type,
-            portfolio_total=portfolio_total,
-            mode=mode,
-        )
-        if cash_row:
-            rows.append(cash_row)
+
 
         # Grand total
         grand_total_row = self._build_grand_total_presentation(
@@ -1368,19 +1358,7 @@ class AllocationCalculationEngine:
             "account_types": account_type_columns,
         }
 
-    def _build_cash_row_presentation(
-        self,
-        df_portfolio: pd.DataFrame,
-        df_account_type: pd.DataFrame,
-        df_account: pd.DataFrame,
-        accounts_by_type: dict[int, list[dict[str, Any]]],
-        portfolio_total: float,
-        mode: str,
-    ) -> dict[str, Any] | None:
-        """Build cash row with implicit remainder calculations."""
-        # For now, return None - cash handling will be implemented in a future iteration
-        # This is a placeholder to maintain the structure
-        return None
+
 
     def _build_grand_total_presentation(
         self,
@@ -1393,7 +1371,7 @@ class AllocationCalculationEngine:
         asset_rows = [
             r
             for r in rows
-            if r.get("is_asset") and not r.get("is_cash") and not r.get("is_subtotal") and not r.get("is_group_total")
+            if r.get("is_asset") and not r.get("is_subtotal") and not r.get("is_group_total")
         ]
 
         if not asset_rows:
