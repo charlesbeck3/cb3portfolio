@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Protocol
+from typing import Any, Protocol
 
 from portfolio.models import (
     AccountGroup,
@@ -55,7 +55,7 @@ class SystemSeederService:
         self.logger.success("System Data seeded successfully!")
 
     def _seed_account_groups(self) -> None:
-        groups = [
+        groups: list[dict[str, Any]] = [
             {"name": "Investments", "sort_order": 1},
             {"name": "Retirement", "sort_order": 2},
             {"name": "Deposits", "sort_order": 3},
@@ -70,7 +70,7 @@ class SystemSeederService:
                 self.logger.success(f"Created Group: {group_obj.name}")
 
     def _seed_account_types(self) -> None:
-        types = [
+        types: list[dict[str, Any]] = [
             {
                 "code": "TAXABLE",
                 "label": "Taxable",
@@ -115,7 +115,7 @@ class SystemSeederService:
                 self.logger.success(f"Created Account Type: {type_obj.label}")
 
     def _seed_asset_categories(self) -> None:
-        categories = [
+        categories: list[dict[str, Any]] = [
             {"code": "EQUITIES", "label": "Equities", "parent": None, "sort_order": 1},
             {"code": "US_EQUITIES", "label": "US Equities", "parent": "EQUITIES", "sort_order": 2},
             {
@@ -145,7 +145,7 @@ class SystemSeederService:
                 self.logger.success(f"Created Category: {cat_obj.label}")
 
     def _seed_asset_classes(self) -> None:
-        asset_classes = [
+        asset_classes: list[dict[str, Any]] = [
             {"name": "US Equities", "category": "US_EQUITIES", "expected_return": Decimal("0.08")},
             {
                 "name": "US Real Estate",
@@ -212,7 +212,7 @@ class SystemSeederService:
                 self.logger.success(f"Created Asset Class: {ac_obj.name}")
 
     def _seed_securities(self) -> None:
-        securities = [
+        securities: list[dict[str, Any]] = [
             {
                 "ticker": "VTI",
                 "name": "Vanguard Total Stock Market ETF",

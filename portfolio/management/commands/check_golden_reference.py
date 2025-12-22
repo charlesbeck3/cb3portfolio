@@ -7,6 +7,7 @@ from django.db import transaction
 
 import pandas as pd
 
+from portfolio.domain.allocation import AssetAllocation
 from portfolio.domain.portfolio import Portfolio as DomainPortfolio
 from portfolio.models import (
     Account,
@@ -16,6 +17,7 @@ from portfolio.models import (
     Security,
     TargetAllocation,
 )
+from portfolio.services.allocation_calculations import AllocationCalculationEngine
 from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
@@ -57,6 +59,22 @@ class Command(BaseCommand, PortfolioTestMixin):
             # Cleanup - deleting the user will cascade delete the portfolio and holdings
             self.user.delete()
             self.stdout.write(self.style.SUCCESS("\nDone. Golden reference data cleaned up."))
+
+
+    def _get_effective_allocations_as_domain_objects(
+        self, user: Any
+    ) -> dict[int, list[AssetAllocation]]:
+        """Adapter to convert Engine's map format to Domain Objects expected by Portfolio domain."""
+        engine = AllocationCalculationEngine()
+        target_map = engine.get_effective_target_map(user)
+
+        result = {}
+        for acc_id, targets in target_map.items():
+            result[acc_id] = [
+                AssetAllocation(asset_class_name=ac_name, target_pct=pct)
+                for ac_name, pct in targets.items()
+            ]
+        return result
 
     def setup_golden_reference_scenario(self) -> None:
         """Replicates the setup from test_golden_reference.py"""
@@ -334,9 +352,7 @@ class Command(BaseCommand, PortfolioTestMixin):
     def display_asset_class_breakdown(self, portfolio: DomainPortfolio) -> None:
         self.stdout.write(self.style.MIGRATE_LABEL("\nASSET CLASS ALLOCATION (FULL PORTFOLIO)"))
 
-        from portfolio.services.targets import TargetAllocationService
-
-        effective_allocs = TargetAllocationService.get_effective_allocations(self.user)
+        effective_allocs = self._get_effective_allocations_as_domain_objects(self.user)
         variances = portfolio.variance_from_allocations(effective_allocs)
 
         by_ac = portfolio.value_by_asset_class()
@@ -420,9 +436,7 @@ class Command(BaseCommand, PortfolioTestMixin):
     def display_account_variances(self, portfolio: DomainPortfolio) -> None:
         self.stdout.write(self.style.MIGRATE_LABEL("\nACCOUNT-LEVEL VARIANCES"))
 
-        from portfolio.services.targets import TargetAllocationService
-
-        effective_allocs = TargetAllocationService.get_effective_allocations(self.user)
+        effective_allocs = self._get_effective_allocations_as_domain_objects(self.user)
 
         for account in portfolio.accounts:
             self.stdout.write(self.style.MIGRATE_HEADING(f"\nAccount: {account.name}"))

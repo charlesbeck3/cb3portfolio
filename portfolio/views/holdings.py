@@ -91,15 +91,15 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
                 ]
             )
 
+
         # Build Effective Targets Map
-        from portfolio.services.targets import TargetAllocationService
-
-        effective_targets_map = TargetAllocationService.get_effective_targets(user)
-
-        # Calculate Holdings Detail
         from portfolio.services.allocation_calculations import AllocationCalculationEngine
 
         engine = AllocationCalculationEngine()
+        effective_targets_map = engine.get_effective_target_map(user)
+
+        # Calculate Holdings Detail
+
         # Get detailed calc (merges targets)
         # Pass the DETAILED df now, not the Matrix one.
         holdings_detail_df = engine.calculate_holdings_detail(holdings_df, effective_targets_map)

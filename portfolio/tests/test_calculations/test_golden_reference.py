@@ -26,6 +26,7 @@ from decimal import Decimal
 
 from django.test import TestCase
 
+from portfolio.domain.allocation import AssetAllocation
 from portfolio.domain.portfolio import Portfolio
 from portfolio.models import (
     Account,
@@ -35,7 +36,7 @@ from portfolio.models import (
     Security,
     TargetAllocation,
 )
-from portfolio.services.targets import TargetAllocationService
+from portfolio.services.allocation_calculations import AllocationCalculationEngine
 from portfolio.tests.base import PortfolioTestMixin
 from users.models import CustomUser
 
@@ -47,6 +48,19 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
     All expected values calculated in Excel and verified by hand.
     See: cb3portfolio_gold_reference_calculations.xlsx
     """
+
+    def _get_effective_allocations_as_domain_objects(self, user: CustomUser) -> dict[int, list[AssetAllocation]]:
+        """Adapter to convert Engine's map format to Domain Objects expected by Portfolio domain."""
+        engine = AllocationCalculationEngine()
+        target_map = engine.get_effective_target_map(user)
+
+        result = {}
+        for acc_id, targets in target_map.items():
+            result[acc_id] = [
+                AssetAllocation(asset_class_name=ac_name, target_pct=pct)
+                for ac_name, pct in targets.items()
+            ]
+        return result
 
     def setUp(self) -> None:
         """Setup complete portfolio scenario with exact real-world data."""
@@ -977,7 +991,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         # This is implicitly tested above, but let's be explicit
 
         # Get effective allocations
-        effective_allocs = TargetAllocationService.get_effective_allocations(self.user)
+        effective_allocs = self._get_effective_allocations_as_domain_objects(self.user)
 
         # Treasury Direct should use Inflation Bonds Only (100%)
         treasury_allocs = effective_allocs.get(self.acc_treasury.id, [])
@@ -1012,7 +1026,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         - Sum of variances by asset class = 0 (conservation law)
         """
         portfolio = Portfolio.load_for_user(self.user)
-        effective_allocs = TargetAllocationService.get_effective_allocations(self.user)
+        effective_allocs = self._get_effective_allocations_as_domain_objects(self.user)
 
         # Get variance by asset class
         variance_by_ac = portfolio.variance_from_allocations(effective_allocs)
@@ -1081,7 +1095,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
 
     def test_target_percentages_never_exceed_100(self) -> None:
         """Target allocations for any account never exceed 100%"""
-        effective_allocs = TargetAllocationService.get_effective_allocations(self.user)
+        effective_allocs = self._get_effective_allocations_as_domain_objects(self.user)
 
         for account_id, allocs in effective_allocs.items():
             total_pct = sum(a.target_pct for a in allocs)

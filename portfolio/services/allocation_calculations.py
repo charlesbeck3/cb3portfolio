@@ -298,7 +298,66 @@ class AllocationCalculationEngine:
 
 
 
-    # ===== Target Allocation Presentation Methods =====
+    def get_effective_target_map(self, user: Any) -> dict[int, dict[str, Decimal]]:
+        """
+        Get map of {account_id: {asset_class_name: target_pct}}.
+
+        Used by HoldingsView and Golden Reference.
+        Replaces TargetAllocationService.get_effective_targets.
+        """
+        from portfolio.models import AssetClass
+
+        # reuse internal logic to fetch strategies by ID
+        strategies_data = self._get_target_strategies(user)
+        account_targets = strategies_data["account"]  # {acc_id: {ac_id: pct}}
+        type_targets = strategies_data["account_type"]  # {at_id: {ac_id: pct}}
+
+        # We need AC ID -> Name map
+        ac_map = {ac.id: ac.name for ac in AssetClass.objects.all()}
+
+        # We need Account -> Account Type map to resolve fallback
+        # This requires fetching accounts again? Or we can fetch them here.
+        from portfolio.models import Account
+
+        accounts = Account.objects.filter(user=user)
+
+        result = {}
+
+        for account in accounts:
+            acc_id = account.id
+            at_id = account.account_type_id
+
+            # Determine effective strategy
+            # Logic replicates _build_asset_row preference: Account > Account Type
+
+            # But wait, _get_target_strategies returns structured data, not the "effective" strategy per account purely.
+            # It returns the raw strategy contents for the assigned strategy.
+
+            # If account has override strategy
+            effective_ac_ids = {} # {ac_id: pct}
+
+            if acc_id in account_targets and account_targets[acc_id]:
+                # Account specific strategy takes precedence
+                effective_ac_ids = account_targets[acc_id]
+            elif at_id in type_targets:
+                # Fallback to account type strategy
+                effective_ac_ids = type_targets[at_id]
+
+            # Check for strategies that might be assigned but empty?
+            # The logic in _get_target_strategies populates the dict keys only if they exist in the strategy map lists?
+            # No, `result["account"][acc_id]` is populate if acc matches `acc_strategy_map`.
+            # Let's double check _get_target_strategies implementation.
+            # It populates "account" key if acc has allocation_strategy_id.
+
+            # Convert {ac_id: pct} to {ac_name: pct}
+            name_map = {}
+            for ac_id, pct in effective_ac_ids.items():
+                if ac_id in ac_map:
+                    name_map[ac_map[ac_id]] = pct
+
+            result[acc_id] = name_map
+
+        return result
 
     def get_target_allocation_presentation(
         self,
@@ -492,6 +551,22 @@ class AllocationCalculationEngine:
         for ta in target_allocations:
             strategy_targets[ta.strategy_id][ta.asset_class_id] = ta.target_percent
 
+        # Implicit Cash Calculation
+        # For any strategy, the remainder (100% - sum of targets) is assigned to Cash
+        from portfolio.models import AssetClass
+        cash_ac = AssetClass.objects.filter(name="Cash").first()
+        cash_id = cash_ac.id if cash_ac else None
+
+        if cash_id:
+            for strat_id in strategy_ids:
+                # Ensure strategy exists in map even if empty (e.g. "All Cash")
+                targets = strategy_targets[strat_id]
+                total_allocated = sum(targets.values())
+                remainder = Decimal("100.0") - total_allocated
+
+                if remainder > Decimal("0.001"):
+                     targets[cash_id] = targets.get(cash_id, Decimal("0.0")) + remainder
+
         # Map to account types
         for at_id, strategy_id in at_strategy_map.items():
             result["account_type"][at_id] = strategy_targets.get(strategy_id, {})
@@ -579,6 +654,7 @@ class AllocationCalculationEngine:
                         asset_classes=asset_classes,
                         ac_metadata=ac_metadata,
                         rows=rows,  # Use previously built asset rows
+                        mode=mode,
                     )
                     rows.append(subtotal_row)
 
@@ -587,6 +663,7 @@ class AllocationCalculationEngine:
                 group_row = self._build_group_total(
                     group_code=group_code,
                     rows=rows,  # Use all rows for this group
+                    mode=mode,
                 )
                 rows.append(group_row)
 
@@ -622,6 +699,7 @@ class AllocationCalculationEngine:
         # Portfolio-level current
         portfolio_current_dollars = 0.0
         portfolio_current_pct = 0.0
+        portfolio_target_dollars = 0.0
 
         if not df_portfolio.empty and ac_name in df_portfolio.index:
             portfolio_current_dollars = float(df_portfolio.loc[ac_name, "Dollar_Amount"])
@@ -722,11 +800,13 @@ class AllocationCalculationEngine:
                         "name": acc_name,
                         "current": acc_current_display,
                         "current_raw": acc_current_dollars,
+                        "current_pct": acc_current_pct,
                         "target": acc_target_display,
                         "target_raw": acc_target_dollars,
                         "target_pct": acc_target_pct,
                         "variance": acc_variance_display,
                         "variance_raw": acc_variance_dollars,
+                        "variance_pct": acc_variance_pct,
                         "allocation_strategy_id": target_strategies.get("acc_strategy_map", {}).get(acc_id),
                     }
                 )
@@ -736,7 +816,11 @@ class AllocationCalculationEngine:
                 (at_weighted_target_dollars / at_total_dollars * 100) if at_total_dollars > 0 else 0.0
             )
             at_variance_dollars = at_current_dollars - at_weighted_target_dollars
+            at_variance_dollars = at_current_dollars - at_weighted_target_dollars
             at_variance_pct = at_current_pct - at_weighted_target_pct
+
+            # Aggregate to portfolio target
+            portfolio_target_dollars += at_weighted_target_dollars
 
             # Format for display
             if mode == "percent":
@@ -755,13 +839,16 @@ class AllocationCalculationEngine:
                     "label": type_label,
                     "current": at_current_display,
                     "current_raw": at_current_dollars,
+                    "current_pct": at_current_pct,
                     "target_input": at_target_input_pct if at_target_input_pct is not None else "",
                     "target_input_raw": at_target_input_pct if at_target_input_pct is not None else None,
                     "target_input_value": at_target_input_pct if at_target_input_pct is not None else "", # For compatibility
                     "weighted_target": at_weighted_display,
                     "weighted_target_raw": at_weighted_target_pct if mode == "percent" else at_weighted_target_dollars,
+                    "weighted_target_pct": at_weighted_target_pct,
                     "variance": at_variance_display,
                     "variance_raw": at_variance_pct if mode == "percent" else at_variance_dollars,
+                    "variance_pct": at_variance_pct,
                     "vtarget": at_variance_display, # For compatibility
                     "active_strategy_id": target_strategies.get("at_strategy_map", {}).get(type_id),
                     "active_accounts": account_columns,
@@ -770,8 +857,7 @@ class AllocationCalculationEngine:
             )
 
         # Portfolio target and variance
-        # For now, we'll calculate portfolio target as sum of account type weighted targets
-        portfolio_target_dollars = float(sum(atc["weighted_target_raw"] for atc in account_type_columns))
+        # portfolio_target_dollars is accumulated above
         portfolio_target_pct = (
             (portfolio_target_dollars / portfolio_total * 100) if portfolio_total > 0 else 0.0
         )
@@ -815,6 +901,7 @@ class AllocationCalculationEngine:
         asset_classes: list[str],
         ac_metadata: dict[str, dict[str, Any]],
         rows: list[dict[str, Any]],
+        mode: str,
     ) -> dict[str, Any]:
         """Build category subtotal row by aggregating asset rows."""
         # Find all asset rows for this category
@@ -831,6 +918,8 @@ class AllocationCalculationEngine:
         category_label = ac_metadata[asset_classes[0]]["category_label"]
 
         # Aggregate portfolio values
+        # Since rows contain formatted strings, we parse them.
+        # If mode="percent", they are percents; if "dollar", they are dollars.
         portfolio_current = sum(
             float(r["portfolio"]["current"].replace("$", "").replace(",", "").replace("%", ""))
             for r in category_rows
@@ -841,51 +930,94 @@ class AllocationCalculationEngine:
         )
         portfolio_variance = portfolio_current - portfolio_target
 
+        if mode == "percent":
+            portfolio_current_display = f"{portfolio_current:.1f}%"
+            portfolio_target_display = f"{portfolio_target:.1f}%"
+            portfolio_variance_display = f"{portfolio_variance:+.1f}%"
+        else:
+            portfolio_current_display = f"${portfolio_current:,.0f}"
+            portfolio_target_display = f"${portfolio_target:,.0f}"
+            portfolio_variance_display = self._format_money(Decimal(str(portfolio_variance)))
+
         # Aggregate account type values
         account_type_columns = []
         if category_rows:
             # Get account types from first row
             for i, at in enumerate(category_rows[0]["account_types"]):
-                at_current = sum(r["account_types"][i]["current_raw"] for r in category_rows)
-                at_weighted = sum(r["account_types"][i]["weighted_target_raw"] for r in category_rows)
-                at_variance = at_current - at_weighted
+                # Current
+                if mode == "percent":
+                    at_current = sum(r["account_types"][i]["current_pct"] for r in category_rows)
+                    at_weighted = sum(r["account_types"][i]["weighted_target_pct"] for r in category_rows)
+                    at_variance = sum(r["account_types"][i]["variance_pct"] for r in category_rows)
+                else:
+                    at_current = sum(r["account_types"][i]["current_raw"] for r in category_rows)
+                    at_weighted = sum(r["account_types"][i]["weighted_target_raw"] for r in category_rows)
+                    at_variance = at_current - at_weighted
 
                 # Aggregate accounts
                 account_columns = []
                 for j, acc in enumerate(at["accounts"]):
-                    acc_current = sum(
-                        r["account_types"][i]["accounts"][j]["current_raw"] for r in category_rows
-                    )
-                    acc_target = sum(
-                        r["account_types"][i]["accounts"][j]["target_raw"] for r in category_rows
-                    )
-                    acc_variance = acc_current - acc_target
+                    if mode == "percent":
+                        acc_current = sum(
+                            r["account_types"][i]["accounts"][j]["current_pct"] for r in category_rows
+                        )
+                        acc_target = sum(
+                            r["account_types"][i]["accounts"][j]["target_pct"] for r in category_rows
+                        )
+                        acc_variance = sum(
+                            r["account_types"][i]["accounts"][j]["variance_pct"] for r in category_rows
+                        )
+
+                        acc_current_display = f"{acc_current:.1f}%"
+                        acc_target_display = f"{acc_target:.1f}%"
+                        acc_variance_display = f"{acc_variance:+.1f}%"
+                    else:
+                        acc_current = sum(
+                            r["account_types"][i]["accounts"][j]["current_raw"] for r in category_rows
+                        )
+                        acc_target = sum(
+                            r["account_types"][i]["accounts"][j]["target_raw"] for r in category_rows
+                        )
+                        acc_variance = acc_current - acc_target
+
+                        acc_current_display = f"${acc_current:,.0f}"
+                        acc_target_display = f"${acc_target:,.0f}"
+                        acc_variance_display = self._format_money(Decimal(str(acc_variance)))
 
                     account_columns.append(
                         {
                             "id": acc["id"],
                             "name": acc["name"],
-                            "current": f"${acc_current:,.0f}",
+                            "current": acc_current_display,
                             "current_raw": acc_current,
-                            "target": f"${acc_target:,.0f}",
+                            "target": acc_target_display,
                             "target_raw": acc_target,
-                            "variance": self._format_money(Decimal(str(acc_variance))),
+                            "variance": acc_variance_display,
                             "variance_raw": acc_variance,
                         }
                     )
+
+                if mode == "percent":
+                    at_current_display = f"{at_current:.1f}%"
+                    at_weighted_display = f"{at_weighted:.1f}%"
+                    at_variance_display = f"{at_variance:+.1f}%"
+                else:
+                    at_current_display = f"${at_current:,.0f}"
+                    at_weighted_display = f"${at_weighted:,.0f}"
+                    at_variance_display = self._format_money(Decimal(str(at_variance)))
 
                 account_type_columns.append(
                     {
                         "id": at["id"],
                         "code": at.get("code"),
                         "label": at["label"],
-                        "current": f"${at_current:,.0f}",
+                        "current": at_current_display,
                         "current_raw": at_current,
-                        "weighted_target": f"${at_weighted:,.0f}",
+                        "weighted_target": at_weighted_display,
                         "weighted_target_raw": at_weighted,
-                        "variance": self._format_money(Decimal(str(at_variance))),
+                        "variance": at_variance_display,
                         "variance_raw": at_variance,
-                        "vtarget": self._format_money(Decimal(str(at_variance))), # For compatibility
+                        "vtarget": at_variance_display, # For compatibility
                         "active_accounts": account_columns,
                         "accounts": account_columns,
                     }
@@ -906,9 +1038,9 @@ class AllocationCalculationEngine:
             "is_cash": False,
             "css_class": "subtotal",
             "portfolio": {
-                "current": f"${portfolio_current:,.0f}",
-                "target": f"${portfolio_target:,.0f}",
-                "variance": self._format_money(Decimal(str(portfolio_variance))),
+                "current": portfolio_current_display,
+                "target": portfolio_target_display,
+                "variance": portfolio_variance_display,
             },
             "account_types": account_type_columns,
         }
@@ -917,6 +1049,7 @@ class AllocationCalculationEngine:
         self,
         group_code: str,
         rows: list[dict[str, Any]],
+        mode: str,
     ) -> dict[str, Any]:
         """Build group total row by aggregating category rows."""
         # Find all rows for this group (assets and subtotals, but not other group totals)
@@ -949,51 +1082,93 @@ class AllocationCalculationEngine:
         )
         portfolio_variance = portfolio_current - portfolio_target
 
+        if mode == "percent":
+            portfolio_current_display = f"{portfolio_current:.1f}%"
+            portfolio_target_display = f"{portfolio_target:.1f}%"
+            portfolio_variance_display = f"{portfolio_variance:+.1f}%"
+        else:
+            portfolio_current_display = f"${portfolio_current:,.0f}"
+            portfolio_target_display = f"${portfolio_target:,.0f}"
+            portfolio_variance_display = self._format_money(Decimal(str(portfolio_variance)))
+
         # Similar aggregation for account types
         account_type_columns = []
         if group_rows:
             asset_rows = [r for r in group_rows if not r.get("is_subtotal")]
             if asset_rows:
                 for i, at in enumerate(asset_rows[0]["account_types"]):
-                    at_current = sum(r["account_types"][i]["current_raw"] for r in asset_rows)
-                    at_weighted = sum(r["account_types"][i]["weighted_target_raw"] for r in asset_rows)
-                    at_variance = at_current - at_weighted
+                    if mode == "percent":
+                        at_current = sum(r["account_types"][i]["current_pct"] for r in asset_rows)
+                        at_weighted = sum(r["account_types"][i]["weighted_target_pct"] for r in asset_rows)
+                        at_variance = sum(r["account_types"][i]["variance_pct"] for r in asset_rows)
+                    else:
+                        at_current = sum(r["account_types"][i]["current_raw"] for r in asset_rows)
+                        at_weighted = sum(r["account_types"][i]["weighted_target_raw"] for r in asset_rows)
+                        at_variance = at_current - at_weighted
 
                     account_columns = []
                     for j, acc in enumerate(at["accounts"]):
-                        acc_current = sum(
-                            r["account_types"][i]["accounts"][j]["current_raw"] for r in asset_rows
-                        )
-                        acc_target = sum(
-                            r["account_types"][i]["accounts"][j]["target_raw"] for r in asset_rows
-                        )
-                        acc_variance = acc_current - acc_target
+                        if mode == "percent":
+                            acc_current = sum(
+                                r["account_types"][i]["accounts"][j]["current_pct"] for r in asset_rows
+                            )
+                            acc_target = sum(
+                                r["account_types"][i]["accounts"][j]["target_pct"] for r in asset_rows
+                            )
+                            acc_variance = sum(
+                                r["account_types"][i]["accounts"][j]["variance_pct"] for r in asset_rows
+                            )
+
+                            acc_current_display = f"{acc_current:.1f}%"
+                            acc_target_display = f"{acc_target:.1f}%"
+                            acc_variance_display = f"{acc_variance:+.1f}%"
+                        else:
+                            acc_current = sum(
+                                r["account_types"][i]["accounts"][j]["current_raw"] for r in asset_rows
+                            )
+                            acc_target = sum(
+                                r["account_types"][i]["accounts"][j]["target_raw"] for r in asset_rows
+                            )
+                            acc_variance = acc_current - acc_target
+
+                            acc_current_display = f"${acc_current:,.0f}"
+                            acc_target_display = f"${acc_target:,.0f}"
+                            acc_variance_display = self._format_money(Decimal(str(acc_variance)))
 
                         account_columns.append(
                             {
                                 "id": acc["id"],
                                 "name": acc["name"],
-                                "current": f"${acc_current:,.0f}",
+                                "current": acc_current_display,
                                 "current_raw": acc_current,
-                                "target": f"${acc_target:,.0f}",
+                                "target": acc_target_display,
                                 "target_raw": acc_target,
-                                "variance": self._format_money(Decimal(str(acc_variance))),
+                                "variance": acc_variance_display,
                                 "variance_raw": acc_variance,
                             }
                         )
+
+                    if mode == "percent":
+                        at_current_display = f"{at_current:.1f}%"
+                        at_weighted_display = f"{at_weighted:.1f}%"
+                        at_variance_display = f"{at_variance:+.1f}%"
+                    else:
+                        at_current_display = f"${at_current:,.0f}"
+                        at_weighted_display = f"${at_weighted:,.0f}"
+                        at_variance_display = self._format_money(Decimal(str(at_variance)))
 
                     account_type_columns.append(
                         {
                             "id": at["id"],
                             "code": at.get("code"),
                             "label": at["label"],
-                            "current": f"${at_current:,.0f}",
+                            "current": at_current_display,
                             "current_raw": at_current,
-                            "weighted_target": f"${at_weighted:,.0f}",
+                            "weighted_target": at_weighted_display,
                             "weighted_target_raw": at_weighted,
-                            "variance": self._format_money(Decimal(str(at_variance))),
+                            "variance": at_variance_display,
                             "variance_raw": at_variance,
-                            "vtarget": self._format_money(Decimal(str(at_variance))), # For compatibility
+                            "vtarget": at_variance_display, # For compatibility
                             "active_accounts": account_columns,
                             "accounts": account_columns,
                         }
@@ -1013,9 +1188,9 @@ class AllocationCalculationEngine:
             "is_cash": False,
             "css_class": "group-total",
             "portfolio": {
-                "current": f"${portfolio_current:,.0f}",
-                "target": f"${portfolio_target:,.0f}",
-                "variance": f"${portfolio_variance:+,.0f}",
+                "current": portfolio_current_display,
+                "target": portfolio_target_display,
+                "variance": portfolio_variance_display,
             },
             "account_types": account_type_columns,
         }
