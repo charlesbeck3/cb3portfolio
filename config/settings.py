@@ -47,7 +47,6 @@ INSTALLED_APPS = [
     "django.contrib.humanize",
     "portfolio",
     "users",
-    # Removed crispy forms dependencies
 ]
 
 
