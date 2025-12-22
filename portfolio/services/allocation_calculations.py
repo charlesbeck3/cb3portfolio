@@ -441,8 +441,6 @@ class AllocationCalculationEngine:
                 ac_vals = {}
                 for ac in acs:
                     meta = ac_meta[ac]
-                    if cash_asset_class_id and meta["id"] == cash_asset_class_id:
-                        continue
                     if (ac, meta["category_label"]) in df_grid.index:
                         ac_vals[ac] = float(df_grid.loc[(ac, meta["category_label"])].sum())
 
@@ -453,6 +451,11 @@ class AllocationCalculationEngine:
                     meta = ac_meta[ac]
                     idx = (ac, meta["category_label"])
                     row_values = df_grid.loc[idx] if idx in df_grid.index else pd.Series()
+                    
+                    # Determine if this is the cash row
+                    is_cash_row = False
+                    if cash_asset_class_id and meta["id"] == cash_asset_class_id:
+                        is_cash_row = True
 
                     rows.append(
                         self._build_row(
@@ -469,6 +472,7 @@ class AllocationCalculationEngine:
                                 at.code: at.target_map.get(meta["id"], Decimal(0))
                                 for at in account_types
                             },
+                            is_cash=is_cash_row,
                         )
                     )
 
@@ -480,8 +484,7 @@ class AllocationCalculationEngine:
                     cat_indices = [
                         (a, ac_meta[a]["category_label"])
                         for a in cat_acs
-                        if (not cash_asset_class_id or ac_meta[a]["id"] != cash_asset_class_id)
-                        and (a, ac_meta[a]["category_label"]) in df_grid.index
+                        if (a, ac_meta[a]["category_label"]) in df_grid.index
                     ]
 
                     if cat_indices:
@@ -510,8 +513,7 @@ class AllocationCalculationEngine:
                 grp_indices = [
                     (a, ac_meta[a]["category_label"])
                     for a in grp_acs
-                    if (not cash_asset_class_id or ac_meta[a]["id"] != cash_asset_class_id)
-                    and (a, ac_meta[a]["category_label"]) in df_grid.index
+                    if (a, ac_meta[a]["category_label"]) in df_grid.index
                 ]
 
                 if grp_indices:
@@ -530,30 +532,6 @@ class AllocationCalculationEngine:
                             ac_targets=self._aggregate_targets(account_types, grp_acs, ac_meta),
                         )
                     )
-
-        # Cash Row
-        if cash_asset_class_id:
-            # Find cash AC name
-            cash_ac_name = next(
-                (name for name, m in ac_meta.items() if m["id"] == cash_asset_class_id), None
-            )
-            if cash_ac_name:
-                meta = ac_meta[cash_ac_name]
-                idx = (cash_ac_name, meta["category_label"])
-                cash_values = (
-                    df_grid.loc[idx]
-                    if idx in df_grid.index
-                    else pd.Series(0, index=df_grid.columns)
-                )
-
-                rows.append(
-                    self._build_cash_row(
-                        cash_values=cash_values,
-                        account_types=account_types,
-                        portfolio_total=portfolio_total_value,
-                        mode=effective_mode,
-                    )
-                )
 
         # Grand Total
         # Sum entire grid
@@ -597,6 +575,7 @@ class AllocationCalculationEngine:
         is_subtotal: bool = False,
         is_group_total: bool = False,
         is_grand_total: bool = False,
+        is_cash: bool = False,
     ) -> AllocationTableRow:
         at_columns = []
 
@@ -674,90 +653,7 @@ class AllocationCalculationEngine:
             is_subtotal=is_subtotal,
             is_group_total=is_group_total,
             is_grand_total=is_grand_total,
-            is_cash=False,
-            account_type_data=at_columns,
-            portfolio_current=p_current,
-            portfolio_target=p_target,
-            portfolio_vtarget=p_vtarget,
-        )
-
-    def _build_cash_row(
-        self,
-        cash_values: pd.Series,
-        account_types: list[Any],
-        portfolio_total: Decimal,
-        mode: str,
-    ) -> AllocationTableRow:
-        # Cash target is implicit remainder.
-
-        at_columns = []
-        row_total_val = Decimal(float(cash_values.sum()))
-        row_target_val = Decimal(0)
-
-        for at in account_types:
-            # DataFrame columns are Account_Type Labels
-            current_val = Decimal(float(cash_values.get(at.label, 0.0)))
-            at_total = getattr(at, "current_total_value", Decimal(0))
-
-            # Sum other targets
-            total_other_targets = sum(at.target_map.values(), Decimal(0))
-            cash_target_pct = Decimal(100) - total_other_targets
-            if cash_target_pct < 0:
-                cash_target_pct = Decimal(0)
-
-            target_val = at_total * (cash_target_pct / Decimal(100))
-            variance_val = current_val - target_val
-
-            if mode == "percent":
-                current_pct = (current_val / at_total * 100) if at_total else Decimal(0)
-                at_columns.append(
-                    AccountTypeColumnData(
-                        code=at.code,
-                        label=at.label,
-                        current=f"{current_pct:.1f}%",
-                        target=f"{cash_target_pct:.1f}%",
-                        vtarget=f"{(current_pct - cash_target_pct):.1f}%",
-                        current_raw=current_pct,
-                        target_raw=cash_target_pct,
-                        vtarget_raw=current_pct - cash_target_pct,
-                    )
-                )
-                row_target_val += target_val
-            else:
-                at_columns.append(
-                    AccountTypeColumnData(
-                        code=at.code,
-                        label=at.label,
-                        current=self._format_money(current_val),
-                        target=self._format_money(target_val),
-                        vtarget=self._format_money(variance_val),
-                        current_raw=current_val,
-                        target_raw=target_val,
-                        vtarget_raw=variance_val,
-                    )
-                )
-                row_target_val += target_val
-
-        # Portfolio Columns
-        if mode == "percent":
-            current_pct = (row_total_val / portfolio_total * 100) if portfolio_total else Decimal(0)
-            target_pct = (row_target_val / portfolio_total * 100) if portfolio_total else Decimal(0)
-            p_current = f"{current_pct:.1f}%"
-            p_target = f"{target_pct:.1f}%"
-            p_vtarget = f"{(current_pct - target_pct):.1f}%"
-        else:
-            p_current = self._format_money(row_total_val)
-            p_target = self._format_money(row_target_val)
-            p_vtarget = self._format_money(row_total_val - row_target_val)
-
-        return AllocationTableRow(
-            asset_class_id=0,
-            asset_class_name="Cash",
-            category_code="CASH",
-            is_subtotal=False,
-            is_group_total=False,
-            is_grand_total=False,
-            is_cash=True,
+            is_cash=is_cash,
             account_type_data=at_columns,
             portfolio_current=p_current,
             portfolio_target=p_target,

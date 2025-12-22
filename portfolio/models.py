@@ -203,6 +203,84 @@ class AllocationStrategy(models.Model):
     def __str__(self) -> str:
         return self.name
 
+    def save_allocations(self, allocations: dict[int, Decimal]) -> None:
+        """
+        Save target allocations for this strategy, automatically calculating cash remainder.
+
+        Args:
+            allocations: Dict of asset_class_id -> target_percent
+                        Should NOT include Cash - it will be calculated
+
+        Raises:
+            ValueError: If allocations sum to > 100%
+        """
+        from django.db import transaction
+
+        # Get Cash asset class
+        cash_ac = AssetClass.objects.filter(name="Cash").first()
+        if not cash_ac:
+            raise ValueError("Cash asset class must exist")
+
+        # Validate: non-cash allocations can't exceed 100%
+        total = sum(allocations.values())
+        if total > Decimal("100.00"):
+            raise ValueError(f"Allocations sum to {total}%, which exceeds 100%")
+
+        with transaction.atomic():
+            # Clear existing allocations
+            self.target_allocations.all().delete()
+
+            # Create non-cash allocations
+            for asset_class_id, target_percent in allocations.items():
+                if target_percent > 0:  # Only create non-zero allocations
+                    TargetAllocation.objects.create(
+                        strategy=self,
+                        asset_class_id=asset_class_id,
+                        target_percent=target_percent,
+                    )
+
+            # Calculate and create cash allocation (remainder)
+            cash_percent = Decimal("100.00") - total
+            if cash_percent > 0:
+                TargetAllocation.objects.create(
+                    strategy=self,
+                    asset_class=cash_ac,
+                    target_percent=cash_percent,
+                )
+
+    def get_allocations_dict(self) -> dict[int, Decimal]:
+        """
+        Get all target allocations as a dictionary.
+
+        Returns:
+            Dict of asset_class_id -> target_percent (includes Cash)
+        """
+        return {ta.asset_class_id: ta.target_percent for ta in self.target_allocations.all()}
+
+    def validate_allocations(self) -> tuple[bool, str]:
+        """
+        Validate that allocations sum to 100%.
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        total = sum(ta.target_percent for ta in self.target_allocations.all())
+
+        if total == Decimal("100.00"):
+            return True, ""
+
+        return False, f"Allocations sum to {total}%, expected 100%"
+
+    @property
+    def cash_allocation(self) -> Decimal:
+        """Get the cash allocation percentage."""
+        cash_ac = AssetClass.objects.filter(name="Cash").first()
+        if not cash_ac:
+            return Decimal("0.00")
+
+        ta = self.target_allocations.filter(asset_class=cash_ac).first()
+        return ta.target_percent if ta else Decimal("0.00")
+
 
 class AccountTypeStrategyAssignment(models.Model):
     user = models.ForeignKey(

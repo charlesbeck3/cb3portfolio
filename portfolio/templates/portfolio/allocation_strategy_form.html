@@ -59,6 +59,11 @@
                     <h5 class="card-title mb-0">Asset Allocation Targets</h5>
                 </div>
                 <div class="card-body p-0">
+                    <div class="alert alert-info m-3">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Note:</strong> Cash allocation will be calculated automatically 
+                        as the remainder (100% minus the sum of all other allocations).
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-hover mb-0">
                             <thead>
@@ -98,6 +103,12 @@
                                         <span id="total-allocation">0.00</span>%
                                     </td>
                                 </tr>
+                                <tr class="table-light">
+                                    <td class="fw-bold text-end">Cash (Calculated):</td>
+                                    <td class="fw-bold">
+                                        <span id="cash-preview">0.00</span>%
+                                    </td>
+                                </tr>
                             </tfoot>
                         </table>
                     </div>
@@ -124,10 +135,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         totalDisplay.textContent = total.toFixed(2);
         
+        const cash = Math.max(0, 100 - total);
+        const cashPreview = document.getElementById('cash-preview');
+        cashPreview.textContent = cash.toFixed(2);
+
         if (total > 100) {
             totalDisplay.classList.add('text-danger');
+            cashPreview.classList.add('text-danger');
+            cashPreview.textContent = "0.00 (Total > 100%)";
         } else {
             totalDisplay.classList.remove('text-danger');
+            cashPreview.classList.remove('text-danger');
         }
     }
 

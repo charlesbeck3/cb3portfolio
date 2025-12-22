@@ -22,6 +22,7 @@ class AllocationStrategyForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.asset_classes = (
             AssetClass.objects.select_related("category")
+            .exclude(name="Cash")
             .all()
             .order_by("category__sort_order", "category__label", "name")
         )
@@ -46,6 +47,12 @@ class AllocationStrategyForm(forms.ModelForm):
                 initial=initial_value,
                 help_text=f"Target allocation for {ac.name} (%)",
             )
+
+        self.fields["cash_note"] = forms.CharField(
+            widget=forms.HiddenInput(),
+            required=False,
+            help_text="Cash allocation will be calculated automatically as the remainder",
+        )
 
     def get_grouped_fields(self) -> list[tuple[str, list[forms.BoundField]]]:
         """Return fields grouped by Asset Class Category."""

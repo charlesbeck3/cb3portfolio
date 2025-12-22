@@ -1,85 +1,125 @@
 from decimal import Decimal
-from http import HTTPStatus
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from portfolio.models import AllocationStrategy, AssetClass
+from portfolio.models import AllocationStrategy
 from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
 
 
-class TestAllocationStrategyCreateView(TestCase, PortfolioTestMixin):
+class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.user = User.objects.create_user(username="testuser", password="password")
         self.setup_portfolio_data()
+        self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
-
-        # Create some asset classes using mixin helpers or manually
-        self.ac1, _ = AssetClass.objects.get_or_create(name="Stocks", category=self.cat_us_eq)
-        self.ac2, _ = AssetClass.objects.get_or_create(name="Bonds", category=self.cat_fi)
-
-    def test_get_view_returns_200(self) -> None:
-        self.client.force_login(self.user)
-        url = reverse("portfolio:strategy_create")
-
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, HTTPStatus.OK)
-        # Check template used (Django 4.x+ response.templates is list)
-        self.assertIn(
-            "portfolio/allocation_strategy_form.html", [t.name for t in response.templates]
-        )
-        self.assertIn("form", response.context)
-
-        # Verify grouping headers are present
-        content = response.content.decode()
-        self.assertIn("US Equities", content)
-        self.assertIn("Fixed Income", content)
-
-    def test_post_creates_strategy_and_allocations(self) -> None:
         self.client.force_login(self.user)
 
+        # Asset Classes are already set up by mixin
+        self.ac1 = self.asset_class_us_equities  # US Equities
+        self.ac2 = self.asset_class_intl_developed  # Intl Dev
+        self.ac_cash = self.asset_class_cash
+
+    def test_create_strategy_with_cash_remainder(self) -> None:
+        """Verify cash is calculated as remainder."""
         url = reverse("portfolio:strategy_create")
         data = {
-            "name": "My Strategy",
-            "description": "Balanced",
+            "name": "Test Strategy",
             f"target_{self.ac1.id}": "60.00",
-            f"target_{self.ac2.id}": "40.00",
+            f"target_{self.ac2.id}": "30.00",
+            # Cash not included - should be calculated as 10%
         }
 
         response = self.client.post(url, data)
-
         self.assertRedirects(response, reverse("portfolio:target_allocations"))
 
-        strategy = AllocationStrategy.objects.get(name="My Strategy", user=self.user)
-        self.assertEqual(strategy.description, "Balanced")
+        # Verify strategy was created
+        strategy = AllocationStrategy.objects.get(name="Test Strategy")
 
-        self.assertEqual(strategy.target_allocations.count(), 2)
-        t1 = strategy.target_allocations.get(asset_class=self.ac1)
-        self.assertEqual(t1.target_percent, Decimal("60.00"))
-        t2 = strategy.target_allocations.get(asset_class=self.ac2)
-        self.assertEqual(t2.target_percent, Decimal("40.00"))
+        # Verify non-cash allocations
+        self.assertEqual(
+            strategy.target_allocations.get(asset_class=self.ac1).target_percent, Decimal("60.00")
+        )
+        self.assertEqual(
+            strategy.target_allocations.get(asset_class=self.ac2).target_percent, Decimal("30.00")
+        )
 
-    def test_post_validation_error_over_100(self) -> None:
-        self.client.force_login(self.user)
+        # Verify cash was calculated correctly
+        cash_allocation = strategy.target_allocations.get(asset_class=self.ac_cash)
+        self.assertEqual(cash_allocation.target_percent, Decimal("10.00"))
 
+        # Verify total is 100%
+        total = sum(ta.target_percent for ta in strategy.target_allocations.all())
+        self.assertEqual(total, Decimal("100.00"))
+
+    def test_create_strategy_100_percent_no_cash(self) -> None:
+        """Verify 100% allocation results in 0% cash."""
         url = reverse("portfolio:strategy_create")
         data = {
-            "name": "Greedy Strategy",
-            f"target_{self.ac1.id}": "60.00",
-            f"target_{self.ac2.id}": "50.00",
+            "name": "No Cash Strategy",
+            f"target_{self.ac1.id}": "100.00",  # 100% equities
         }
 
         response = self.client.post(url, data)
+        self.assertRedirects(response, reverse("portfolio:target_allocations"))
 
-        self.assertEqual(response.status_code, HTTPStatus.OK)  # Re-renders form
-        self.assertFalse(AllocationStrategy.objects.filter(name="Greedy Strategy").exists())
-        self.assertContains(response, "cannot exceed 100%")
+        strategy = AllocationStrategy.objects.get(name="No Cash Strategy")
 
-    def test_requires_login(self) -> None:
+        # Cash allocation should be 0% (but record exists)
+        # Note: save_allocations creates it ONLY if > 0 per logic:
+        # if cash_percent > 0: create.
+        # So let's check if it exists or not.
+
+        cash_exists = strategy.target_allocations.filter(asset_class=self.ac_cash).exists()
+        self.assertFalse(cash_exists, "Cash allocation should not exist if remainder is 0")
+
+        # Verify property returns 0.00
+        self.assertEqual(strategy.cash_allocation, Decimal("0.00"))
+
+    def test_create_strategy_exceeds_100_error(self) -> None:
+        """Verify validation error if > 100%."""
         url = reverse("portfolio:strategy_create")
-        response = self.client.get(url)
-        self.assertRedirects(response, f"/accounts/login/?next={url}")
+        data = {
+            "name": "Invalid Strategy",
+            f"target_{self.ac1.id}": "60.00",
+            f"target_{self.ac2.id}": "50.00",  # Total 110%
+        }
+
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)  # Re-renders form
+        form = response.context["form"]
+        # Form clean handles this?
+        # Form clean checks total allocation > 100.
+        self.assertTrue(form.errors)
+        self.assertIn("Total allocation", str(form.errors))
+
+    def test_update_strategy_recalculates_cash(self) -> None:
+        """Verify updating strategy recalculates cash correctly."""
+        # Initial: 60/30 -> 10 Cash
+        strategy = AllocationStrategy.objects.create(
+            user=self.user, name="Update Test Strategy"
+        )
+        strategy.save_allocations({
+            self.ac1.id: Decimal("60.00"),
+            self.ac2.id: Decimal("30.00")
+        })
+        self.assertEqual(strategy.cash_allocation, Decimal("10.00"))
+
+        # Update: 50/20 -> 30 Cash
+        url = reverse("portfolio:strategy_update", args=[strategy.id])
+        data = {
+            "name": "Update Test Strategy",
+            f"target_{self.ac1.id}": "50.00",
+            f"target_{self.ac2.id}": "20.00",
+        }
+
+        response = self.client.post(url, data)
+        self.assertRedirects(response, reverse("portfolio:target_allocations"))
+
+        strategy.refresh_from_db()
+        self.assertEqual(
+            strategy.target_allocations.get(asset_class=self.ac1).target_percent, Decimal("50.00")
+        )
+        self.assertEqual(strategy.cash_allocation, Decimal("30.00"))

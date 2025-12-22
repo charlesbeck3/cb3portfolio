@@ -10,4 +10,9 @@ urlpatterns = [
     path("targets/", views.TargetAllocationView.as_view(), name="target_allocations"),
     path("account/<int:account_id>/", views.HoldingsView.as_view(), name="account_holdings"),
     path("strategies/new/", views.AllocationStrategyCreateView.as_view(), name="strategy_create"),
+    path(
+        "strategies/<int:pk>/edit/",
+        views.AllocationStrategyUpdateView.as_view(),
+        name="strategy_update",
+    ),
 ]

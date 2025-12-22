@@ -146,11 +146,19 @@ class TestAllocationDashboardRows(TestCase):
             shares=Decimal("10"),
             current_price=Decimal("150.00"),
         )
-        # Add Cash Holding?
-        # For simplicity, just one holding. Cash row will be calculated as 0 if no cash holding is present and handled by logic.
-        # But if we want to test Cash Row logic specifically with value:
-        # We need to simulate cash holding or implicit cash?
-        # The engine logic splits cash from holdings if present.
+        # Add Cash Holding (0 value is fine if we want to confirm row generation via target presence logic,
+        # BUT current logic relies on grid presence. So we need a row in DF.
+        # Although value 0 might be filtered if logic iterates strictly on non-zero grid?
+        # Let's add nominal value to be safe for "active" row, OR rely on targets driving rows?
+        # The engine logic iterates `sorted_acs` based on `ac_vals` which sums from grid.
+        # If grid has 0, sum is 0. If 0s are excluded in sort or iteration, it won't show.
+        # Let's add explicit holding.
+        Holding.objects.create(
+            account=self.account,
+            security=Security.objects.create(ticker="CASH", name="USD", asset_class=self.cash_ac),
+            shares=Decimal("1"),
+            current_price=Decimal("0.00"),  # Value 0
+        )
 
     def test_calculate_dashboard_rows_structure(self) -> None:
         # We need actual "Rich" account types as expected by the method
@@ -161,8 +169,9 @@ class TestAllocationDashboardRows(TestCase):
         type_taxable_any: Any = self.type_taxable
         type_taxable_any.current_total_value = Decimal("1500.00")
         type_taxable_any.target_map = {
-            self.asset_class.id: Decimal("60")
-        }  # 60% Target for Large Cap
+            self.asset_class.id: Decimal("60"),
+            self.cash_ac.id: Decimal("40"),
+        }  # 60% Target for Large Cap, 40% Cash
 
         holdings_df = self.portfolio.to_dataframe()
         engine = AllocationCalculationEngine()
@@ -217,7 +226,10 @@ class TestAllocationDashboardRows(TestCase):
     def test_calculate_dashboard_rows_percent_mode(self) -> None:
         type_taxable_any: Any = self.type_taxable
         type_taxable_any.current_total_value = Decimal("1500.00")
-        type_taxable_any.target_map = {self.asset_class.id: Decimal("60")}
+        type_taxable_any.target_map = {
+            self.asset_class.id: Decimal("60"),
+            self.cash_ac.id: Decimal("40"),
+        }
 
         holdings_df = self.portfolio.to_dataframe()
         engine = AllocationCalculationEngine()
@@ -240,6 +252,11 @@ class TestAllocationDashboardRows(TestCase):
         at_col = r_lc.account_type_data[0]
         self.assertEqual(at_col.current, "100.0%")
         self.assertEqual(at_col.target, "60.0%")  # Only one account type, so matches portfolio
+
+        # Check Cash Row
+        r_cash = next(r for r in rows if r.asset_class_name == "Cash")
+        self.assertEqual(r_cash.portfolio_current, "0.0%")
+        self.assertEqual(r_cash.portfolio_target, "40.0%")
 
 
 class TestHoldingsDetailCalculation(SimpleTestCase):
