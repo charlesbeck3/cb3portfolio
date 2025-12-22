@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
@@ -48,8 +48,11 @@ class Command(BaseCommand, PortfolioTestMixin):
             self.stdout.write("=" * 80 + "\n")
 
             self.display_portfolio_totals(domain_portfolio)
+            self.display_account_type_breakdown(domain_portfolio)
             self.display_account_breakdown(domain_portfolio)
             self.display_asset_class_breakdown(domain_portfolio)
+            self.display_account_variances(domain_portfolio)
+            self.display_detailed_holdings(domain_portfolio)
 
             # Cleanup - deleting the user will cascade delete the portfolio and holdings
             self.user.delete()
@@ -383,3 +386,107 @@ class Command(BaseCommand, PortfolioTestMixin):
             df[col] = df[col].apply(fmt)
 
         self.stdout.write(df.to_string(index=False))
+
+    def display_account_type_breakdown(self, portfolio: DomainPortfolio) -> None:
+        self.stdout.write(self.style.MIGRATE_LABEL("\nACCOUNT TYPE BREAKDOWN"))
+        by_type = portfolio.value_by_account_type()
+        total = portfolio.total_value
+
+        data = []
+        for type_code, value in by_type.items():
+            data.append(
+                {
+                    "Type": type_code,
+                    "Value": float(value),
+                    "Pct": float(value / total * 100) if total > 0 else 0,
+                }
+            )
+
+        df = pd.DataFrame(data)
+        df["Value"] = df["Value"].apply("${:,.2f}".format)
+        df["Pct"] = df["Pct"].apply("{:.1f}%".format)
+        self.stdout.write(df.to_string(index=False))
+
+    def display_account_variances(self, portfolio: DomainPortfolio) -> None:
+        self.stdout.write(self.style.MIGRATE_LABEL("\nACCOUNT-LEVEL VARIANCES"))
+
+        from portfolio.services.targets import TargetAllocationService
+
+        effective_allocs = TargetAllocationService.get_effective_allocations(self.user)
+
+        for account in portfolio.accounts:
+            self.stdout.write(self.style.MIGRATE_HEADING(f"\nAccount: {account.name}"))
+            account_total = account.total_value()
+            holdings_by_ac = account.holdings_by_asset_class()
+            allocations = effective_allocs.get(account.id, [])
+
+            data = []
+            # Calculate for all asset classes involved in this account (current or target)
+            involved_acs = set(holdings_by_ac.keys()) | {a.asset_class_name for a in allocations}
+
+            for ac_name in involved_acs:
+                current_val = holdings_by_ac.get(ac_name, Decimal("0.00"))
+                target_pct = Decimal("0.00")
+                for a in allocations:
+                    if a.asset_class_name == ac_name:
+                        target_pct = a.target_pct
+                        break
+
+                target_val = (account_total * target_pct / 100).quantize(Decimal("0.01"))
+                variance = current_val - target_val
+
+                data.append(
+                    {
+                        "Asset Class": ac_name,
+                        "Current ($)": float(current_val),
+                        "Target ($)": float(target_val),
+                        "Var ($)": float(variance),
+                        "Cur %": float(current_val / account_total * 100)
+                        if account_total > 0
+                        else 0,
+                        "Tar %": float(target_pct),
+                    }
+                )
+
+            if data:
+                df = pd.DataFrame(data)
+                df = df.sort_values(by="Current ($)", ascending=False)
+                format_mapping = {
+                    "Current ($)": "${:,.2f}".format,
+                    "Target ($)": "${:,.2f}".format,
+                    "Var ($)": "${:,.2f}".format,
+                    "Cur %": "{:.1f}%".format,
+                    "Tar %": "{:.1f}%".format,
+                }
+                for col, fmt in format_mapping.items():
+                    df[col] = df[col].apply(fmt)
+                self.stdout.write(df.to_string(index=False))
+            else:
+                self.stdout.write("No holdings or targets for this account.")
+
+    def display_detailed_holdings(self, portfolio: DomainPortfolio) -> None:
+        self.stdout.write(self.style.MIGRATE_LABEL("\nDETAILED HOLDINGS BY ACCOUNT"))
+
+        for account in portfolio.accounts:
+            self.stdout.write(self.style.MIGRATE_HEADING(f"\nAccount: {account.name}"))
+            holdings = account.holdings.select_related("security__asset_class").all()
+
+            data = []
+            for h in holdings:
+                data.append(
+                    {
+                        "Ticker": h.security.ticker,
+                        "Asset Class": h.security.asset_class.name,
+                        "Shares": f"{h.shares:,.4f}",
+                        "Price": f"${h.current_price:,.2f}" if h.current_price else "N/A",
+                        "Market Value": float(h.market_value),
+                    }
+                )
+
+            if data:
+                df = pd.DataFrame(data)
+                df = df.sort_values(by="Market Value", ascending=False)
+                df["Market Value"] = df["Market Value"].apply("${:,.2f}".format)
+                self.stdout.write(df.to_string(index=False))
+            else:
+                self.stdout.write("No holdings in this account.")
