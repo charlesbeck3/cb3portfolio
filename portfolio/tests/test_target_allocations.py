@@ -257,7 +257,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
 
         # Verify Cash Row Calculation
         rows = context["allocation_rows_money"]
-        cash_row = next((r for r in rows if r.asset_class_name == "Cash"), None)
+        cash_row = next((r for r in rows if r["asset_class_name"] == "Cash"), None)
         self.assertIsNotNone(cash_row)
         if cash_row:
             # Find our account in the groups
@@ -265,9 +265,9 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             # Wait, strict repro used type_dep. Let's find where acc_cash ended up.
 
             target_col = None
-            for g in cash_row.groups:
-                for acc in g.accounts:
-                    if acc.account_id == acc_cash.id:
+            for g in cash_row["account_types"]:
+                for acc in g["accounts"]:
+                    if acc["id"] == acc_cash.id:
                         target_col = acc
                         break
                 if target_col:
@@ -278,9 +278,9 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
 
             # Assert Target == Current (150k)
             # target_raw is Decimal
-            self.assertEqual(target_col.target_raw, Decimal("150000.00"))
-            self.assertEqual(target_col.target_raw, Decimal("150000.00"))
-            self.assertGreater(target_col.current_raw, 0)
+            self.assertEqual(target_col["target_raw"], Decimal("150000.00"))
+            self.assertEqual(target_col["target_raw"], Decimal("150000.00"))
+            self.assertGreater(target_col["current_raw"], 0)
 
     def test_fixed_income_subtotal_and_display(self) -> None:
         """Verify subtotal aggregation and percent display format (repro for partial subtotal & dollar sign bug)."""
@@ -363,41 +363,40 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         # 1. Verify Subtotal Calculation (50% of account)
         # Find FI subtotal
         fi_row_pct = next(
-            (r for r in rows_pct if "Fixed Income" in r.asset_class_name and r.is_subtotal), None
+            (r for r in rows_pct if "Fixed Income" in r["asset_class_name"] and r["is_subtotal"]), None
         )
         self.assertIsNotNone(fi_row_pct, "Fixed Income Total row not found")
 
         if fi_row_pct:
-            print(f"DEBUG: FI Row Groups: {[g.account_type.code for g in fi_row_pct.groups]}")
             # Find group for our account type (type_fi_obj)
             group_fi = next(
-                (g for g in fi_row_pct.groups if g.account_type.code == "FI_TEST_TYPE"), None
+                (g for g in fi_row_pct["account_types"] if g["code"] == "FI_TEST_TYPE"), None
             )
             self.assertIsNotNone(group_fi)
             if group_fi:
                 # Should be "50.0" raw (percent value)
                 self.assertAlmostEqual(
-                    group_fi.account_type.weighted_target_raw, Decimal("50.0"), places=1
+                    Decimal(str(group_fi["weighted_target_raw"])), Decimal("50.0"), places=1
                 )
 
         # 2. Verify Individual Account Display (No Dollar Signs)
         tips_row = next(
-            (r for r in rows_pct if r.asset_class_name == "Inflation Adjusted Bond"), None
+            (r for r in rows_pct if r["asset_class_name"] == "Inflation Adjusted Bond"), None
         )
         self.assertIsNotNone(tips_row)
         if tips_row:
             group_tips = next(
-                (g for g in tips_row.groups if g.account_type.code == "FI_TEST_TYPE"), None
+                (g for g in tips_row["account_types"] if g["code"] == "FI_TEST_TYPE"), None
             )
             if group_tips:
-                acc_col = next((a for a in group_tips.accounts if a.account_id == acc_fi.id), None)
+                acc_col = next((a for a in group_tips["accounts"] if a["id"] == acc_fi.id), None)
                 self.assertIsNotNone(acc_col)
                 if acc_col:
                     # Check display string
-                    self.assertIn("%", acc_col.target)
+                    self.assertIn("%", acc_col["target"])
                     # Check display string
-                    self.assertIn("%", acc_col.target)
-                    self.assertNotIn("$", acc_col.target)
+                    self.assertIn("%", acc_col["target"])
+                    self.assertNotIn("$", acc_col["target"])
 
     def test_assign_account_strategy_persists_and_renders(self) -> None:
         """Verify individual account strategy assignment persists and renders in select box (repro for display bug)."""
@@ -514,30 +513,30 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         # Note: Depending on sort order, implementation might group them.
         # Check for row with label "US Large Cap Total"
         subtotal_row = next(
-            (r for r in rows if r.is_subtotal and "US Large Cap" in r.asset_class_name), None
+            (r for r in rows if r["is_subtotal"] and "US Large Cap" in r["asset_class_name"]), None
         )
         self.assertIsNotNone(subtotal_row)
         assert subtotal_row is not None
 
         # Find column for Taxable
         group = next(
-            (g for g in subtotal_row.groups if g.account_type.code == self.type_taxable.code), None
+            (g for g in subtotal_row["account_types"] if g["code"] == self.type_taxable.code), None
         )
         self.assertIsNotNone(group)
         assert group is not None
         # "2,500" or "2500"
-        self.assertEqual(self._strip_html(group.account_type.current), "2500")
+        self.assertEqual(self._strip_html(group["current"]), "2500")
 
         # Group Total Row "Global Equities" (Sum of 2500 + 1000 = 3500)
         group_row = next(
-            (r for r in rows if r.is_group_total and "Global Equities" in r.asset_class_name), None
+            (r for r in rows if r["is_group_total"] and "Global Equities" in r["asset_class_name"]), None
         )
         self.assertIsNotNone(group_row)
         assert group_row is not None
 
         group = next(
-            (g for g in group_row.groups if g.account_type.code == self.type_taxable.code), None
+            (g for g in group_row["account_types"] if g["code"] == self.type_taxable.code), None
         )
         self.assertIsNotNone(group)
         assert group is not None
-        self.assertEqual(self._strip_html(group.account_type.current), "3500")
+        self.assertEqual(self._strip_html(group["current"]), "3500")

@@ -1,3 +1,4 @@
+{% with account_types=rows.0.account_types %}
 <table class="table table-bordered table-striped table-hover mb-0 align-middle" id="{{ table_id }}" style="font-size: 0.8rem; table-layout: fixed;">
     <thead class="table-light">
         <tr>
@@ -10,13 +11,13 @@
                         <select name="strategy_at_{{ group.id }}" class="form-select form-select-sm d-inline-block w-auto py-0 px-2" style="font-size: 0.75rem;">
                             <option value="">-- Unassigned --</option>
                             {% for s in strategies %}
-                                <option value="{{ s.id }}" {% if group.target_map and s.id == group.active_strategy_id %}selected{% endif %}>{{ s.name }}</option>
+                                <option value="{{ s.id }}" {% if s.id == group.active_strategy_id %}selected{% endif %}>{{ s.name }}</option>
                             {% endfor %}
                         </select>
                         {% else %}
                             <span class="badge bg-light text-dark border fw-normal">
                                 {% for s in strategies %}
-                                    {% if group.target_map and s.id == group.active_strategy_id %}{{ s.name }}{% endif %}
+                                    {% if s.id == group.active_strategy_id %}{{ s.name }}{% endif %}
                                 {% empty %}
                                     -- Unassigned --
                                 {% endfor %}
@@ -75,42 +76,43 @@
     </thead>
     <tbody>
         {% for row in rows %}
-        <tr class="{{ row.row_css_class }}">
+        <tr {% if row.is_cash %}class="table-warning fw-bold"{% elif row.is_subtotal %}class="table-info fw-bold"{% elif row.is_group_total %}class="fw-bold" style="background-color: #e2e3e5;"{% elif row.is_grand_total %}class="table-dark fw-bold"{% endif %}>
             <td class="ps-4">{{ row.asset_class_name }}</td>
 
-            {% for group in row.groups %}
-                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.account_type.current|safe }}</td>
+            {% for group in row.account_types %}
+                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.current|safe }}</td>
 
                 <td class="text-end pe-1 small">
-                    {{ group.account_type.target_input_value|default:"--"|safe }}
+                    {{ group.target_input|default:"--"|safe }}
                 </td>
 
-                <td class="text-end pe-1 small fw-bold text-muted d-none d-md-table-cell">{{ group.account_type.weighted_target|safe }}</td>
-                <td class="text-end pe-1 small fw-bold">{{ group.account_type.vtarget|safe }}</td>
+                <td class="text-end pe-1 small fw-bold text-muted d-none d-md-table-cell">{{ group.weighted_target|safe }}</td>
+                <td class="text-end pe-1 small fw-bold">{{ group.variance|safe }}</td>
 
                 {% for acc in group.accounts %}
-                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.account_type.account_type_id }}">{{ acc.current|safe }}</td>
-                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.account_type.account_type_id }}">
+                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">{{ acc.current|safe }}</td>
+                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">
                         {{ acc.target|safe }}
                     </td>
-                    <td class="text-end pe-2 small table-warning d-none col-acc-{{ group.account_type.account_type_id }}">{{ acc.vtarget|safe }}</td>
+                    <td class="text-end pe-2 small table-warning d-none col-acc-{{ group.id }}">{{ acc.variance|safe }}</td>
                 {% endfor %}
             {% endfor %}
 
-            <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio_current|safe }}</td>
+            <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.current|safe }}</td>
             <td class="text-end pe-2 table-active"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-total"
                 {% elif row.is_subtotal %}id="sub-total-target-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-total-{{ row.asset_class_id }}"{% endif %}
-            >{{ row.portfolio_target|safe }}</td>
+            >{{ row.portfolio.target|safe }}</td>
             <td class="text-end pe-2 table-active fw-bold"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-var"
                 {% elif row.is_subtotal %}id="sub-total-var-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-var-{{ row.asset_class_id }}"{% endif %}
-            >{{ row.portfolio_vtarget|safe }}</td>
+            >{{ row.portfolio.variance|safe }}</td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+{% endwith %}

@@ -3,38 +3,10 @@ Pure pandas-based allocation calculations using MultiIndex DataFrames.
 Zero Django dependencies - can be tested with mock DataFrames.
 """
 
-from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, cast
+from typing import Any
 
 import pandas as pd
-
-
-@dataclass(frozen=True)
-class AccountTypeColumnData:
-    code: str
-    label: str
-    current: str
-    target: str
-    vtarget: str
-    current_raw: Decimal
-    target_raw: Decimal
-    vtarget_raw: Decimal
-
-
-@dataclass(frozen=True)
-class AllocationTableRow:
-    asset_class_id: int
-    asset_class_name: str
-    category_code: str
-    is_subtotal: bool
-    is_group_total: bool
-    is_grand_total: bool
-    is_cash: bool
-    account_type_data: list[AccountTypeColumnData]
-    portfolio_current: str
-    portfolio_target: str
-    portfolio_vtarget: str
 
 
 class AllocationCalculationEngine:
@@ -96,18 +68,17 @@ class AllocationCalculationEngine:
         # Step 1: Sum across securities to get total per Asset Class per Row (Account)
         by_asset_class = df.T.groupby(level="Asset_Class").sum().T
 
-        # Step 2: Ensure rows are unique Accounts.
-        # The input DF has Account_ID in index.
-        # We can keep it or drop it for this high-level view?
-        # The legacy `by_account` view expected (Type, Cat, Name).
-        # For compatibility with `TargetAllocationViewService` logic (which did reset_index),
-        # let's try to maintain the shape but handle the extra level.
-        # If we just keep the index as is, it has 4 levels.
-        # TargetAllocationViewService.build_context explicitly handles MultiIndex and tries to reset.
-        # Let's keep Account_ID in the index for uniqueness, it's safer.
-        # But `_calculate_by_account_type` needs to handle it.
+        # Step 2: Set index to Account_ID for easier lookup
+        # Reset index to get all index levels as columns, then set only Account_ID as index
+        if "Account_ID" in by_asset_class.index.names:
+            by_asset_class = by_asset_class.reset_index()
+            # Drop non-numeric columns (Account_Type, Account_Category, Account_Name)
+            # Keep only Account_ID and asset class columns
+            non_numeric_cols = ["Account_Type", "Account_Category", "Account_Name"]
+            by_asset_class = by_asset_class.drop(columns=[c for c in non_numeric_cols if c in by_asset_class.columns])
+            by_asset_class = by_asset_class.set_index("Account_ID")
 
-        # Calculate account totals
+        # Calculate account totals (now only numeric columns)
         account_totals = by_asset_class.sum(axis=1)
 
         # Calculate percentages
@@ -315,244 +286,7 @@ class AllocationCalculationEngine:
             }
         )
 
-    def calculate_dashboard_rows(
-        self,
-        holdings_df: pd.DataFrame,
-        account_types: list[Any],
-        portfolio_total_value: Decimal,
-        mode: str,
-        cash_asset_class_id: int | None,
-    ) -> list[AllocationTableRow]:
-        """
-        Builds allocation table rows for the dashboard using pandas aggregations.
 
-        Replaces usage of AllocationTableBuilder.
-        """
-        rows: list[AllocationTableRow] = []
-        effective_mode = "money" if mode == "dollar" else mode
-
-        if holdings_df.empty:
-            return self._build_empty_dashboard_rows(
-                account_types, portfolio_total_value, effective_mode
-            )
-
-        # 1. Aggregate DataFrame to (Asset_Class, Asset_Category) x (Account_Type)
-        # Groups: Asset_Class, Asset_Category -> sum
-        # Columns: Account_Type -> sum
-        # Result: DataFrame with Index=[Asset_Class, Asset_Category], Columns=[Account_Type]
-        # values are market values
-
-        # Flatten security dimension first
-        # Sum across securities to get (Account_Type, Account_Category, Account_Name) x (Asset_Class, Asset_Category)
-        df_by_ac = holdings_df.T.groupby(level=["Asset_Class", "Asset_Category"]).sum().T
-        df_by_at_ac = df_by_ac.groupby(level="Account_Type").sum()  # Rows -> Account Type
-
-        # Pivot so we have Asset Class as rows and Account Type as columns
-        # df_grid: index=(Asset_Class, Asset_Category), columns=Account_Type
-        df_grid = df_by_at_ac.T
-
-        # We need Asset Class IDs and hierarchy.
-        # Since the DataFrame only has names, we might need a lookup map if IDs are strictly required for links.
-        # However, the original builder used `ac_data.id`.
-        # For now, let's assume we can map names back to IDs if needed, or if IDs are not critical for pure display
-        # (except for maybe links).
-        # To be safe, we can fetch AssetClasses. But let's see if we can perform the calc without DB hits first.
-        # The view passes `cash_asset_class_id`.
-
-        # Let's organize hierarchy: Group -> Category -> Asset Class
-        # The DF has Asset_Category. We need Asset_Group (which is category.parent).
-        # We might need to look up metadata.
-        # Optimization: Build a metadata map from the passed `target_allocations` or strict DB query if absolutely needed.
-        # Or, we can rely on `AssetClass` objects linked to `account_types[].target_map` keys?
-        # No, `target_map` keys are IDs.
-
-        # Let's fetch AssetClass metadata to ensure we have IDs and Groups
-        from portfolio.models import AssetClass
-
-        ac_qs = AssetClass.objects.select_related("category__parent").all()
-        ac_meta = {
-            ac.name: {
-                "id": ac.id,
-                "category_code": ac.category.code,
-                "category_label": ac.category.label,
-                "group_code": ac.category.parent.code if ac.category.parent else ac.category.code,
-                "group_label": ac.category.parent.label
-                if ac.category.parent
-                else ac.category.label,
-            }
-            for ac in ac_qs
-        }
-
-        # Now iterate through hierarchy
-        # Structure: dict[Group, dict[Category, list[AssetClass]]]
-        hierarchy: dict[str, dict[str, list[str]]] = {}
-
-        # Helper to get AC name from index
-        # index is MultiIndex(Asset_Class, Asset_Category)
-        for ac_name, _ in df_grid.index:
-            if ac_name not in ac_meta:
-                # Fallback if somehow not in DB (e.g. test data mismatch)
-                continue
-
-            meta = ac_meta[ac_name]
-            grp = str(meta["group_code"])
-            cat = str(meta["category_code"])
-
-            if grp not in hierarchy:
-                hierarchy[grp] = {}
-            if cat not in hierarchy[grp]:
-                hierarchy[grp][cat] = []
-            hierarchy[grp][cat].append(ac_name)
-
-        # Build rows
-        # Sort Groups? We need a sort order. Alphabetical or total value?
-        # Original sort was by Total Value descending.
-
-        # Calculate group totals for sorting
-        group_totals = {}
-        for grp, cats in hierarchy.items():
-            val = 0.0
-            for _cat, acs in cats.items():
-                for ac in acs:
-                    if (ac, ac_meta[ac]["category_label"]) in df_grid.index:
-                        val += float(df_grid.loc[(ac, ac_meta[ac]["category_label"])].sum())
-            group_totals[grp] = val
-
-        sorted_groups = sorted(group_totals.keys(), key=lambda k: group_totals[k], reverse=True)
-
-        for grp in sorted_groups:
-            # Sort categories by total
-            cat_totals = {}
-            for cat, acs in hierarchy[grp].items():
-                val = 0.0
-                for ac in acs:
-                    if (ac, ac_meta[ac]["category_label"]) in df_grid.index:
-                        val += float(df_grid.loc[(ac, ac_meta[ac]["category_label"])].sum())
-                cat_totals[cat] = val
-
-            sorted_cats = sorted(cat_totals.keys(), key=lambda k: cat_totals[k], reverse=True)
-
-            for cat in sorted_cats:
-                # Sort asset classes by total
-                acs = hierarchy[grp][cat]
-                # Filter ACs that are CASH if we are hiding cash (handled later by manual row)
-                # But here we filter generic rows
-
-                ac_vals = {}
-                for ac in acs:
-                    meta = ac_meta[ac]
-                    if (ac, meta["category_label"]) in df_grid.index:
-                        ac_vals[ac] = float(df_grid.loc[(ac, meta["category_label"])].sum())
-
-                sorted_acs = sorted(ac_vals.keys(), key=lambda k: ac_vals[k], reverse=True)
-
-                for ac in sorted_acs:
-                    # Build Asset Row
-                    meta = ac_meta[ac]
-                    idx = (ac, meta["category_label"])
-                    row_values = df_grid.loc[idx] if idx in df_grid.index else pd.Series()
-
-                    # Determine if this is the cash row
-                    is_cash_row = False
-                    if cash_asset_class_id and meta["id"] == cash_asset_class_id:
-                        is_cash_row = True
-
-                    rows.append(
-                        self._build_row(
-                            label=ac,
-                            ac_id=cast(int, meta["id"]),
-                            cat_code=cat,
-                            is_subtotal=False,
-                            row_values=row_values,
-                            account_types=account_types,
-                            portfolio_total=portfolio_total_value,
-                            mode=effective_mode,
-                            # Pass map for targets logic
-                            ac_targets={
-                                at.code: at.target_map.get(meta["id"], Decimal(0))
-                                for at in account_types
-                            },
-                            is_cash=is_cash_row,
-                        )
-                    )
-
-                # Category Subtotal
-                if len(sorted_acs) > 0 and len(hierarchy[grp][cat]) > 1:
-                    # Calculate category total values
-                    cat_acs = hierarchy[grp][cat]
-
-                    cat_indices = [
-                        (a, ac_meta[a]["category_label"])
-                        for a in cat_acs
-                        if (a, ac_meta[a]["category_label"]) in df_grid.index
-                    ]
-
-                    if cat_indices:
-                        cat_values = df_grid.loc[cat_indices].sum(axis=0)
-                        rows.append(
-                            self._build_row(
-                                label=f"{ac_meta[cat_acs[0]]['category_label']} Total",
-                                ac_id=0,
-                                cat_code=cat,
-                                is_subtotal=True,
-                                row_values=cat_values,
-                                account_types=account_types,
-                                portfolio_total=portfolio_total_value,
-                                mode=effective_mode,
-                                ac_targets=self._aggregate_targets(account_types, cat_acs, ac_meta),
-                            )
-                        )
-
-            # Group Total
-            if len(sorted_cats) > 1:
-                # Calculate group values
-                grp_acs = []
-                for c in hierarchy[grp].values():
-                    grp_acs.extend(c)
-
-                grp_indices = [
-                    (a, ac_meta[a]["category_label"])
-                    for a in grp_acs
-                    if (a, ac_meta[a]["category_label"]) in df_grid.index
-                ]
-
-                if grp_indices:
-                    grp_values = df_grid.loc[grp_indices].sum(axis=0)
-                    rows.append(
-                        self._build_row(
-                            label=f"{ac_meta[grp_acs[0]]['group_label']} Total",
-                            ac_id=0,
-                            cat_code="",
-                            is_subtotal=False,
-                            is_group_total=True,
-                            row_values=grp_values,
-                            account_types=account_types,
-                            portfolio_total=portfolio_total_value,
-                            mode=effective_mode,
-                            ac_targets=self._aggregate_targets(account_types, grp_acs, ac_meta),
-                        )
-                    )
-
-        # Grand Total
-        # Sum entire grid
-        grand_total_values = df_grid.sum(axis=0)
-        rows.append(
-            self._build_row(
-                label="Total",
-                ac_id=0,
-                cat_code="",
-                is_grand_total=True,
-                row_values=grand_total_values,
-                account_types=account_types,
-                portfolio_total=portfolio_total_value,
-                mode=effective_mode,
-                # All targets
-                ac_targets={at.code: Decimal(100) for at in account_types},
-                # Note: Grand total targets are always 100% of the account type
-            )
-        )
-
-        return rows
 
     def _format_money(self, val: Decimal) -> str:
         """Format decimal as money string: $1,234 or ($1,234)."""
@@ -562,123 +296,7 @@ class AllocationCalculationEngine:
         s = f"${abs_val:,.0f}"
         return f"({s})" if is_negative else s
 
-    def _build_row(
-        self,
-        label: str,
-        ac_id: int,
-        cat_code: str,
-        row_values: pd.Series,
-        account_types: list[Any],
-        portfolio_total: Decimal,
-        mode: str,
-        ac_targets: dict[str, Decimal],  # Map of AT code -> Target % sum
-        is_subtotal: bool = False,
-        is_group_total: bool = False,
-        is_grand_total: bool = False,
-        is_cash: bool = False,
-    ) -> AllocationTableRow:
-        at_columns = []
 
-        row_total_val = Decimal(float(row_values.sum()))
-        row_target_val = Decimal(0)
-
-        for at in account_types:
-            # DataFrame columns are Account_Type Labels
-            current_val = Decimal(float(row_values.get(at.label, 0.0)))
-            at_total = getattr(at, "current_total_value", Decimal(0))
-
-            # Target Calculation
-            tgt_pct = ac_targets.get(at.code, Decimal(0))
-
-            # If explicit input is percentage
-            target_val = at_total * (tgt_pct / Decimal(100))
-
-            variance_val = current_val - target_val
-
-            if mode == "percent":
-                current_pct = (current_val / at_total * 100) if at_total else Decimal(0)
-                # target pct passed in is already relative to account type
-                target_pct_display = tgt_pct
-                variance_pct = current_pct - target_pct_display
-
-                at_columns.append(
-                    AccountTypeColumnData(
-                        code=at.code,
-                        label=at.label,
-                        current=f"{current_pct:.1f}%",
-                        target=f"{target_pct_display:.1f}%",
-                        vtarget=f"{variance_pct:.1f}%",
-                        current_raw=current_pct,
-                        target_raw=target_pct_display,
-                        vtarget_raw=variance_pct,
-                    )
-                )
-
-                # Accumulate row target for portfolio column
-                row_target_val += target_val
-
-            else:  # money
-                at_columns.append(
-                    AccountTypeColumnData(
-                        code=at.code,
-                        label=at.label,
-                        current=self._format_money(current_val),
-                        target=self._format_money(target_val) if target_val > 0 else "--",
-                        vtarget=self._format_money(variance_val),
-                        current_raw=current_val,
-                        target_raw=target_val,
-                        vtarget_raw=variance_val,
-                    )
-                )
-                row_target_val += target_val
-
-        # Portfolio Columns
-        if mode == "percent":
-            current_pct = (row_total_val / portfolio_total * 100) if portfolio_total else Decimal(0)
-            target_pct = (row_target_val / portfolio_total * 100) if portfolio_total else Decimal(0)
-            variance_pct = current_pct - target_pct
-
-            p_current = f"{current_pct:.1f}%"
-            p_target = f"{target_pct:.1f}%"
-            p_vtarget = f"{variance_pct:.1f}%"
-        else:
-            p_current = self._format_money(row_total_val)
-            p_target = self._format_money(row_target_val)
-            p_vtarget = self._format_money(row_total_val - row_target_val)
-
-        return AllocationTableRow(
-            asset_class_id=ac_id,
-            asset_class_name=label,
-            category_code=cat_code,
-            is_subtotal=is_subtotal,
-            is_group_total=is_group_total,
-            is_grand_total=is_grand_total,
-            is_cash=is_cash,
-            account_type_data=at_columns,
-            portfolio_current=p_current,
-            portfolio_target=p_target,
-            portfolio_vtarget=p_vtarget,
-        )
-
-    def _aggregate_targets(
-        self, account_types: list[Any], ac_names_list: list[str], ac_meta: dict[str, Any]
-    ) -> dict[str, Decimal]:
-        # Sum target % for list of asset classes per account type
-        # Note: this is strictly summing the percentages (e.g. 50% + 20% = 70% target for this category)
-        res = {}
-        for at in account_types:
-            total_pct = Decimal(0)
-            for ac in ac_names_list:
-                aid = ac_meta[ac]["id"]
-                total_pct += at.target_map.get(aid, Decimal(0))
-            res[at.code] = total_pct
-        return res
-
-    def _build_empty_dashboard_rows(
-        self, account_types: list[Any], portfolio_total: Decimal, mode: str
-    ) -> list[AllocationTableRow]:
-        # Minimal implementation for empty state
-        return []
 
     # ===== Target Allocation Presentation Methods =====
 
@@ -834,9 +452,11 @@ class AllocationCalculationEngine:
 
         from portfolio.models import Account, AccountTypeStrategyAssignment, TargetAllocation
 
-        result: dict[str, dict[int, dict[int, Decimal]]] = {
+        result: dict[str, Any] = {
             "account_type": {},
             "account": {},
+            "at_strategy_map": {},
+            "acc_strategy_map": {},
         }
 
         # Account Type assignments
@@ -880,6 +500,9 @@ class AllocationCalculationEngine:
         for acc_id, strategy_id in acc_strategy_map.items():
             result["account"][acc_id] = strategy_targets.get(strategy_id, {})
 
+        result["at_strategy_map"] = at_strategy_map
+        result["acc_strategy_map"] = acc_strategy_map
+
         return result
 
     def _build_presentation_rows(
@@ -904,7 +527,24 @@ class AllocationCalculationEngine:
             float(df_portfolio["Dollar_Amount"].sum()) if not df_portfolio.empty else 0.0
         )
 
-        # Iterate through hierarchy
+        # Pre-calculate account and type totals
+        # This is needed so that targets can be calculated for asset classes even if there are no holdings
+        account_totals = {}
+        if not df_account.empty:
+            dollar_cols = [c for c in df_account.columns if c.endswith("_dollars")]
+            account_totals = df_account[dollar_cols].sum(axis=1).to_dict()
+
+        account_type_totals = {}
+        if not df_account_type.empty:
+            dollar_cols = [c for c in df_account_type.columns if c.endswith("_dollars")]
+            type_label_totals = df_account_type[dollar_cols].sum(axis=1).to_dict()
+
+            # Map type_id to its total value
+            for tid, accs in accounts_by_type.items():
+                if accs:
+                    label = accs[0]["type_label"]
+                    account_type_totals[tid] = type_label_totals.get(label, 0.0)
+
         for group_code in sorted(hierarchy.keys()):
             group_categories = hierarchy[group_code]
 
@@ -927,6 +567,8 @@ class AllocationCalculationEngine:
                         target_strategies=target_strategies,
                         portfolio_total=portfolio_total,
                         mode=mode,
+                        account_totals=account_totals,
+                        account_type_totals=account_type_totals,
                     )
                     rows.append(row)
 
@@ -972,6 +614,8 @@ class AllocationCalculationEngine:
         target_strategies: dict[str, dict[int, dict[int, Decimal]]],
         portfolio_total: float,
         mode: str,
+        account_totals: dict[int, float],
+        account_type_totals: dict[int, float],
     ) -> dict[str, Any]:
         """Build a single asset class row with all calculations."""
 
@@ -990,11 +634,14 @@ class AllocationCalculationEngine:
         for type_id in sorted(accounts_by_type.keys()):
             type_accounts = accounts_by_type[type_id]
             type_label = type_accounts[0]["type_label"] if type_accounts else ""
+            type_code = type_accounts[0]["type_code"] if type_accounts else ""
 
             # Account type current
             at_current_dollars = 0.0
             at_current_pct = 0.0
-            at_total_dollars = 0.0
+
+            # Use pre-calculated total
+            at_total_dollars = account_type_totals.get(type_id, 0.0)
 
             col_name = f"{ac_name}_dollars"
             if (
@@ -1003,9 +650,6 @@ class AllocationCalculationEngine:
                 and col_name in df_account_type.columns
             ):
                 at_current_dollars = float(df_account_type.loc[type_label, col_name])
-                # Get account type total for percentage
-                dollar_cols = [c for c in df_account_type.columns if c.endswith("_dollars")]
-                at_total_dollars = float(df_account_type.loc[type_label, dollar_cols].sum())
                 at_current_pct = (
                     (at_current_dollars / at_total_dollars * 100) if at_total_dollars > 0 else 0.0
                 )
@@ -1030,16 +674,16 @@ class AllocationCalculationEngine:
                 # Account current
                 acc_current_dollars = 0.0
                 acc_current_pct = 0.0
-                acc_total_dollars = 0.0
+
+                # Use pre-calculated total
+                acc_total_dollars = account_totals.get(acc_id, 0.0)
 
                 if (
                     not df_account.empty
-                    and acc_name in df_account.index
+                    and acc_id in df_account.index
                     and col_name in df_account.columns
                 ):
-                    acc_current_dollars = float(df_account.loc[acc_name, col_name])
-                    dollar_cols = [c for c in df_account.columns if c.endswith("_dollars")]
-                    acc_total_dollars = float(df_account.loc[acc_name, dollar_cols].sum())
+                    acc_current_dollars = float(df_account.loc[acc_id, col_name])
                     acc_current_pct = (
                         (acc_current_dollars / acc_total_dollars * 100)
                         if acc_total_dollars > 0
@@ -1070,7 +714,7 @@ class AllocationCalculationEngine:
                 else:  # dollar
                     acc_current_display = f"${acc_current_dollars:,.0f}"
                     acc_target_display = f"${acc_target_dollars:,.0f}"
-                    acc_variance_display = f"${acc_variance_dollars:+,.0f}"
+                    acc_variance_display = self._format_money(Decimal(str(acc_variance_dollars)))
 
                 account_columns.append(
                     {
@@ -1083,6 +727,7 @@ class AllocationCalculationEngine:
                         "target_pct": acc_target_pct,
                         "variance": acc_variance_display,
                         "variance_raw": acc_variance_dollars,
+                        "allocation_strategy_id": target_strategies.get("acc_strategy_map", {}).get(acc_id),
                     }
                 )
 
@@ -1101,20 +746,25 @@ class AllocationCalculationEngine:
             else:
                 at_current_display = f"${at_current_dollars:,.0f}"
                 at_weighted_display = f"${at_weighted_target_dollars:,.0f}"
-                at_variance_display = f"${at_variance_dollars:+,.0f}"
+                at_variance_display = self._format_money(Decimal(str(at_variance_dollars)))
 
             account_type_columns.append(
                 {
                     "id": type_id,
+                    "code": type_code,
                     "label": type_label,
                     "current": at_current_display,
                     "current_raw": at_current_dollars,
                     "target_input": at_target_input_pct if at_target_input_pct is not None else "",
                     "target_input_raw": at_target_input_pct if at_target_input_pct is not None else None,
+                    "target_input_value": at_target_input_pct if at_target_input_pct is not None else "", # For compatibility
                     "weighted_target": at_weighted_display,
-                    "weighted_target_raw": at_weighted_target_dollars,
+                    "weighted_target_raw": at_weighted_target_pct if mode == "percent" else at_weighted_target_dollars,
                     "variance": at_variance_display,
-                    "variance_raw": at_variance_dollars,
+                    "variance_raw": at_variance_pct if mode == "percent" else at_variance_dollars,
+                    "vtarget": at_variance_display, # For compatibility
+                    "active_strategy_id": target_strategies.get("at_strategy_map", {}).get(type_id),
+                    "active_accounts": account_columns,
                     "accounts": account_columns,
                 }
             )
@@ -1135,19 +785,21 @@ class AllocationCalculationEngine:
         else:
             portfolio_current_display = f"${portfolio_current_dollars:,.0f}"
             portfolio_target_display = f"${portfolio_target_dollars:,.0f}"
-            portfolio_variance_display = f"${portfolio_variance_dollars:+,.0f}"
+            portfolio_variance_display = self._format_money(Decimal(str(portfolio_variance_dollars)))
 
         return {
             "row_type": "asset",
             "asset_class_id": ac_id,
             "asset_class_name": ac_name,
             "group_code": ac_meta["group_code"],
+            "group_label": ac_meta["group_label"],
             "category_code": ac_meta["category_code"],
+            "category_label": ac_meta["category_label"],
             "is_asset": True,
             "is_subtotal": False,
             "is_group_total": False,
             "is_grand_total": False,
-            "is_cash": False,
+            "is_cash": ac_meta["category_code"] == "CASH" or ac_name == "Cash",
             "css_class": "",
             "portfolio": {
                 "current": portfolio_current_display,
@@ -1217,7 +869,7 @@ class AllocationCalculationEngine:
                             "current_raw": acc_current,
                             "target": f"${acc_target:,.0f}",
                             "target_raw": acc_target,
-                            "variance": f"${acc_variance:+,.0f}",
+                            "variance": self._format_money(Decimal(str(acc_variance))),
                             "variance_raw": acc_variance,
                         }
                     )
@@ -1225,13 +877,16 @@ class AllocationCalculationEngine:
                 account_type_columns.append(
                     {
                         "id": at["id"],
+                        "code": at.get("code"),
                         "label": at["label"],
                         "current": f"${at_current:,.0f}",
                         "current_raw": at_current,
                         "weighted_target": f"${at_weighted:,.0f}",
                         "weighted_target_raw": at_weighted,
-                        "variance": f"${at_variance:+,.0f}",
+                        "variance": self._format_money(Decimal(str(at_variance))),
                         "variance_raw": at_variance,
+                        "vtarget": self._format_money(Decimal(str(at_variance))), # For compatibility
+                        "active_accounts": account_columns,
                         "accounts": account_columns,
                     }
                 )
@@ -1241,7 +896,9 @@ class AllocationCalculationEngine:
             "asset_class_id": 0,
             "asset_class_name": f"{category_label} Total",
             "group_code": ac_metadata[asset_classes[0]]["group_code"],
+            "group_label": ac_metadata[asset_classes[0]]["group_label"],
             "category_code": category_code,
+            "category_label": category_label,
             "is_asset": False,
             "is_subtotal": True,
             "is_group_total": False,
@@ -1251,7 +908,7 @@ class AllocationCalculationEngine:
             "portfolio": {
                 "current": f"${portfolio_current:,.0f}",
                 "target": f"${portfolio_target:,.0f}",
-                "variance": f"${portfolio_variance:+,.0f}",
+                "variance": self._format_money(Decimal(str(portfolio_variance))),
             },
             "account_types": account_type_columns,
         }
@@ -1276,7 +933,8 @@ class AllocationCalculationEngine:
             return {}
 
         # Get group label from first row
-        group_label = group_rows[0].get("group_code", "")
+        # We now have group_label in the asset rows
+        group_label = next((r.get("group_label") for r in group_rows if r.get("group_label")), group_code)
 
         # Aggregate portfolio values
         portfolio_current = sum(
@@ -1319,7 +977,7 @@ class AllocationCalculationEngine:
                                 "current_raw": acc_current,
                                 "target": f"${acc_target:,.0f}",
                                 "target_raw": acc_target,
-                                "variance": f"${acc_variance:+,.0f}",
+                                "variance": self._format_money(Decimal(str(acc_variance))),
                                 "variance_raw": acc_variance,
                             }
                         )
@@ -1327,13 +985,16 @@ class AllocationCalculationEngine:
                     account_type_columns.append(
                         {
                             "id": at["id"],
+                            "code": at.get("code"),
                             "label": at["label"],
                             "current": f"${at_current:,.0f}",
                             "current_raw": at_current,
                             "weighted_target": f"${at_weighted:,.0f}",
                             "weighted_target_raw": at_weighted,
-                            "variance": f"${at_variance:+,.0f}",
+                            "variance": self._format_money(Decimal(str(at_variance))),
                             "variance_raw": at_variance,
+                            "vtarget": self._format_money(Decimal(str(at_variance))), # For compatibility
+                            "active_accounts": account_columns,
                             "accounts": account_columns,
                         }
                     )
@@ -1343,6 +1004,7 @@ class AllocationCalculationEngine:
             "asset_class_id": 0,
             "asset_class_name": f"{group_label} Total",
             "group_code": group_code,
+            "group_label": group_label,
             "category_code": "",
             "is_asset": False,
             "is_subtotal": False,
@@ -1441,7 +1103,7 @@ class AllocationCalculationEngine:
                             "current_raw": acc_current,
                             "target": acc_target_display,
                             "target_raw": acc_target,
-                            "variance": acc_variance_display,
+                            "variance": acc_variance_display if mode == "percent" else self._format_money(Decimal(str(acc_variance))),
                             "variance_raw": acc_variance,
                         }
                     )
@@ -1458,13 +1120,16 @@ class AllocationCalculationEngine:
                 account_type_columns.append(
                     {
                         "id": at["id"],
+                        "code": at.get("code"),
                         "label": at["label"],
                         "current": at_current_display,
                         "current_raw": at_current,
                         "weighted_target": at_weighted_display,
                         "weighted_target_raw": at_weighted,
-                        "variance": at_variance_display,
+                        "variance": at_variance_display if mode == "percent" else self._format_money(Decimal(str(at_variance))),
                         "variance_raw": at_variance,
+                        "vtarget": at_variance_display if mode == "percent" else self._format_money(Decimal(str(at_variance))), # For compatibility
+                        "active_accounts": account_columns,
                         "accounts": account_columns,
                     }
                 )

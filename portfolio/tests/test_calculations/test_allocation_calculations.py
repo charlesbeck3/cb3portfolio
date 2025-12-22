@@ -1,23 +1,10 @@
 from decimal import Decimal
-from typing import Any
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase
 
 import pandas as pd
 
-from portfolio.models import (
-    Account,
-    AccountGroup,
-    AccountType,
-    AssetClass,
-    AssetClassCategory,
-    Holding,
-    Institution,
-    Portfolio,
-    Security,
-)
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
-from users.models import CustomUser
 
 
 class TestAllocationCalculationEngine(SimpleTestCase):
@@ -103,160 +90,7 @@ class TestAllocationCalculationEngine(SimpleTestCase):
         assert result["portfolio_summary"].empty
 
 
-class TestAllocationDashboardRows(TestCase):
-    def setUp(self) -> None:
-        self.user = CustomUser.objects.create(username="testuser")
-        self.portfolio = Portfolio.objects.create(user=self.user, name="Main Portfolio")
 
-        # Setup Hierarchy: Group -> Category -> Asset Class
-        # Group is just a parent Category
-        self.group = AssetClassCategory.objects.create(
-            label="Equities", code="EQUITIES", sort_order=1, parent=None
-        )
-        self.category = AssetClassCategory.objects.create(
-            label="US Stocks", code="US_STOCKS", parent=self.group
-        )
-        self.asset_class = AssetClass.objects.create(name="Large Cap", category=self.category)
-
-        self.cash_ac = AssetClass.objects.create(name="Cash", category=self.category)
-
-        self.security = Security.objects.create(
-            ticker="AAPL", name="Apple", asset_class=self.asset_class
-        )
-
-        self.type_taxable = AccountType.objects.create(
-            label="Taxable", code="TAX", group=AccountGroup.objects.create(name="Liquid")
-        )
-
-        self.institution = Institution.objects.create(name="Fidelity")
-
-        self.account = Account.objects.create(
-            user=self.user,
-            institution=self.institution,
-            portfolio=self.portfolio,
-            name="Brokerage",
-            account_type=self.type_taxable,
-        )
-
-        # Test Data:
-        # Holding: AAPL, $1500, Account: Brokerage (Taxable)
-        Holding.objects.create(
-            account=self.account,
-            security=self.security,
-            shares=Decimal("10"),
-            current_price=Decimal("150.00"),
-        )
-        # Add Cash Holding (0 value is fine if we want to confirm row generation via target presence logic,
-        # BUT current logic relies on grid presence. So we need a row in DF.
-        # Although value 0 might be filtered if logic iterates strictly on non-zero grid?
-        # Let's add nominal value to be safe for "active" row, OR rely on targets driving rows?
-        # The engine logic iterates `sorted_acs` based on `ac_vals` which sums from grid.
-        # If grid has 0, sum is 0. If 0s are excluded in sort or iteration, it won't show.
-        # Let's add explicit holding.
-        Holding.objects.create(
-            account=self.account,
-            security=Security.objects.create(ticker="CASH", name="USD", asset_class=self.cash_ac),
-            shares=Decimal("1"),
-            current_price=Decimal("0.00"),  # Value 0
-        )
-
-    def test_calculate_dashboard_rows_structure(self) -> None:
-        # We need actual "Rich" account types as expected by the method
-        # But for unit testing the engine, we can manually populate them or use mocks/minimal objects.
-
-        # Manually populate rich AT
-        # In a real scenario, this comes from views.
-        type_taxable_any: Any = self.type_taxable
-        type_taxable_any.current_total_value = Decimal("1500.00")
-        type_taxable_any.target_map = {
-            self.asset_class.id: Decimal("60"),
-            self.cash_ac.id: Decimal("40"),
-        }  # 60% Target for Large Cap, 40% Cash
-
-        holdings_df = self.portfolio.to_dataframe()
-        engine = AllocationCalculationEngine()
-
-        rows = engine.calculate_dashboard_rows(
-            holdings_df=holdings_df,
-            account_types=[type_taxable_any],
-            portfolio_total_value=Decimal("1500.00"),
-            mode="dollar",
-            cash_asset_class_id=self.cash_ac.id,
-        )
-
-        # Expected Rows:
-        # 1. Large Cap Row
-        #    Value: 1500. Target: 60% of 1500 = 900. Variance: +600.
-        # 2. Subtotal (US Stocks Total)
-        #    Value: 1500.
-        # 3. Cash Row
-        #    Value: 0. Target: Remainder? (100 - 60 = 40%). 40% of 1500 = 600. Variance: -600.
-        # 4. Total
-        #    Value: 1500. Target: 1500 (sum of targets 900+600).
-
-        # Note: Group Total skipped because only 1 category.
-
-        self.assertTrue(
-            len(rows) >= 3, f"Got {len(rows)} rows: {[r.asset_class_name for r in rows]}"
-        )
-
-        # 1. Large Cap
-        r_lc = next(r for r in rows if r.asset_class_name == "Large Cap")
-        self.assertEqual(r_lc.portfolio_current, "$1,500")
-        self.assertEqual(r_lc.portfolio_target, "$900")
-
-        # Check Account Type Column
-        at_col = r_lc.account_type_data[0]  # Taxable
-        self.assertEqual(at_col.current, "$1,500")
-        self.assertEqual(at_col.target, "$900")
-
-        # 3. Cash Row
-        r_cash = next(r for r in rows if r.is_cash)
-        self.assertEqual(r_cash.asset_class_name, "Cash")
-        self.assertEqual(r_cash.portfolio_current, "$0")
-        self.assertEqual(r_cash.portfolio_target, "$600")
-
-        at_col_cash = r_cash.account_type_data[0]
-        self.assertEqual(at_col_cash.target, "$600")
-
-        # 4. Total
-        r_total = next(r for r in rows if r.is_grand_total)
-        self.assertEqual(r_total.portfolio_current, "$1,500")
-
-    def test_calculate_dashboard_rows_percent_mode(self) -> None:
-        type_taxable_any: Any = self.type_taxable
-        type_taxable_any.current_total_value = Decimal("1500.00")
-        type_taxable_any.target_map = {
-            self.asset_class.id: Decimal("60"),
-            self.cash_ac.id: Decimal("40"),
-        }
-
-        holdings_df = self.portfolio.to_dataframe()
-        engine = AllocationCalculationEngine()
-
-        rows = engine.calculate_dashboard_rows(
-            holdings_df=holdings_df,
-            account_types=[type_taxable_any],
-            portfolio_total_value=Decimal("1500.00"),
-            mode="percent",
-            cash_asset_class_id=self.cash_ac.id,
-        )
-
-        # Check Large Cap
-        r_lc = next(r for r in rows if r.asset_class_name == "Large Cap")
-        self.assertEqual(r_lc.portfolio_current, "100.0%")
-
-        # Row Target Value = $900. Portfolio Total = $1500. 900/1500 = 60.0%
-        self.assertEqual(r_lc.portfolio_target, "60.0%")
-
-        at_col = r_lc.account_type_data[0]
-        self.assertEqual(at_col.current, "100.0%")
-        self.assertEqual(at_col.target, "60.0%")  # Only one account type, so matches portfolio
-
-        # Check Cash Row
-        r_cash = next(r for r in rows if r.asset_class_name == "Cash")
-        self.assertEqual(r_cash.portfolio_current, "0.0%")
-        self.assertEqual(r_cash.portfolio_target, "40.0%")
 
 
 class TestHoldingsDetailCalculation(SimpleTestCase):
