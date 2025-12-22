@@ -137,6 +137,26 @@ class TargetAllocationTableBuilder:
                 if not ac_names_filtered:
                     continue
 
+                # Sort asset classes by portfolio target amount descending
+                def get_portfolio_target(name: str) -> Decimal:
+                    meta = ac_meta.get(name, {})
+                    ac_id = meta.get("id")
+                    if not ac_id:
+                        return Decimal("0.00")
+
+                    total_at_target = Decimal("0.00")
+                    for at in account_types:
+                        for acc in getattr(at, "active_accounts", []):
+                            acc_total_val = getattr(acc, "current_total_value", Decimal("0.00"))
+                            if acc.allocation_strategy_id:
+                                pct = acc.target_map.get(ac_id, Decimal("0.00"))
+                            else:
+                                pct = at.target_map.get(ac_id, Decimal("0.00"))
+                            total_at_target += acc_total_val * (pct / Decimal("100.00"))
+                    return total_at_target
+
+                ac_names_filtered.sort(key=get_portfolio_target, reverse=True)
+
                 for ac_name in ac_names_filtered:
                     meta = ac_meta.get(ac_name, {})
                     # Get Current Values from DataFrames
@@ -488,22 +508,12 @@ class TargetAllocationTableBuilder:
                 acc_total_val = getattr(acc, "current_total_value", Decimal("0.00"))
 
                 # Acc Target
-                # Check override
-                if acc.target_map and ac_id in acc.target_map:
-                    pct = acc.target_map[ac_id]
+                if acc.allocation_strategy_id:
+                    # Account has an explicit strategy override
+                    pct = acc.target_map.get(ac_id, Decimal("0.00"))
                 else:
-                    # Check acc specific override map (if strategy applied) logic is handled by ViewService populating target_map
-                    # ViewService populates `acc.target_map` with the effective strategy targets.
-                    # If empty, it means use AT defaults?
-                    # `TargetAllocationViewService` line 96: `acc.target_map = overrides_map.get(acc.id, {})`.
-                    # If acc has strategy -> overrides_map has it.
-                    # If acc has NO strategy -> overrides_map is empty.
-                    # Logic in old builder line 444: `configured_pct = account.target_map.get(...)`.
-                    # `if configured_pct is None: fallback to at.target_map`.
-
-                    pct = acc.target_map.get(ac_id)
-                    if pct is None:
-                        pct = at.target_map.get(ac_id, Decimal("0.00"))
+                    # No account override, use account type defaults
+                    pct = at.target_map.get(ac_id, Decimal("0.00"))
 
                 acc_target_val = acc_total_val * (pct / Decimal("100.00"))
 
@@ -566,12 +576,9 @@ class TargetAllocationTableBuilder:
                     )
                 )
 
-            # AT Level Display
             at_variance = at_current - at_target_val
             portfolio_target += at_target_val
-
             at_input_name = f"target_{at.id}_{ac_id}"
-            at_input_val = str(at_configured_pct)
 
             if mode == "percent":
                 at_current_pct = (
@@ -584,10 +591,18 @@ class TargetAllocationTableBuilder:
                 c_disp = str(accounting_percent(at_current_pct, 1))
                 w_disp = str(accounting_percent(at_target_pct, 1))  # Weighted Target
                 v_disp = str(accounting_percent(at_current_pct - at_target_pct, 1))
+
+                at_input_val = str(accounting_percent(at_configured_pct, 1))
+
+                weighted_target_raw_val = at_target_pct
             else:
                 c_disp = str(accounting_amount(at_current, 0))
                 w_disp = str(accounting_amount(at_target_val, 0))
                 v_disp = str(accounting_amount(at_variance, 0))
+
+                at_input_val = str(accounting_amount(at_total_val * (at_configured_pct / Decimal("100.00")), 0))
+
+                weighted_target_raw_val = at_target_val
 
             groups.append(
                 TargetAccountTypeGroupData(
@@ -602,7 +617,7 @@ class TargetAllocationTableBuilder:
                         vtarget=v_disp,
                         current_raw=at_current,
                         target_input_raw=at_configured_pct,
-                        weighted_target_raw=at_target_val,  # Pct or Money depending on mode? Struct says raw...
+                        weighted_target_raw=weighted_target_raw_val,
                         vtarget_raw=at_variance,
                         is_input=True,
                     ),
@@ -683,21 +698,26 @@ class TargetAllocationTableBuilder:
                 acc_total_val = getattr(acc, "current_total_value", Decimal("0.00"))
 
                 # Calculate Acc Target
-                acc_target_val = Decimal("0.00")
-
-                for ac_name in ac_names:
-                    # Look up AC ID
-                    meta = ac_meta.get(ac_name)
-                    if meta:
-                        ac_id = meta.get("id")
-                        if ac_id:
-                            # Use acc.target_map
-                            pct = Decimal("0.00")
-                            pct = acc.target_map.get(ac_id)
-                            if pct is None:
-                                pct = at.target_map.get(ac_id, Decimal("0.00"))
-
-                            acc_target_val += acc_total_val * (pct / Decimal("100.00"))
+                if acc.allocation_strategy_id:
+                    # Account has an explicit strategy override
+                    acc_target_pct_sum = Decimal("0.00")
+                    for ac_name in ac_names:
+                        meta = ac_meta.get(ac_name)
+                        if meta:
+                            ac_id = meta.get("id")
+                            if ac_id:
+                                acc_target_pct_sum += acc.target_map.get(ac_id, Decimal("0.00"))
+                    acc_target_val = acc_total_val * (acc_target_pct_sum / Decimal("100.00"))
+                else:
+                    # No account override, use account type defaults sum
+                    at_target_pct_sum = Decimal("0.00")
+                    for ac_name in ac_names:
+                        meta = ac_meta.get(ac_name)
+                        if meta:
+                            ac_id = meta.get("id")
+                            if ac_id:
+                                at_target_pct_sum += at.target_map.get(ac_id, Decimal("0.00"))
+                    acc_target_val = acc_total_val * (at_target_pct_sum / Decimal("100.00"))
 
                 at_target_val += acc_target_val
 
@@ -751,9 +771,16 @@ class TargetAllocationTableBuilder:
             portfolio_target += at_target_val
             at_variance = at_current - at_target_val
 
-            # Formatting AT
-            weighted_target_raw_val = at_target_val
+            # Stated Target for Category (sum of component targets)
+            at_stated_target_val = Decimal("0.00")
+            for ac_name in ac_names:
+                meta = ac_meta.get(ac_name)
+                if meta:
+                    ac_id = meta.get("id")
+                    if ac_id:
+                        at_stated_target_val += at.target_map.get(ac_id, Decimal("0.00"))
 
+            # Formatting AT
             if mode == "percent":
                 at_current_pct = (
                     (at_current / at_total_val * 100) if at_total_val else Decimal("0.00")
@@ -764,13 +791,19 @@ class TargetAllocationTableBuilder:
 
                 c_disp = str(accounting_percent(at_current_pct, 1))
                 w_disp = str(accounting_percent(at_target_pct, 1))
+                t_disp = str(accounting_percent(at_stated_target_val, 1))  # Stated Target
                 v_disp = str(accounting_percent(at_current_pct - at_target_pct, 1))
 
                 weighted_target_raw_val = at_target_pct
             else:
                 c_disp = str(accounting_amount(at_current, 0))
                 w_disp = str(accounting_amount(at_target_val, 0))
+                # For money mode, "stated target" is calculated from the stated % * total value
+                stated_money = at_total_val * (at_stated_target_val / Decimal("100.00"))
+                t_disp = str(accounting_amount(stated_money, 0))
                 v_disp = str(accounting_amount(at_variance, 0))
+
+                weighted_target_raw_val = at_target_val
 
             groups.append(
                 TargetAccountTypeGroupData(
@@ -780,11 +813,11 @@ class TargetAllocationTableBuilder:
                         label=at.label,
                         current=c_disp,
                         target_input_name="",
-                        target_input_value="",
+                        target_input_value=t_disp,
                         weighted_target=w_disp,
                         vtarget=v_disp,
                         current_raw=at_current,
-                        target_input_raw=Decimal(0),
+                        target_input_raw=at_stated_target_val,
                         weighted_target_raw=weighted_target_raw_val,
                         vtarget_raw=at_variance,
                         is_input=False,
@@ -873,7 +906,7 @@ class TargetAllocationTableBuilder:
                 acc_total_val = getattr(acc, "current_total_value", Decimal("0.00"))
 
                 # Acc Target
-                if acc.target_map:
+                if acc.allocation_strategy_id:
                     acc_non_cash = sum(
                         v for k, v in acc.target_map.items() if k != cash_asset_class_id
                     )
@@ -966,7 +999,7 @@ class TargetAllocationTableBuilder:
                         label=at.label,
                         current=c_disp,
                         target_input_name="",
-                        target_input_value="",
+                        target_input_value=w_disp,
                         weighted_target=w_disp,
                         vtarget=v_disp,
                         current_raw=at_current,
@@ -1090,7 +1123,7 @@ class TargetAllocationTableBuilder:
                         label=at.label,
                         current=c_disp,
                         target_input_name="",
-                        target_input_value="",
+                        target_input_value=w_disp,
                         weighted_target=w_disp,
                         vtarget=v_disp,
                         current_raw=at_current,

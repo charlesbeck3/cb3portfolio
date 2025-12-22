@@ -82,7 +82,7 @@
                 <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.account_type.current|safe }}</td>
 
                 <td class="text-end pe-1 small">
-                    {{ group.account_type.target_input_value|default:"--" }}
+                    {{ group.account_type.target_input_value|default:"--"|safe }}
                 </td>
 
                 <td class="text-end pe-1 small fw-bold text-muted d-none d-md-table-cell">{{ group.account_type.weighted_target|safe }}</td>
