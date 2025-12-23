@@ -21,6 +21,23 @@ from users.models import CustomUser
 
 User = get_user_model()
 
+SECURITY_PRICES = {
+    "IBOND": Decimal("1.00"),
+    "VOO": Decimal("622.01"),
+    "VTI": Decimal("333.25"),
+    "VNQ": Decimal("88.93"),
+    "VTV": Decimal("190.86"),
+    "VIG": Decimal("219.37"),
+    "VEA": Decimal("62.51"),
+    "VWO": Decimal("53.58"),
+    "VGSH": Decimal("58.69"),
+    "VGIT": Decimal("60.02"),
+    "CASH": Decimal("1.00"),
+    "USRT": Decimal("50.00"),
+    "BND": Decimal("75.00"),
+    "VXUS": Decimal("60.00"),
+}
+
 
 class Command(BaseCommand):
     help = "Seeds the database with User portfolios (Admin and Test User)"
@@ -46,16 +63,38 @@ class Command(BaseCommand):
 
         admin_user = User.objects.get(username=username)
 
-        admin_portfolio, _ = Portfolio.objects.update_or_create(
-            user=admin_user,
+        # Cleanup admin portfolios (user requested clean admin)
+        admin_portfolios = Portfolio.objects.filter(user=admin_user)
+        if admin_portfolios.exists():
+            self.stdout.write(f"Cleaning up {admin_portfolios.count()} portfolios for admin...")
+            admin_portfolios.delete()
+
+        # ---------------------------
+        # 2. Test User
+        # ---------------------------
+        test_username = "testuser"
+        test_email = "test@example.com"
+        test_password = "testpassword"
+
+        if not User.objects.filter(username=test_username).exists():
+            User.objects.create_user(test_username, test_email, test_password)
+            self.stdout.write(self.style.SUCCESS(f"Created test user: {test_username}"))
+        else:
+            self.stdout.write(f"Test user already exists: {test_username}")
+
+        test_user = User.objects.get(username=test_username)
+
+        test_portfolio, _ = Portfolio.objects.update_or_create(
+            user=test_user,
             name="Main Portfolio",
             defaults={},
         )
 
-        admin_accounts: list[dict[str, Any]] = [
+        # Realistic "Main" Accounts (previously under admin)
+        main_accounts: list[dict[str, Any]] = [
             {
                 "name": "Treasury Direct",
-                "account_subtype": "DEPOSIT",
+                "account_subtype": "TAXABLE",
                 "institution": "Treasury Direct",
                 "holdings": [{"ticker": "IBOND", "shares": Decimal("108000.00")}],
             },
@@ -146,10 +185,8 @@ class Command(BaseCommand):
             },
         ]
 
-        self.seed_user_portfolio(admin_user, admin_portfolio, admin_accounts, type_objects)
-
-        # Admin Target Allocations
-        target_data = [
+        # Realistic Targets
+        main_targets = [
             {
                 "asset_class": "US Equities",
                 "TAXABLE": Decimal("33.0"),
@@ -212,72 +249,8 @@ class Command(BaseCommand):
             },
         ]
 
-        self.seed_user_targets(admin_user, admin_portfolio, target_data, type_objects)
-
-        # ---------------------------
-        # 2. Test User
-        # ---------------------------
-        test_username = "testuser"
-        test_email = "test@example.com"
-        test_password = "testpassword"
-
-        if not User.objects.filter(username=test_username).exists():
-            User.objects.create_user(test_username, test_email, test_password)
-            self.stdout.write(self.style.SUCCESS(f"Created test user: {test_username}"))
-        else:
-            self.stdout.write(f"Test user already exists: {test_username}")
-
-        test_user = User.objects.get(username=test_username)
-
-        test_portfolio, _ = Portfolio.objects.update_or_create(
-            user=test_user,
-            name="Main Portfolio",
-            defaults={},
-        )
-
-        test_accounts: list[dict[str, Any]] = [
-            {
-                "name": "Test Taxable",
-                "account_subtype": "TAXABLE",
-                "institution": "Wells Fargo",
-                "holdings": [
-                    {"ticker": "VTI", "shares": Decimal("100.00")},
-                    {"ticker": "VXUS", "shares": Decimal("50.00"), "fallback_ticker": "VEA"},
-                    {"ticker": "BND", "shares": Decimal("20.00"), "fallback_ticker": "VGIT"},
-                    {"ticker": "CASH", "shares": Decimal("1000.00")},
-                ],
-            },
-            {
-                "name": "Test Roth IRA",
-                "account_subtype": "ROTH_IRA",
-                "institution": "Charles Schwab",
-                "holdings": [
-                    {"ticker": "VOO", "shares": Decimal("50.00")},
-                    {"ticker": "VNQ", "shares": Decimal("100.00")},
-                    {"ticker": "CASH", "shares": Decimal("500.00")},
-                ],
-            },
-            {
-                "name": "Test Trad IRA",
-                "account_subtype": "TRADITIONAL_IRA",
-                "institution": "Vanguard",
-                "holdings": [
-                    {"ticker": "VTV", "shares": Decimal("80.00")},
-                    {"ticker": "VGSH", "shares": Decimal("40.00")},
-                ],
-            },
-        ]
-
-        self.seed_user_portfolio(test_user, test_portfolio, test_accounts, type_objects)
-
-        test_targets = [
-            {"asset_class": "US Equities", "TAXABLE": 60, "ROTH_IRA": 50},
-            {"asset_class": "International Developed Equities", "TAXABLE": 40},
-            {"asset_class": "US Real Estate", "ROTH_IRA": 50},
-            {"asset_class": "US Short-term Treasuries", "TRADITIONAL_IRA": 100},
-        ]
-
-        self.seed_user_targets(test_user, test_portfolio, test_targets, type_objects)
+        self.seed_user_portfolio(test_user, test_portfolio, main_accounts, type_objects)
+        self.seed_user_targets(test_user, test_portfolio, main_targets, type_objects)
 
         self.stdout.write(self.style.SUCCESS("User Data seeded successfully!"))
 
@@ -333,7 +306,10 @@ class Command(BaseCommand):
                 Holding.objects.update_or_create(
                     account=account_obj,
                     security=security,
-                    defaults={"shares": holding_data["shares"]},
+                    defaults={
+                        "shares": holding_data["shares"],
+                        "current_price": SECURITY_PRICES.get(ticker, Decimal("100.00")),
+                    },
                 )
 
     def seed_user_targets(

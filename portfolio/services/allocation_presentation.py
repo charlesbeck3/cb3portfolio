@@ -33,374 +33,297 @@ class AllocationPresentationFormatter:
         """
         Format aggregated numeric DataFrames into display-ready rows.
 
-        Args:
-            aggregated_data: Dict from aggregate_presentation_levels() with:
-                - 'assets': Asset-level data
-                - 'category_subtotals': Category aggregations
-                - 'group_totals': Group aggregations
-                - 'grand_total': Portfolio total
-            accounts_by_type: Account metadata for building nested structure
-            target_strategies: Strategy assignments for display
-            mode: 'percent' or 'dollar' for display format
-
-        Returns:
-            List of formatted row dicts ready for template rendering.
-            Each row contains formatted strings for display.
+        REFACTORED: Eliminates iterrows() using vectorized formatting + to_dict('records').
         """
-        rows: list[dict[str, Any]] = []
-
         df_assets = aggregated_data["assets"]
         df_subtotals = aggregated_data["category_subtotals"]
         df_group_totals = aggregated_data["group_totals"]
         df_grand_total = aggregated_data["grand_total"]
 
         if df_assets.empty:
-            return rows
+            return []
 
-        # Process assets in hierarchical order
-        for group_code in df_assets.index.get_level_values("group_code").unique():
-            group_assets = df_assets.loc[group_code]
+        # Step 1: Pre-format all columns using vectorized operations
+        df_assets, df_subtotals, df_group_totals, df_grand_total = self._preformat_all_columns(
+            df_assets, df_subtotals, df_group_totals, df_grand_total, accounts_by_type, mode
+        )
 
-            # Handle single category in group
-            if not isinstance(group_assets, pd.DataFrame):
-                group_assets = pd.DataFrame([group_assets])
+        # Step 2: Convert assets to dicts (using fast to_dict('records'))
+        asset_rows = self._dataframe_rows_to_dicts(df_assets, accounts_by_type, target_strategies, mode)
 
-            for category_code in group_assets.index.get_level_values("category_code").unique():
-                category_assets = group_assets.loc[category_code]
+        # Step 3: Convert aggregation rows to dicts
+        subtotal_rows = (
+            self._dataframe_rows_to_dicts(df_subtotals, accounts_by_type, target_strategies, mode)
+            if not df_subtotals.empty
+            else []
+        )
 
-                # Handle single asset in category
-                if not isinstance(category_assets, pd.DataFrame):
-                    category_assets = pd.DataFrame([category_assets])
+        group_rows = (
+            self._dataframe_rows_to_dicts(df_group_totals, accounts_by_type, target_strategies, mode)
+            if not df_group_totals.empty
+            else []
+        )
 
-                # Format asset rows in this category
-                for _idx, asset_row in category_assets.iterrows():
-                    formatted_row = self._format_asset_row(
-                        asset_row=asset_row,
-                        accounts_by_type=accounts_by_type,
-                        target_strategies=target_strategies,
-                        mode=mode,
-                    )
-                    rows.append(formatted_row)
+        grand_rows = (
+            self._dataframe_rows_to_dicts(df_grand_total, accounts_by_type, target_strategies, mode)
+            if not df_grand_total.empty
+            else []
+        )
 
-                # Add category subtotal if exists
-                if not df_subtotals.empty and (group_code, category_code) in df_subtotals.index:
-                    subtotal_row = df_subtotals.loc[(group_code, category_code)]
-                    formatted_subtotal = self._format_subtotal_row(
-                        subtotal_row=subtotal_row,
-                        accounts_by_type=accounts_by_type,
-                        mode=mode,
-                        row_type="subtotal",
-                    )
-                    rows.append(formatted_subtotal)
+        # Step 4: Interleave rows in hierarchical order
+        result = self._interleave_hierarchical_rows(asset_rows, subtotal_rows, group_rows, grand_rows)
 
-            # Add group total if exists
-            if not df_group_totals.empty and group_code in df_group_totals.index:
-                group_row = df_group_totals.loc[group_code]
-                formatted_group = self._format_subtotal_row(
-                    subtotal_row=group_row,
-                    accounts_by_type=accounts_by_type,
-                    mode=mode,
-                    row_type="group_total",
-                )
-                rows.append(formatted_group)
+        return result
 
-        # Add grand total
-        if not df_grand_total.empty:
-            grand_row = df_grand_total.iloc[0]
-            formatted_grand = self._format_subtotal_row(
-                subtotal_row=grand_row,
-                accounts_by_type=accounts_by_type,
-                mode=mode,
-                row_type="grand_total",
-            )
-            rows.append(formatted_grand)
-
-        return rows
-
-    def _format_asset_row(
+    def _format_dataframe_columns(
         self,
-        asset_row: pd.Series,
+        df: pd.DataFrame,
+        col_prefix: str,
+        mode: str,
+    ) -> pd.DataFrame:
+        """
+        Format a set of numeric columns for display using vectorized operations.
+        """
+        # Format current
+        curr_pct_col = f"{col_prefix}_current_pct"
+        curr_col = f"{col_prefix}_current"
+        if curr_pct_col in df.columns and mode == "percent":
+            df[f"{col_prefix}_current_fmt"] = df[curr_pct_col].apply(lambda x: f"{x:.1f}%")
+        elif curr_col in df.columns:
+            df[f"{col_prefix}_current_fmt"] = df[curr_col].apply(lambda x: f"${x:,.0f}")
+
+        # Format target
+        tgt_pct_col = (
+            f"{col_prefix}_target_pct"
+            if f"{col_prefix}_target_pct" in df.columns
+            else f"{col_prefix}_weighted_target_pct"
+        )
+        tgt_col = (
+            f"{col_prefix}_target" if f"{col_prefix}_target" in df.columns else f"{col_prefix}_weighted_target"
+        )
+
+        if tgt_pct_col in df.columns and mode == "percent":
+            df[f"{col_prefix}_target_fmt"] = df[tgt_pct_col].apply(lambda x: f"{x:.1f}%")
+        elif tgt_col in df.columns:
+            df[f"{col_prefix}_target_fmt"] = df[tgt_col].apply(lambda x: f"${x:,.0f}")
+
+        # Format variance
+        var_pct_col = f"{col_prefix}_variance_pct"
+        var_col = f"{col_prefix}_variance"
+        if var_pct_col in df.columns and mode == "percent":
+            df[f"{col_prefix}_variance_fmt"] = df[var_pct_col].apply(lambda x: f"{x:+.1f}%")
+        elif var_col in df.columns:
+            df[f"{col_prefix}_variance_fmt"] = df[var_col].apply(
+                lambda x: self._format_money(Decimal(str(x)))
+            )
+
+        return df
+
+    def _preformat_all_columns(
+        self,
+        df_assets: pd.DataFrame,
+        df_subtotals: pd.DataFrame,
+        df_group_totals: pd.DataFrame,
+        df_grand_total: pd.DataFrame,
+        accounts_by_type: dict[int, list[dict[str, Any]]],
+        mode: str,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """
+        Pre-format all numeric columns in all DataFrames using vectorized operations.
+        """
+        dfs = [df_assets, df_subtotals, df_group_totals, df_grand_total]
+
+        # Format portfolio columns
+        for i, df in enumerate(dfs):
+            if not df.empty:
+                dfs[i] = self._format_dataframe_columns(df, "portfolio", mode)
+
+        # Format account type columns
+        for _type_id, type_accounts in accounts_by_type.items():
+            if not type_accounts:
+                continue
+            type_code = type_accounts[0]["type_code"]
+
+            for i, df in enumerate(dfs):
+                if not df.empty:
+                    dfs[i] = self._format_dataframe_columns(df, type_code, mode)
+
+            # Format individual account columns
+            for acc_meta in type_accounts:
+                acc_name = acc_meta["name"]
+                acc_prefix = f"{type_code}_{acc_name}"
+
+                for i, df in enumerate(dfs):
+                    if not df.empty:
+                        dfs[i] = self._format_dataframe_columns(df, acc_prefix, mode)
+
+        return tuple(dfs)  # type: ignore
+
+    def _dataframe_rows_to_dicts(
+        self,
+        df: pd.DataFrame,
+        accounts_by_type: dict[int, list[dict[str, Any]]],
+        target_strategies: dict[str, Any],
+        mode: str,
+    ) -> list[dict[str, Any]]:
+        """
+        Convert formatted DataFrame rows to list of dicts for template.
+        """
+        df_reset = df.reset_index()
+        rows = df_reset.to_dict("records")
+
+        formatted_rows = []
+        for row in rows:
+            formatted_row = self._build_row_dict_from_formatted_data(
+                row, accounts_by_type, target_strategies, mode
+            )
+            formatted_rows.append(formatted_row)
+
+        return formatted_rows
+
+    def _build_row_dict_from_formatted_data(
+        self,
+        row: dict[str, Any],
         accounts_by_type: dict[int, list[dict[str, Any]]],
         target_strategies: dict[str, Any],
         mode: str,
     ) -> dict[str, Any]:
         """
-        Format a single asset row with all account types and accounts.
-
-        Converts numeric values to formatted display strings.
+        Build final row dict from pre-formatted row data.
         """
-        # Metadata might be in columns or in index (if row came from iterrows on a MultiIndex)
-        def get_val(key: str, default: Any = "") -> Any:
-            if key in asset_row.index:
-                return asset_row[key]
-            return default
+        row_type = row.get("row_type", "asset")
+        asset_class_name = row.get("asset_class_name", "")
+        if not asset_class_name:
+            if row_type == "grand_total":
+                asset_class_name = "Total"
+            elif row_type == "group_total":
+                asset_class_name = f"{row.get('group_label', '')} Total"
+            elif row_type == "subtotal":
+                asset_class_name = f"{row.get('category_label', '')} Total"
 
-        # If this is a Series from iterrows, the name might be the index value
-        # we need to be careful with MultiIndex vs single index
-        ac_name = get_val("asset_class_name", asset_row.name if isinstance(asset_row.name, str) else "")
-
-        row = {
-            "row_type": "asset",
-            "asset_class_id": int(get_val("asset_class_id", 0)),
-            "asset_class_name": ac_name,
-            "group_code": get_val("group_code"),
-            "group_label": get_val("group_label"),
-            "category_code": get_val("category_code"),
-            "category_label": get_val("category_label"),
-            "is_asset": True,
-            "is_subtotal": False,
-            "is_group_total": False,
-            "is_grand_total": False,
-            "is_cash": bool(asset_row.get("is_cash", False)),
-            "css_class": "",
+        result = {
+            "row_type": row_type,
+            "asset_class_id": int(row.get("asset_class_id", 0)),
+            "asset_class_name": asset_class_name,
+            "group_code": row.get("group_code", ""),
+            "group_label": row.get("group_label", ""),
+            "category_code": row.get("category_code", ""),
+            "category_label": row.get("category_label", ""),
+            "is_asset": row_type == "asset",
+            "is_subtotal": row_type == "subtotal",
+            "is_group_total": row_type == "group_total",
+            "is_grand_total": row_type == "grand_total",
+            "is_cash": bool(row.get("is_cash", False)),
+            "css_class": self._get_css_class(row_type),
         }
 
-        # Format portfolio values
-        if mode == "percent":
-            row["portfolio"] = {
-                "current": self._format_value(asset_row["portfolio_current_pct"], mode),
-                "target": self._format_value(asset_row["portfolio_target_pct"], mode),
-                "variance": self._format_variance(asset_row["portfolio_variance_pct"], mode),
-            }
-        else:
-            row["portfolio"] = {
-                "current": self._format_value(asset_row["portfolio_current"], mode),
-                "target": self._format_value(asset_row["portfolio_target"], mode),
-                "variance": self._format_variance(asset_row["portfolio_variance"], mode),
-            }
+        result["portfolio"] = {
+            "current": row.get("portfolio_current_fmt", ""),
+            "target": row.get("portfolio_target_fmt", ""),
+            "variance": row.get("portfolio_variance_fmt", ""),
+        }
 
-        # Format account type columns
         account_type_columns = []
-
         for type_id, type_accounts in sorted(accounts_by_type.items()):
+            if not type_accounts:
+                continue
             type_code = type_accounts[0]["type_code"]
             type_label = type_accounts[0]["type_label"]
 
-            # Get values for this account type
-            at_current = asset_row.get(f"{type_code}_current", 0.0)
-            at_target_input = asset_row.get(f"{type_code}_target_input", None)
-            at_weighted_target = asset_row.get(f"{type_code}_weighted_target", 0.0)
-            at_variance = asset_row.get(f"{type_code}_variance", 0.0)
-
-            # Format account columns
             account_columns = []
             for acc_meta in type_accounts:
-                acc_name = acc_meta["name"]
-                acc_id = acc_meta["id"]
-                acc_prefix = f"{type_code}_{acc_name}"
-
-                acc_current = asset_row.get(f"{acc_prefix}_current", 0.0)
-                acc_target = asset_row.get(f"{acc_prefix}_target", 0.0)
-                acc_variance = asset_row.get(f"{acc_prefix}_variance", 0.0)
-                acc_target_pct = asset_row.get(f"{acc_prefix}_target_pct", 0.0)
-                acc_current_pct = asset_row.get(f"{acc_prefix}_current_pct", 0.0)
-
+                acc_prefix = f"{type_code}_{acc_meta['name']}"
                 account_columns.append(
                     {
-                        "id": acc_id,
-                        "name": acc_name,
-                        "current": self._format_value(
-                            acc_current_pct if mode == "percent" else acc_current, mode
+                        "id": acc_meta["id"],
+                        "name": acc_meta["name"],
+                        "current": row.get(f"{acc_prefix}_current_fmt", ""),
+                        "current_raw": float(row.get(f"{acc_prefix}_current", 0.0)),
+                        "current_pct": float(row.get(f"{acc_prefix}_current_pct", 0.0)),
+                        "target": row.get(f"{acc_prefix}_target_fmt", ""),
+                        "target_raw": float(row.get(f"{acc_prefix}_target", 0.0)),
+                        "target_pct": float(row.get(f"{acc_prefix}_target_pct", 0.0)),
+                        "variance": row.get(f"{acc_prefix}_variance_fmt", ""),
+                        "variance_raw": float(row.get(f"{acc_prefix}_variance", 0.0)),
+                        "variance_pct": float(
+                            row.get(f"{acc_prefix}_current_pct", 0.0)
+                            - row.get(f"{acc_prefix}_target_pct", 0.0)
                         ),
-                        "current_raw": float(acc_current),
-                        "current_pct": float(acc_current_pct),
-                        "target": self._format_value(
-                            acc_target_pct if mode == "percent" else acc_target, mode
-                        ),
-                        "target_raw": float(acc_target),
-                        "target_pct": float(acc_target_pct),
-                        "variance": self._format_variance(
-                            (acc_current_pct - acc_target_pct) if mode == "percent" else acc_variance,
-                            mode,
-                        ),
-                        "variance_raw": float(acc_variance),
-                        "variance_pct": float(acc_current_pct - acc_target_pct),
                         "allocation_strategy_id": target_strategies.get("acc_strategy_map", {}).get(
-                            acc_id
+                            acc_meta["id"]
                         ),
                     }
                 )
 
-            # Format account type values
-            at_current_pct = asset_row.get(f"{type_code}_current_pct", 0.0)
-            at_weighted_pct = asset_row.get(f"{type_code}_weighted_target_pct", 0.0)
-
+            at_target_input = row.get(f"{type_code}_target_input")
             account_type_columns.append(
                 {
                     "id": type_id,
                     "code": type_code,
                     "label": type_label,
-                    "current": self._format_value(at_current, mode),
-                    "current_raw": float(at_current),
-                    "current_pct": float(at_current_pct),
-                    "target_input": (
-                        f"{at_target_input:.1f}%" if at_target_input is not None else ""
-                    ),
-                    "target_input_raw": at_target_input if at_target_input is not None else None,
-                    "target_input_value": (
-                        f"{at_target_input:.1f}%" if at_target_input is not None else ""
-                    ),
-                    "weighted_target": self._format_value(at_weighted_target, mode),
-                    "weighted_target_raw": (
-                        float(at_weighted_pct) if mode == "percent" else float(at_weighted_target)
-                    ),
-                    "weighted_target_pct": float(at_weighted_pct),
-                    "variance": self._format_variance(at_variance, mode),
-                    "variance_raw": (
-                        float(at_current_pct - at_weighted_pct)
-                        if mode == "percent"
-                        else float(at_variance)
-                    ),
-                    "variance_pct": float(at_current_pct - at_weighted_pct),
-                    "vtarget": self._format_variance(at_variance, mode),
+                    "current": row.get(f"{type_code}_current_fmt", ""),
+                    "current_raw": float(row.get(f"{type_code}_current", 0.0)),
+                    "current_pct": float(row.get(f"{type_code}_current_pct", 0.0)),
+                    "target_input": (f"{at_target_input:.1f}%" if at_target_input is not None else ""),
+                    "target_input_raw": at_target_input,
+                    "target_input_value": (f"{at_target_input:.1f}%" if at_target_input is not None else ""),
+                    "weighted_target": row.get(f"{type_code}_target_fmt", ""),
+                    "weighted_target_raw": float(row.get(f"{type_code}_weighted_target", 0.0)),
+                    "weighted_target_pct": float(row.get(f"{type_code}_weighted_target_pct", 0.0)),
+                    "variance": row.get(f"{type_code}_variance_fmt", ""),
+                    "variance_raw": float(row.get(f"{type_code}_variance", 0.0)),
+                    "variance_pct": float(row.get(f"{type_code}_variance_pct", 0.0)),
+                    "vtarget": row.get(f"{type_code}_variance_fmt", ""),
                     "active_strategy_id": target_strategies.get("at_strategy_map", {}).get(type_id),
                     "active_accounts": account_columns,
                     "accounts": account_columns,
                 }
             )
 
-        row["account_types"] = account_type_columns
+        result["account_types"] = account_type_columns
+        return result
 
-        return row
-
-    def _format_subtotal_row(
+    def _interleave_hierarchical_rows(
         self,
-        subtotal_row: pd.Series,
-        accounts_by_type: dict[int, list[dict[str, Any]]],
-        mode: str,
-        row_type: str,
-    ) -> dict[str, Any]:
+        asset_rows: list[dict[str, Any]],
+        subtotal_rows: list[dict[str, Any]],
+        group_rows: list[dict[str, Any]],
+        grand_rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         """
-        Format subtotal, group total, or grand total row.
-
-        All three types use the same structure, just different metadata.
+        Interleave asset/subtotal/group/grand rows in hierarchical order.
         """
-        # Metadata might be in columns or in index
-        def get_val(key: str, default: Any = "") -> Any:
-            if key in subtotal_row.index:
-                return subtotal_row[key]
-            return default
+        subtotals_by_key = {(r["group_code"], r["category_code"]): r for r in subtotal_rows}
+        groups_by_key = {r["group_code"]: r for r in group_rows}
 
-        # Determine display name and CSS class
-        if row_type == "grand_total":
-            display_name = "Total"
-            css_class = "grand-total"
-        elif row_type == "group_total":
-            display_name = f"{get_val('group_label')} Total"
-            css_class = "group-total"
-        else:  # subtotal
-            display_name = f"{get_val('category_label')} Total"
-            css_class = "subtotal"
+        from collections import defaultdict
 
-        row = {
-            "row_type": row_type,
-            "asset_class_id": 0,
-            "asset_class_name": display_name,
-            "group_code": get_val("group_code"),
-            "group_label": get_val("group_label"),
-            "category_code": get_val("category_code"),
-            "category_label": get_val("category_label"),
-            "is_asset": False,
-            "is_subtotal": row_type == "subtotal",
-            "is_group_total": row_type == "group_total",
-            "is_grand_total": row_type == "grand_total",
-            "is_cash": False,
-            "css_class": css_class,
+        grouped: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+        for row in asset_rows:
+            grouped[row["group_code"]][row["category_code"]].append(row)
+
+        result = []
+        for group_code in sorted(grouped.keys()):
+            cat_dict = grouped[group_code]
+            for category_code in sorted(cat_dict.keys()):
+                result.extend(cat_dict[category_code])
+                if (group_code, category_code) in subtotals_by_key:
+                    result.append(subtotals_by_key[(group_code, category_code)])
+            if group_code in groups_by_key:
+                result.append(groups_by_key[group_code])
+
+        result.extend(grand_rows)
+        return result
+
+    def _get_css_class(self, row_type: str) -> str:
+        """Get CSS class for row type."""
+        css_map = {
+            "asset": "",
+            "subtotal": "subtotal",
+            "group_total": "group-total",
+            "grand_total": "grand-total",
         }
-
-        # Format portfolio values
-        if mode == "percent":
-            row["portfolio"] = {
-                "current": self._format_value(subtotal_row.get("portfolio_current_pct", 0.0), mode),
-                "target": self._format_value(subtotal_row.get("portfolio_target_pct", 0.0), mode),
-                "variance": self._format_variance(
-                    subtotal_row.get("portfolio_variance_pct", 0.0), mode
-                ),
-            }
-        else:
-            row["portfolio"] = {
-                "current": self._format_value(subtotal_row.get("portfolio_current", 0.0), mode),
-                "target": self._format_value(subtotal_row.get("portfolio_target", 0.0), mode),
-                "variance": self._format_variance(
-                    subtotal_row.get("portfolio_variance", 0.0), mode
-                ),
-            }
-
-        # Format account type columns
-        account_type_columns = []
-
-        for type_id, type_accounts in sorted(accounts_by_type.items()):
-            type_code = type_accounts[0]["type_code"]
-            type_label = type_accounts[0]["type_label"]
-
-            at_current = subtotal_row.get(f"{type_code}_current", 0.0)
-            at_weighted_target = subtotal_row.get(f"{type_code}_weighted_target", 0.0)
-            at_variance = subtotal_row.get(f"{type_code}_variance", 0.0)
-            at_current_pct = subtotal_row.get(f"{type_code}_current_pct", 0.0)
-            at_weighted_pct = subtotal_row.get(f"{type_code}_weighted_target_pct", 0.0)
-
-            # Format account columns
-            account_columns = []
-            for acc_meta in type_accounts:
-                acc_name = acc_meta["name"]
-                acc_id = acc_meta["id"]
-                acc_prefix = f"{type_code}_{acc_name}"
-
-                acc_current = subtotal_row.get(f"{acc_prefix}_current", 0.0)
-                acc_current_pct = subtotal_row.get(f"{acc_prefix}_current_pct", 0.0)
-                acc_target = subtotal_row.get(f"{acc_prefix}_target", 0.0)
-                acc_target_pct = subtotal_row.get(f"{acc_prefix}_target_pct", 0.0)
-                acc_variance = subtotal_row.get(f"{acc_prefix}_variance", 0.0)
-
-                account_columns.append(
-                    {
-                        "id": acc_id,
-                        "name": acc_name,
-                        "current": self._format_value(
-                            acc_current_pct if mode == "percent" else acc_current, mode
-                        ),
-                        "current_raw": float(acc_current),
-                        "target": self._format_value(
-                            acc_target_pct if mode == "percent" else acc_target, mode
-                        ),
-                        "target_raw": float(acc_target),
-                        "variance": self._format_variance(
-                            (acc_current_pct - acc_target_pct) if mode == "percent" else acc_variance,
-                            mode,
-                        ),
-                        "variance_raw": float(acc_variance),
-                    }
-                )
-
-            account_type_columns.append(
-                {
-                    "id": type_id,
-                    "code": type_code,
-                    "label": type_label,
-                    "current": self._format_value(at_current, mode),
-                    "current_raw": float(at_current),
-                    "current_pct": float(at_current_pct),
-                    "weighted_target": self._format_value(at_weighted_target, mode),
-                    "weighted_target_raw": (
-                        float(at_weighted_pct) if mode == "percent" else float(at_weighted_target)
-                    ),
-                    "weighted_target_pct": float(at_weighted_pct),
-                    "variance": self._format_variance(at_variance, mode),
-                    "variance_raw": (
-                        float(at_current_pct - at_weighted_pct)
-                        if mode == "percent"
-                        else float(at_variance)
-                    ),
-                    "variance_pct": float(at_current_pct - at_weighted_pct),
-                    "vtarget": self._format_variance(at_variance, mode),
-                    "active_accounts": account_columns,
-                    "accounts": account_columns,
-                }
-            )
-
-        row["account_types"] = account_type_columns
-
-        return row
+        return css_map.get(row_type, "")
 
     def _format_value(self, value: float, mode: str) -> str:
         """

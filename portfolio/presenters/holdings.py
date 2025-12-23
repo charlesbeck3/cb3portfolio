@@ -61,134 +61,190 @@ class HoldingsTableBuilder:
         holdings_detail_df: Any,  # pd.DataFrame
         ac_meta: dict[str, Any],
     ) -> list[HoldingsTableRow]:
-        rows: list[HoldingsTableRow] = []
-        df = holdings_detail_df
+        """
+        Build HoldingsTableRow objects for the holdings table.
 
+        REFACTORED: Uses vectorized aggregation to avoid nested loops.
+        """
+        df = holdings_detail_df
         if df.empty:
             return []
 
-        # Calculate Grand Total
+        # Step 1: Pre-aggregate all hierarchical levels (VECTORIZED)
+        aggregated = self._aggregate_holdings_data(df, ac_meta)
+
+        # Step 2: Calculate grand totals for percentages
         grand_total = Decimal(float(df["Value"].sum()))
         grand_total_target = Decimal(float(df["Target_Value"].sum()))
 
-        # We need to determine Groups and Categories order
-        # We can use the DataFrame's Asset_Category column, but we need Group info.
-        # ac_meta maps Asset_Class Name -> {group_code, group_label, category_code, category_label}
+        # Step 3: Convert aggregated DataFrames to row objects
+        rows = []
 
-        # Add metadata columns to DF for easier grouping
-        # Map AC Name to Group Code/Label
-        def get_meta(ac_name: str, key: str) -> str:
-            return ac_meta.get(ac_name, {}).get(key, "")
+        # Process holdings
+        for _, row_data in aggregated["holdings"].iterrows():
+            rows.append(self._build_row_from_data(row_data, grand_total, "holding"))
 
-        df["Group_Code"] = df["Asset_Class"].apply(lambda x: get_meta(x, "group_code"))
-        df["Group_Label"] = df["Asset_Class"].apply(lambda x: get_meta(x, "group_label"))
-        df["Category_Code"] = df["Asset_Class"].apply(lambda x: get_meta(x, "category_code"))
-        df["Category_Label"] = df["Asset_Class"].apply(
-            lambda x: get_meta(x, "category_label")
-        )  # Use hierarchy label or DF label? metadata is safer.
+        # Process category subtotals
+        for _, row_data in aggregated["categories"].iterrows():
+            rows.append(self._build_row_from_data(row_data, grand_total, "subtotal"))
 
-        # Sort Order: Group Label (or priority?), Category Label, Asset Class?, Ticker
-        # We don't have explicit sort order here easily unless we passed it.
-        # Let's assume alphanumeric sort for now or rely on what comes from `ac_meta` if we iterate that instead?
-        # Iterating the DF is easier for data aggregations.
+        # Process group totals
+        for _, row_data in aggregated["groups"].iterrows():
+            rows.append(self._build_row_from_data(row_data, grand_total, "group_total"))
 
-        # Assign a Sort Key if possible. To keep it simple, we sort by Group Label, Category Label, Ticker.
-        df.sort_values(["Group_Label", "Category_Label", "Ticker"], inplace=True)
-
-        # Group by Group -> Category
-        for group_label, group_df in df.groupby("Group_Label", sort=False):
-            # We need a group code for ID.
-            group_code = group_df.iloc[0]["Group_Code"]
-            group_row_id = f"group-{group_code}"
-
-            # Category Loop
-            for cat_label, cat_df in group_df.groupby("Category_Label", sort=False):
-                cat_code = cat_df.iloc[0]["Category_Code"]
-
-                # Holdings Loop
-                # Aggregating by Ticker within Filter (if account specific?)
-                # The DF rows are per-account-holding.
-                # If we are viewing a specific account, rows are unique by ticker.
-                # If viewing ALL accounts, we see duplicates tickers?
-                # The legacy view aggregated by Ticker across accounts.
-                # `calculate_holdings_detail` returns rows per account.
-
-                # We need to Aggregate by Ticker for the Main View!
-                # Group by Ticker within this category bucket
-                ticker_groups = cat_df.groupby("Ticker")
-
-                for ticker, t_df in ticker_groups:
-                    # Sum values for this ticker across accounts
-                    val = Decimal(float(t_df["Value"].sum()))
-                    tgt_val = Decimal(float(t_df["Target_Value"].sum()))
-                    shares = Decimal(float(t_df["Shares"].sum()))
-                    # Target shares? Sum of target_shares_per_holding?
-                    # calculate_holdings_detail doesn't calculate target_shares yet, only value.
-                    # We can calc it here: Target Value / Price
-                    price = Decimal(float(t_df["Price"].iloc[0]))  # Assume same price
-
-                    tgt_shares = tgt_val / price if price else Decimal(0)
-
-                    rows.append(
-                        self._build_holding_row(
-                            ticker=ticker,
-                            name=t_df.iloc[0]["Security_Name"]
-                            if "Security_Name" in t_df.columns
-                            else ticker,  # Security Name not in DF yet?
-                            # Wait, calculate_holdings_detail doesn't define Security_Name?
-                            # Models `to_dataframe` has Security (ticker). It doesn't have name.
-                            # Legacy struct had name. We might need to fetch it or drop it.
-                            # Ticker is usually sufficient or we can join.
-                            asset_class=t_df.iloc[0]["Asset_Class"],
-                            category_code=cat_code,
-                            parent_id=group_row_id,
-                            portfolio_total=grand_total,
-                            val=val,
-                            tgt_val=tgt_val,
-                            shares=shares,
-                            tgt_shares=tgt_shares,
-                            price=price,
-                        )
-                    )
-
-                # Category Subtotal
-                if (
-                    len(group_df["Category_Label"].unique()) > 1 or len(group_df) > 1
-                ):  # Logic: Show subtotal if useful
-                    # Sum category
-                    cat_val = Decimal(float(cat_df["Value"].sum()))
-                    cat_tgt = Decimal(float(cat_df["Target_Value"].sum()))
-
-                    rows.append(
-                        self._build_category_subtotal_row(
-                            label=cat_label,
-                            category_code=cat_code,
-                            parent_id=group_row_id,
-                            portfolio_total=grand_total,
-                            val=cat_val,
-                            tgt_val=cat_tgt,
-                        )
-                    )
-
-            # Group Total
-            grp_val = Decimal(float(group_df["Value"].sum()))
-            grp_tgt = Decimal(float(group_df["Target_Value"].sum()))
-
-            rows.append(
-                self._build_group_total_row(
-                    label=group_label,
-                    group_code=group_code,
-                    row_id=group_row_id,
-                    portfolio_total=grand_total,
-                    val=grp_val,
-                    tgt_val=grp_tgt,
-                )
-            )
-
-        # Grand Total
+        # Process grand total
         rows.append(self._build_grand_total_row(grand_total, grand_total_target))
 
-        return rows
+        # Step 4: Reorder rows hierarchically (assets -> subtotal -> group total -> grand total)
+        return self._reorder_rows_hierarchically(rows, aggregated)
+
+    def _aggregate_holdings_data(
+        self,
+        df: Any,
+        ac_meta: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Pre-aggregate holdings at all hierarchical levels using vectorized operations.
+        """
+
+        df = df.copy()
+
+        # Add metadata columns (VECTORIZED)
+        df["Group_Code"] = df["Asset_Class"].map(lambda x: ac_meta.get(x, {}).get("group_code", ""))
+        df["Group_Label"] = df["Asset_Class"].map(lambda x: ac_meta.get(x, {}).get("group_label", ""))
+        df["Category_Code"] = df["Asset_Class"].map(
+            lambda x: ac_meta.get(x, {}).get("category_code", "")
+        )
+        df["Category_Label"] = df["Asset_Class"].map(
+            lambda x: ac_meta.get(x, {}).get("category_label", "")
+        )
+
+        # 1. Aggregate by Ticker (Holdings)
+        # We group by Group/Category/Asset_Class/Ticker to keep hierarchy info
+        ticker_agg = (
+            df.groupby(
+                ["Group_Code", "Group_Label", "Category_Code", "Category_Label", "Asset_Class", "Ticker"]
+            )
+            .agg({"Value": "sum", "Target_Value": "sum", "Shares": "sum", "Price": "first"})
+            .reset_index()
+        )
+
+        # 2. Aggregate by Category (Subtotals)
+        cat_agg = (
+            df.groupby(["Group_Code", "Group_Label", "Category_Code", "Category_Label"])
+            .agg({"Value": "sum", "Target_Value": "sum"})
+            .reset_index()
+        )
+
+        # 3. Aggregate by Group (Totals)
+        grp_agg = (
+            df.groupby(["Group_Code", "Group_Label"])
+            .agg({"Value": "sum", "Target_Value": "sum"})
+            .reset_index()
+        )
+
+        return {
+            "holdings": ticker_agg,
+            "categories": cat_agg,
+            "groups": grp_agg,
+        }
+
+    def _build_row_from_data(
+        self,
+        row_data: Any,
+        portfolio_total: Decimal,
+        row_type: str,
+    ) -> HoldingsTableRow:
+        """Helper to build a row object from aggregated Series/dict data."""
+        val = Decimal(float(row_data["Value"]))
+        tgt_val = Decimal(float(row_data["Target_Value"]))
+
+        if row_type == "holding":
+            ticker = row_data["Ticker"]
+            price = Decimal(float(row_data["Price"]))
+            shares = Decimal(float(row_data["Shares"]))
+            tgt_shares = tgt_val / price if price else Decimal(0)
+            return self._build_holding_row(
+                ticker=ticker,
+                name=ticker,  # Could join with security name but ticker is default
+                asset_class=row_data["Asset_Class"],
+                category_code=row_data["Category_Code"],
+                parent_id=f"group-{row_data['Group_Code']}",
+                portfolio_total=portfolio_total,
+                val=val,
+                tgt_val=tgt_val,
+                shares=shares,
+                tgt_shares=tgt_shares,
+                price=price,
+            )
+        elif row_type == "subtotal":
+            return self._build_category_subtotal_row(
+                label=row_data["Category_Label"],
+                category_code=row_data["Category_Code"],
+                parent_id=f"group-{row_data['Group_Code']}",
+                portfolio_total=portfolio_total,
+                val=val,
+                tgt_val=tgt_val,
+            )
+        else:  # group_total
+            return self._build_group_total_row(
+                label=row_data["Group_Label"],
+                group_code=row_data["Group_Code"],
+                row_id=f"group-{row_data['Group_Code']}",
+                portfolio_total=portfolio_total,
+                val=val,
+                tgt_val=tgt_val,
+            )
+
+    def _reorder_rows_hierarchically(
+        self,
+        rows: list[HoldingsTableRow],
+        aggregated: dict[str, Any],
+    ) -> list[HoldingsTableRow]:
+        """
+        Reorder rows to match hierarchical requirements:
+        Assets -> Category Subtotal -> Group Total -> Grand Total
+        """
+        # Index rows for fast lookup
+        holdings = [r for r in rows if r.is_holding]
+        subtotals = [r for r in rows if r.is_subtotal]
+        group_totals = [r for r in rows if r.is_group_total]
+        grand_total = [r for r in rows if r.is_grand_total]
+
+        from collections import defaultdict
+        h_by_cat = defaultdict(list)
+        for h in holdings:
+            h_by_cat[h.category_code].append(h)
+
+        s_by_cat = {s.category_code: s for s in subtotals}
+
+        # Need Group -> Category mapping from aggregated data
+        from collections import defaultdict
+
+        g_to_c = defaultdict(set)
+        for _, r in aggregated["categories"].iterrows():
+            g_to_c[r["Group_Code"]].add(r["Category_Code"])
+
+        g_by_code = {g.row_id.replace("group-", ""): g for g in group_totals}
+
+        result = []
+        # Iterate Groups (sorted by Code or Label)
+        for g_code in sorted(g_by_code.keys()):
+            # Process Categories in this Group
+            for c_code in sorted(g_to_c[g_code]):
+                # Add holdings
+                result.extend(sorted(h_by_cat[c_code], key=lambda x: x.ticker))
+                # Add subtotal if exists
+                if c_code in s_by_cat:
+                    result.append(s_by_cat[c_code])
+
+            # Add group total
+            result.append(g_by_code[g_code])
+
+        # Add grand total
+        result.extend(grand_total)
+
+        return result
 
     def _build_holding_row(
         self,

@@ -28,41 +28,37 @@ class Command(BaseCommand, PortfolioTestMixin):
     help = "Visually spot check the golden reference holdings and calculations."
 
     def handle(self, *args: Any, **options: Any) -> None:
-        with transaction.atomic():
-            self.stdout.write(self.style.SUCCESS("Setting up golden reference data..."))
+        self.stdout.write(self.style.SUCCESS("Checking portfolio status for testuser..."))
 
-            # 1. Setup User and Portfolio
-            username = "golden_ref_user"
-            User.objects.filter(username=username).delete()
-            self.user = User.objects.create_user(username=username, password="password")
-            self.create_portfolio(user=self.user, name="Golden Reference Portfolio")
+        # 1. Setup User
+        username = "testuser"
+        try:
+            self.user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            self.stdout.write(self.style.ERROR(f"User {username} does not exist. Run seed_db first."))
+            return
 
-            # 2. Setup System Data (Institutions, Asset Classes, etc.)
-            self.setup_system_data()
+        # 2. Setup System Data (Institutions, Asset Classes, etc.)
+        self.setup_system_data()
 
-            # 3. Replicate the Golden Reference Scenario Setup
-            self.setup_golden_reference_scenario()
+        # 3. Load Domain Portfolio and Display Results
+        domain_portfolio = DomainPortfolio.load_for_user(self.user)
 
-            # 4. Load Domain Portfolio and Display Results
-            domain_portfolio = DomainPortfolio.load_for_user(self.user)
+        self.stdout.write("\n" + "=" * 80)
+        self.stdout.write(f"PORTFOLIO STATUS: {username}")
+        self.stdout.write("=" * 80 + "\n")
 
-            self.stdout.write("\n" + "=" * 80)
-            self.stdout.write("GOLDEN REFERENCE PORTFOLIO STATUS")
-            self.stdout.write("=" * 80 + "\n")
+        self.display_portfolio_totals(domain_portfolio)
+        self.display_account_type_breakdown(domain_portfolio)
+        self.display_account_breakdown(domain_portfolio)
+        self.display_asset_class_breakdown(domain_portfolio)
+        self.display_account_variances(domain_portfolio)
+        self.display_detailed_holdings(domain_portfolio)
 
-            self.display_portfolio_totals(domain_portfolio)
-            self.display_account_type_breakdown(domain_portfolio)
-            self.display_account_breakdown(domain_portfolio)
-            self.display_asset_class_breakdown(domain_portfolio)
-            self.display_account_variances(domain_portfolio)
-            self.display_detailed_holdings(domain_portfolio)
+        # 4. New Engine Validation
+        self.display_new_engine_results(self.user)
 
-            # 5. New Engine Validation
-            self.display_new_engine_results(self.user)
-
-            # Cleanup - deleting the user will cascade delete the portfolio and holdings
-            self.user.delete()
-            self.stdout.write(self.style.SUCCESS("\nDone. Golden reference data cleaned up."))
+        self.stdout.write(self.style.SUCCESS("\nVerification complete."))
 
 
     def _get_effective_allocations_as_domain_objects(
