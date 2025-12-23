@@ -18,6 +18,7 @@ from portfolio.models import (
     TargetAllocation,
 )
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
+from portfolio.services.allocation_presentation import AllocationPresentationFormatter
 from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
@@ -55,6 +56,9 @@ class Command(BaseCommand, PortfolioTestMixin):
             self.display_asset_class_breakdown(domain_portfolio)
             self.display_account_variances(domain_portfolio)
             self.display_detailed_holdings(domain_portfolio)
+
+            # 5. New Engine Validation
+            self.display_new_engine_results(self.user)
 
             # Cleanup - deleting the user will cascade delete the portfolio and holdings
             self.user.delete()
@@ -514,3 +518,85 @@ class Command(BaseCommand, PortfolioTestMixin):
                 self.stdout.write(self.format_df_for_display(df, ["Ticker", "Asset Class"]))
             else:
                 self.stdout.write("No holdings in this account.")
+
+    def display_new_engine_results(self, user: Any) -> None:
+        """Display the output of the new AllocationCalculationEngine and Formatter."""
+        self.stdout.write("\n" + "=" * 80)
+        self.stdout.write("NEW ENGINE (PANDAS) VALIDATION SECTION")
+        self.stdout.write("=" * 80 + "\n")
+
+        engine = AllocationCalculationEngine()
+        formatter = AllocationPresentationFormatter()
+
+        # Step 1: Build numeric DataFrame
+        df = engine.build_presentation_dataframe(user=user)
+
+        if df.empty:
+            self.stdout.write(self.style.WARNING("Engine returned empty DataFrame."))
+            return
+
+        # Step 2: Aggregate at all levels
+        aggregated = engine.aggregate_presentation_levels(df)
+
+        # Step 3: Format for display
+        _, accounts_by_type = engine._get_account_metadata(user)
+        strategies_data = engine._get_target_strategies(user)
+
+        rows = formatter.format_presentation_rows(
+            aggregated_data=aggregated,
+            accounts_by_type=accounts_by_type,
+            target_strategies=strategies_data,
+            mode="percent",
+        )
+
+        self.stdout.write(self.style.MIGRATE_LABEL("REFACTORED ALLOCATION TABLE (PERCENT MODE)"))
+
+        # Convert the formatted rows into a flat list for a DataFrame
+        # For simplicity, we just show Asset Class Name and Portfolio Pcts
+        table_data = []
+        for row in rows:
+            table_data.append(
+                {
+                    "Level": row["row_type"],
+                    "Asset Class": row["asset_class_name"],
+                    "Current": row["portfolio"]["current"],
+                    "Target": row["portfolio"]["target"],
+                    "Var": row["portfolio"]["variance"],
+                }
+            )
+
+        df_presentation = pd.DataFrame(table_data)
+        self.stdout.write(self.format_df_for_display(df_presentation, ["Level", "Asset Class"]))
+
+        # Also show Holdings Detail from Engine
+        effective_targets_map = engine.get_effective_target_map(user)
+
+        # Build raw holdings DF (similar to HoldingsView)
+        holdings_qs = Holding.objects.filter(account__user=user).select_related(
+            "account", "security__asset_class"
+        )
+        raw_holdings = []
+        for h in holdings_qs:
+            raw_holdings.append(
+                {
+                    "Account_ID": h.account_id,
+                    "Asset_Class": h.security.asset_class.name,
+                    "Security": h.security.ticker,
+                    "Value": float(h.market_value),
+                    "Shares": float(h.shares),
+                    "Price": float(h.current_price) if h.current_price else 0.0,
+                }
+            )
+        holdings_df = pd.DataFrame(raw_holdings)
+
+        detail_df = engine.calculate_holdings_detail(holdings_df, effective_targets_map)
+
+        self.stdout.write(self.style.MIGRATE_LABEL("\nENGINE HOLDINGS DETAIL VALIDATION"))
+        detail_display = detail_df[
+            ["Ticker", "Asset_Class", "Value", "Target_Value", "Variance"]
+        ].copy()
+        detail_display["Value"] = detail_display["Value"].apply("${:,.2f}".format)
+        detail_display["Target_Value"] = detail_display["Target_Value"].apply("${:,.2f}".format)
+        detail_display["Variance"] = detail_display["Variance"].apply("${:,.2f}".format)
+
+        self.stdout.write(self.format_df_for_display(detail_display, ["Ticker", "Asset_Class"]))

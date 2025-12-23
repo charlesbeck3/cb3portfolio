@@ -12,34 +12,48 @@ from portfolio.models import (
     AllocationStrategy,
 )
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
+from portfolio.services.allocation_presentation import AllocationPresentationFormatter
 from users.models import CustomUser
 
 
 class TargetAllocationViewService:
     def build_context(self, *, user: CustomUser) -> dict[str, Any]:
         engine = AllocationCalculationEngine()
+        formatter = AllocationPresentationFormatter()
 
-        # Simple engine call (replaces ~150 lines of legacy code)
-        allocation_rows_percent = engine.get_target_allocation_presentation(
-            user=user,
-            mode="percent"
-        )
-        allocation_rows_money = engine.get_target_allocation_presentation(
-            user=user,
-            mode="dollar"
-        )
+        # Step 1: Build numeric DataFrame
+        df = engine.build_presentation_dataframe(user=user)
+
+        allocation_rows_percent = []
+        allocation_rows_money = []
+        portfolio_total = Decimal("0.00")
+
+        if not df.empty:
+            # Step 2: Aggregate at all levels
+            aggregated = engine.aggregate_presentation_levels(df)
+
+            # Step 3: Format for display
+            # Get metadata for formatting
+            _, accounts_by_type = engine._get_account_metadata(user)
+            strategies_data = engine._get_target_strategies(user)
+
+            allocation_rows_percent = formatter.format_presentation_rows(
+                aggregated_data=aggregated,
+                accounts_by_type=accounts_by_type,
+                target_strategies=strategies_data,
+                mode="percent",
+            )
+            allocation_rows_money = formatter.format_presentation_rows(
+                aggregated_data=aggregated,
+                accounts_by_type=accounts_by_type,
+                target_strategies=strategies_data,
+                mode="dollar",
+            )
+
+            # Calculate portfolio total for display
+            portfolio_total = Decimal(float(aggregated["grand_total"].iloc[0]["portfolio_current"]))
 
         strategies = AllocationStrategy.objects.filter(user=user).order_by("name")
-
-        # Calculate portfolio total for display
-        from portfolio.models import Portfolio
-        portfolio = Portfolio.objects.filter(user=user).first()
-        portfolio_total = Decimal("0.00")
-        if portfolio:
-            holdings_df = portfolio.to_dataframe()
-            if not holdings_df.empty:
-                # holdings_df values are individual security dollars
-                portfolio_total = Decimal(float(holdings_df.sum().sum()))
 
         return {
             "allocation_rows_percent": allocation_rows_percent,
