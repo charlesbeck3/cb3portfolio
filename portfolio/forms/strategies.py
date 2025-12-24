@@ -33,7 +33,7 @@ class AllocationStrategyForm(forms.ModelForm):
         self.cash_asset_class = None
 
         for ac in all_asset_classes:
-            if ac.name == "Cash":
+            if ac.is_cash():
                 self.cash_asset_class = ac
             else:
                 self.asset_classes.append(ac)
@@ -127,16 +127,16 @@ class AllocationStrategyForm(forms.ModelForm):
         # Validation logic
         if cash_provided:
             # User specified cash explicitly - must sum to exactly 100%
-            if total_allocation != Decimal("100.00"):
+            if total_allocation != AllocationStrategy.TOTAL_ALLOCATION_PCT:
                 raise forms.ValidationError(
-                    f"When Cash is explicitly provided, total allocation must equal exactly 100%. "
+                    f"When Cash is explicitly provided, total allocation must equal exactly {AllocationStrategy.TOTAL_ALLOCATION_PCT}%. "
                     f"Current total: {total_allocation}%"
                 )
         else:
             # User omitted cash - total must not exceed 100%
-            if total_allocation > Decimal("100.00"):
+            if total_allocation > AllocationStrategy.TOTAL_ALLOCATION_PCT:
                 raise forms.ValidationError(
-                    f"Total allocation ({total_allocation}%) cannot exceed 100%."
+                    f"Total allocation ({total_allocation}%) cannot exceed {AllocationStrategy.TOTAL_ALLOCATION_PCT}%."
                 )
 
         return cleaned_data

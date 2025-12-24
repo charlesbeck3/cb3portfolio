@@ -43,7 +43,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             code="CASH", defaults={"label": "Cash", "sort_order": 10}
         )
         self.ac_cash, _ = AssetClass.objects.get_or_create(
-            name="Cash", defaults={"category": self.cat_cash}
+            name=AssetClass.CASH_NAME, defaults={"category": self.cat_cash}
         )
         self.sec_cash, _ = Security.objects.get_or_create(
             ticker="CASH", defaults={"name": "Cash", "asset_class": self.ac_cash}
@@ -223,7 +223,9 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         strategy_cash = AllocationStrategy.objects.create(user=self.user, name="All Cash")
         # 100% to Cash Asset Class
         TargetAllocation.objects.create(
-            strategy=strategy_cash, asset_class=self.ac_cash, target_percent=Decimal("100.00")
+            strategy=strategy_cash,
+            asset_class=self.ac_cash,
+            target_percent=AllocationStrategy.TOTAL_ALLOCATION_PCT,
         )
 
         # Create specific cash account
@@ -255,7 +257,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
 
         # Verify Cash Row Calculation
         rows = context["allocation_rows_money"]
-        cash_row = next((r for r in rows if r["asset_class_name"] == "Cash"), None)
+        cash_row = next((r for r in rows if r["asset_class_name"] == AssetClass.CASH_NAME), None)
         self.assertIsNotNone(cash_row)
         if cash_row:
             # Find our account in the groups

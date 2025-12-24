@@ -69,7 +69,7 @@ class PortfolioTestMixin:
             name="US Treasuries - Intermediate"
         )
         self.asset_class_inflation_bond = AssetClass.objects.get(name="Inflation Adjusted Bond")
-        self.asset_class_cash = AssetClass.objects.get(name="Cash")
+        self.asset_class_cash = AssetClass.objects.get(name=AssetClass.CASH_NAME)
 
         # --- Standard Securities ---
         self.vti = Security.objects.get(ticker="VTI")

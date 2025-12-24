@@ -374,6 +374,33 @@ Key settings in `config/settings.py`:
 - Automatic virtual environment handling
 - Better dependency resolution
 
+### Constants and Configuration
+
+The application uses constants defined directly on domain models, not in separate files.
+This follows Django conventions and Domain-Driven Design principles.
+
+#### Naming Conventions
+
+1. **Entity Name Constants**: `{DESCRIPTOR}_NAME = "Value"`
+2. **Choice Constants**: `{CHOICE_VALUE} = "DB_VALUE"`
+3. **Numeric Constants**: `{DESCRIPTOR}_{UNIT}`
+4. **Helper Methods**: `get_{descriptor}()` and `is_{descriptor}()`
+
+#### Usage Examples
+
+```python
+# Check if asset class is Cash
+if asset_class.is_cash():
+    # Special handling for cash
+
+# Get Cash asset class (cached)
+cash = AssetClass.get_cash()
+
+# Use numeric constants
+if total != AllocationStrategy.TOTAL_ALLOCATION_PCT:
+    raise ValidationError(...)
+```
+
 ## Future Enhancements
 
 **Not in MVP - Add Later:**

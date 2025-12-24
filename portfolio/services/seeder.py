@@ -207,7 +207,11 @@ class SystemSeederService:
                 "category": "FIXED_INCOME",
                 "expected_return": Decimal("0.05"),
             },
-            {"name": "Cash", "category": "CASH", "expected_return": Decimal("0.02")},
+            {
+                "name": AssetClass.CASH_NAME,
+                "category": "CASH",
+                "expected_return": Decimal("0.02"),
+            },
         ]
         for ac_data in asset_classes:
             category_obj = self.category_objects[ac_data["category"]]
@@ -271,7 +275,11 @@ class SystemSeederService:
                 "name": "Series I Savings Bond",
                 "asset_class": "Inflation Adjusted Bond",
             },
-            {"ticker": "CASH", "name": "Cash Holding", "asset_class": "Cash"},
+            {
+                "ticker": "CASH",
+                "name": "Cash Holding",
+                "asset_class": AssetClass.CASH_NAME,
+            },
             {
                 "ticker": "VXUS",
                 "name": "Vanguard Total International Stock ETF",

@@ -243,7 +243,7 @@ class Command(BaseCommand):
                 "DEPOSIT": Decimal("50.0"),
             },
             {
-                "asset_class": "Cash",
+                "asset_class": AssetClass.CASH_NAME,
                 "TAXABLE": Decimal("0.0"),
                 "TRADITIONAL_IRA": Decimal("0.0"),
                 "ROTH_IRA": Decimal("0.0"),
@@ -361,7 +361,7 @@ class Command(BaseCommand):
             for ac_name, pct in allocation_map.items():
                 try:
                     asset_class = AssetClass.objects.get(name=ac_name)
-                    if asset_class.name != "Cash":  # Exclude cash - it's calculated
+                    if not asset_class.is_cash():  # Exclude cash - it's calculated
                         allocations_dict[asset_class.id] = Decimal(str(pct))
                 except AssetClass.DoesNotExist:
                     continue

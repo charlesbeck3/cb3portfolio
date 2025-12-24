@@ -61,12 +61,76 @@ class AssetClass(models.Model):
         help_text="Expected annual return (%)",
     )
 
+    # ============================================================================
+    # Constants
+    # ============================================================================
+
+    # Special asset class names
+    CASH_NAME = "Cash"
+    """
+    The standard name for the Cash asset class.
+
+    Cash is handled specially throughout the application:
+    - Automatically calculated by AllocationStrategy.save_allocations()
+    - Excluded from user input collection in strategy forms
+    - Acts as the "plug" to ensure allocations sum to 100%
+    """
+
     class Meta:
         verbose_name_plural = "Asset Classes"
         ordering = ["name"]
 
     def __str__(self) -> str:
         return self.name
+
+    # ============================================================================
+    # Instance Methods
+    # ============================================================================
+
+    def is_cash(self) -> bool:
+        """
+        Check if this asset class is Cash.
+
+        Returns:
+            True if this is the Cash asset class, False otherwise
+
+        Example:
+            >>> asset_class = AssetClass.objects.get(name="Cash")
+            >>> asset_class.is_cash()
+            True
+        """
+        return self.name == self.CASH_NAME
+
+    # ============================================================================
+    # Class Methods
+    # ============================================================================
+
+    @classmethod
+    def get_cash(cls) -> AssetClass | None:
+        """
+        Get the Cash asset class from database (cached).
+
+        This method uses caching to avoid repeated database queries for the
+        same Cash asset class within a single process lifetime.
+
+        Returns:
+            AssetClass instance for Cash, or None if not found
+
+        Example:
+            >>> cash = AssetClass.get_cash()
+            >>> if cash:
+            ...     print(f"Cash ID: {cash.id}")
+        """
+        from functools import lru_cache
+
+        @lru_cache(maxsize=1)
+        def _get_cash() -> AssetClass | None:
+            try:
+                return cls.objects.get(name=cls.CASH_NAME)
+            except cls.DoesNotExist:
+                return None
+
+        return _get_cash()
 
 
 class Portfolio(models.Model):
@@ -189,8 +253,27 @@ class AllocationStrategy(models.Model):
     modified_date = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
 
-    # Class constant for total allocation percentage
+    # ============================================================================
+    # Constants
+    # ============================================================================
+
+    # Allocation percentage constraints
     TOTAL_ALLOCATION_PCT = Decimal("100.00")
+    """Total allocation must always equal 100%."""
+
+    ALLOCATION_TOLERANCE = Decimal("0.001")
+    """
+    Tolerance for allocation validation (0.001%).
+
+    Used to account for rounding errors in financial calculations.
+    Allocations within this tolerance of 100% are considered valid.
+    """
+
+    MIN_ALLOCATION_PCT = Decimal("0.00")
+    """Minimum allocation percentage for any asset class."""
+
+    MAX_ALLOCATION_PCT = Decimal("100.00")
+    """Maximum allocation percentage for any asset class."""
 
     class Meta:
         constraints = [
@@ -239,7 +322,7 @@ class AllocationStrategy(models.Model):
         from django.db import transaction
 
         # Get Cash asset class
-        cash_ac = AssetClass.objects.filter(name="Cash").first()
+        cash_ac = AssetClass.get_cash()
         if not cash_ac:
             raise ValueError("Cash asset class must exist")
 
@@ -255,7 +338,7 @@ class AllocationStrategy(models.Model):
             # User specified cash explicitly - must sum to exactly 100%
             if total != self.TOTAL_ALLOCATION_PCT:
                 raise ValueError(
-                    f"Allocations sum to {total}%, expected exactly 100% "
+                    f"Allocations sum to {total}%, expected exactly {self.TOTAL_ALLOCATION_PCT}% "
                     f"when Cash is explicitly provided"
                 )
             # Use provided allocations as-is
@@ -361,7 +444,7 @@ class AllocationStrategy(models.Model):
     @property
     def cash_allocation(self) -> Decimal:
         """Get the cash allocation percentage."""
-        cash_ac = AssetClass.objects.filter(name="Cash").first()
+        cash_ac = AssetClass.get_cash()
         if not cash_ac:
             return Decimal("0.00")
 
@@ -435,6 +518,33 @@ class AccountType(models.Model):
         ("TAXABLE", "Taxable"),
     ]
 
+    # ============================================================================
+    # Constants
+    # ============================================================================
+
+    # Tax treatment choices
+    TAX_FREE = "TAX_FREE"
+    """Tax-free growth and withdrawals (e.g., Roth IRA)."""
+
+    TAX_DEFERRED = "TAX_DEFERRED"
+    """Tax-deferred growth with taxable withdrawals (e.g., Traditional IRA, 401k)."""
+
+    TAXABLE = "TAXABLE"
+    """Taxable account with annual tax on gains and dividends."""
+
+    # Redefined choices using constants
+    TAX_TREATMENT_CHOICES = [
+        (TAX_FREE, "Tax Free"),
+        (TAX_DEFERRED, "Tax Deferred"),
+        (TAXABLE, "Taxable"),
+    ]
+
+    # Common account type codes (for frequently referenced types)
+    CODE_ROTH_IRA = "ROTH_IRA"
+    CODE_TRADITIONAL_IRA = "TRADITIONAL_IRA"
+    CODE_401K = "401K"
+    CODE_TAXABLE = "TAXABLE"
+
     code = models.CharField(max_length=50, unique=True)
     label = models.CharField(max_length=100)
     group = models.ForeignKey(AccountGroup, on_delete=models.PROTECT, related_name="account_types")
@@ -442,6 +552,31 @@ class AccountType(models.Model):
 
     def __str__(self) -> str:
         return self.label
+
+    # ============================================================================
+    # Instance Methods
+    # ============================================================================
+
+    def is_tax_advantaged(self) -> bool:
+        """
+        Check if this account type has tax advantages.
+
+        Returns:
+            True if tax-free or tax-deferred, False if taxable
+        """
+        return self.tax_treatment in (self.TAX_FREE, self.TAX_DEFERRED)
+
+    def is_tax_free(self) -> bool:
+        """Check if this is a tax-free account type (e.g., Roth IRA)."""
+        return self.tax_treatment == self.TAX_FREE
+
+    def is_tax_deferred(self) -> bool:
+        """Check if this is a tax-deferred account type (e.g., Traditional IRA)."""
+        return self.tax_treatment == self.TAX_DEFERRED
+
+    def is_taxable(self) -> bool:
+        """Check if this is a taxable account type."""
+        return self.tax_treatment == self.TAXABLE
 
     def to_dataframe(self) -> pd.DataFrame:
         """

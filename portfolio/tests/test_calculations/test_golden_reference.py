@@ -107,7 +107,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         TargetAllocation.objects.create(
             strategy=self.strategy_inflation_only,
             asset_class=self.asset_class_inflation_bond,
-            target_percent=Decimal("100.00"),
+            target_percent=AllocationStrategy.TOTAL_ALLOCATION_PCT,
         )
 
         # Strategy 2: S&P Only (for WF S&P)
@@ -115,7 +115,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         TargetAllocation.objects.create(
             strategy=self.strategy_sp_only,
             asset_class=self.asset_class_us_equities,
-            target_percent=Decimal("100.00"),
+            target_percent=AllocationStrategy.TOTAL_ALLOCATION_PCT,
         )
 
         # Strategy 3: Taxable Strategy (account type default for taxable accounts)
@@ -383,7 +383,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
 
         # Target should be 100% Inflation Adjusted Bond
         alloc = AssetAllocation(
-            asset_class_name="Inflation Adjusted Bond", target_pct=Decimal("100.00")
+            asset_class_name="Inflation Adjusted Bond", target_pct=AllocationStrategy.TOTAL_ALLOCATION_PCT
         )
         target_value = alloc.target_value_for(self.acc_treasury.total_value())
         self.assertEqual(target_value, Decimal("108000.00"))
@@ -396,7 +396,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         total = self.acc_treasury.total_value()
 
         alloc = AssetAllocation(
-            asset_class_name="Inflation Adjusted Bond", target_pct=Decimal("100.00")
+            asset_class_name="Inflation Adjusted Bond", target_pct=AllocationStrategy.TOTAL_ALLOCATION_PCT
         )
         variance = alloc.variance_for(holdings["Inflation Adjusted Bond"], total)
         self.assertEqual(variance, Decimal("0.00"))
@@ -1102,7 +1102,9 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         for account_id, allocs in effective_allocs.items():
             total_pct = sum(a.target_pct for a in allocs)
             self.assertLessEqual(
-                total_pct, Decimal("100.00"), f"Account {account_id} has targets exceeding 100%"
+                total_pct,
+                AllocationStrategy.TOTAL_ALLOCATION_PCT,
+                f"Account {account_id} has targets exceeding 100%",
             )
 
     def test_all_calculations_use_decimal_not_float(self) -> None:

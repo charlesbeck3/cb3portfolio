@@ -52,7 +52,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
 
         # Verify total is 100%
         total = sum(ta.target_percent for ta in strategy.target_allocations.all())
-        self.assertEqual(total, Decimal("100.00"))
+        self.assertEqual(total, AllocationStrategy.TOTAL_ALLOCATION_PCT)
 
     def test_create_strategy_100_percent_no_cash(self) -> None:
         """Verify 100% allocation results in 0% cash."""
@@ -148,7 +148,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
 
         # Verify total is 100%
         total = sum(ta.target_percent for ta in strategy.target_allocations.all())
-        self.assertEqual(total, Decimal("100.00"))
+        self.assertEqual(total, AllocationStrategy.TOTAL_ALLOCATION_PCT)
 
     def test_create_strategy_explicit_cash_wrong_sum_error(self) -> None:
         """Verify error when explicit cash doesn't sum to 100%."""
@@ -198,7 +198,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
 
         self.assertEqual(strategy.cash_allocation, Decimal("10.00"))
         total = sum(ta.target_percent for ta in strategy.target_allocations.all())
-        self.assertEqual(total, Decimal("100.00"))
+        self.assertEqual(total, AllocationStrategy.TOTAL_ALLOCATION_PCT)
 
     def test_save_allocations_direct_explicit_cash_wrong_sum(self) -> None:
         """Test save_allocations() domain method errors on wrong sum with explicit cash."""
