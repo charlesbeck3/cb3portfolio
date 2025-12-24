@@ -64,10 +64,11 @@ class Command(BaseCommand):
         admin_user = User.objects.get(username=username)
 
         # Cleanup admin portfolios (user requested clean admin)
-        admin_portfolios = Portfolio.objects.filter(user=admin_user)
-        if admin_portfolios.exists():
-            self.stdout.write(f"Cleaning up {admin_portfolios.count()} portfolios for admin...")
-            admin_portfolios.delete()
+        admin_portfolio, _ = Portfolio.objects.update_or_create(
+            user=admin_user,
+            name="Main Portfolio",
+            defaults={},
+        )
 
         # ---------------------------
         # 2. Test User
@@ -94,7 +95,7 @@ class Command(BaseCommand):
         main_accounts: list[dict[str, Any]] = [
             {
                 "name": "Treasury Direct",
-                "account_subtype": "TAXABLE",
+                "account_subtype": "DEPOSIT",
                 "institution": "Treasury Direct",
                 "holdings": [{"ticker": "IBOND", "shares": Decimal("108000.00")}],
             },
@@ -249,8 +250,8 @@ class Command(BaseCommand):
             },
         ]
 
-        self.seed_user_portfolio(test_user, test_portfolio, main_accounts, type_objects)
-        self.seed_user_targets(test_user, test_portfolio, main_targets, type_objects)
+        self.seed_user_portfolio(admin_user, admin_portfolio, main_accounts, type_objects)
+        self.seed_user_targets(admin_user, admin_portfolio, main_targets, type_objects)
 
         self.stdout.write(self.style.SUCCESS("User Data seeded successfully!"))
 
