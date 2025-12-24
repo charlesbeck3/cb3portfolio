@@ -17,6 +17,7 @@ from portfolio.services.allocation_presentation import AllocationPresentationFor
 
 User = get_user_model()
 
+
 class TestAllocationVectorized(TestCase):
     def setUp(self) -> None:
         self.user = User.objects.create_user(username="testuser")
@@ -25,7 +26,9 @@ class TestAllocationVectorized(TestCase):
 
         # Create basic metadata
         self.parent_cat = AssetClassCategory.objects.create(code="EQ", label="Equities")
-        self.category = AssetClassCategory.objects.create(code="US", label="US Stock", parent=self.parent_cat)
+        self.category = AssetClassCategory.objects.create(
+            code="US", label="US Stock", parent=self.parent_cat
+        )
         self.ac = AssetClass.objects.create(name="Large Cap", category=self.category)
 
         self.portfolio = Portfolio.objects.create(user=self.user, name="Main")
@@ -37,15 +40,21 @@ class TestAllocationVectorized(TestCase):
             portfolio=self.portfolio,
             name="Brokerage",
             account_type=self.ac_type,
-            institution=self.institution
+            institution=self.institution,
         )
 
     def test_build_presentation_dataframe_structure(self) -> None:
         """Verify the structure of the refactored presentation dataframe."""
         # Create some holdings
         from portfolio.models import Holding, Security
+
         ticker = Security.objects.create(ticker="VT", name="Vanguard Total", asset_class=self.ac)
-        Holding.objects.create(account=self.account, security=ticker, shares=Decimal("10"), current_price=Decimal("100.00"))
+        Holding.objects.create(
+            account=self.account,
+            security=ticker,
+            shares=Decimal("10"),
+            current_price=Decimal("100.00"),
+        )
 
         df = self.engine.build_presentation_dataframe(self.user)
 
@@ -62,8 +71,14 @@ class TestAllocationVectorized(TestCase):
         """Verify that aggregate_presentation_levels returns correct structure."""
         # Create some holdings
         from portfolio.models import Holding, Security
+
         ticker = Security.objects.create(ticker="VT", name="Vanguard Total", asset_class=self.ac)
-        Holding.objects.create(account=self.account, security=ticker, shares=Decimal("10"), current_price=Decimal("100.00"))
+        Holding.objects.create(
+            account=self.account,
+            security=ticker,
+            shares=Decimal("10"),
+            current_price=Decimal("100.00"),
+        )
 
         df = self.engine.build_presentation_dataframe(self.user)
         aggregated = self.engine.aggregate_presentation_levels(df)
@@ -76,8 +91,14 @@ class TestAllocationVectorized(TestCase):
     def test_formatting_vectorized(self) -> None:
         """Verify presentation formatter output."""
         from portfolio.models import Holding, Security
+
         ticker = Security.objects.create(ticker="VT", name="Vanguard Total", asset_class=self.ac)
-        Holding.objects.create(account=self.account, security=ticker, shares=Decimal("10"), current_price=Decimal("100.00"))
+        Holding.objects.create(
+            account=self.account,
+            security=ticker,
+            shares=Decimal("10"),
+            current_price=Decimal("100.00"),
+        )
 
         df = self.engine.build_presentation_dataframe(self.user)
         aggregated = self.engine.aggregate_presentation_levels(df)

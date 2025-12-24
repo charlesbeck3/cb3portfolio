@@ -62,16 +62,16 @@
                 <th scope="col" class="text-center small border-top-0 text-muted" style="width: 60px; min-width: 60px;">Current</th>
                 <th scope="col" class="text-center small border-top-0 text-muted" style="width: 90px; min-width: 90px;">Target</th>
                 <th scope="col" class="text-center small border-top-0 text-muted" style="width: 70px; min-width: 70px;">Wt. Target</th>
-                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 70px; min-width: 70px;">vTarget</th>
+                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 70px; min-width: 70px;">Drift</th>
                 {% for _acc in group.active_accounts %}
                     <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 60px; min-width: 60px;">Current</th>
                     <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 90px; min-width: 90px;">Target</th>
-                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 70px; min-width: 70px;">vTarget</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 70px; min-width: 70px;">Drift</th>
                 {% endfor %}
             {% endfor %}
             <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 60px; min-width: 60px;">Current</th>
             <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 90px; min-width: 90px;">Target</th>
-            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 70px; min-width: 70px;">vTarget</th>
+            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 70px; min-width: 70px;">Drift</th>
         </tr>
     </thead>
     <tbody>
@@ -87,7 +87,7 @@
                 </td>
 
                 <td class="text-end pe-1 small fw-bold text-muted d-none d-md-table-cell">{{ group.weighted_target|safe }}</td>
-                <td class="text-end pe-1 small fw-bold">{{ group.variance|safe }}</td>
+                <td class="text-end pe-1 small fw-bold">{{ group.vtarget|safe }}</td>
 
                 {% for acc in group.accounts %}
                     <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">{{ acc.current|safe }}</td>

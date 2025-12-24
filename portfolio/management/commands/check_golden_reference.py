@@ -34,7 +34,9 @@ class Command(BaseCommand, PortfolioTestMixin):
         try:
             self.user = User.objects.get(username=username)
         except User.DoesNotExist:
-            self.stdout.write(self.style.ERROR(f"User {username} does not exist. Run seed_db first."))
+            self.stdout.write(
+                self.style.ERROR(f"User {username} does not exist. Run seed_db first.")
+            )
             return
 
         # 2. Setup System Data (Institutions, Asset Classes, etc.)
@@ -58,7 +60,6 @@ class Command(BaseCommand, PortfolioTestMixin):
         self.display_new_engine_results(self.user)
 
         self.stdout.write(self.style.SUCCESS("\nVerification complete."))
-
 
     def _get_effective_allocations_as_domain_objects(
         self, user: Any
@@ -323,8 +324,8 @@ class Command(BaseCommand, PortfolioTestMixin):
         # Ensure identifying columns are left-aligned by manual padding
         for col in left_align_cols:
             if col in df.columns:
-                max_len = max(df[col].astype(str).str.len().max(), len(col))
-                df[col] = df[col].astype(str).str.ljust(max_len)
+                col_max_len = max(df[col].astype(str).str.len().max(), len(col))
+                df[col] = df[col].astype(str).str.ljust(col_max_len)
 
         return df.to_string(index=False, justify="left", col_space=4)
 
@@ -427,10 +428,14 @@ class Command(BaseCommand, PortfolioTestMixin):
                 }
             )
 
+        if not data:
+            self.stdout.write("No account type data.")
+            return
+
         df = pd.DataFrame(data)
         df["Value"] = df["Value"].apply("${:,.2f}".format)
         df["Pct"] = df["Pct"].apply("{:.1f}%".format)
-        self.stdout.write(self.format_df_for_display(df, ["Type"]))
+        self.stdout.write(self.format_df_for_display(df, ["Type", "Pct"]))
 
     def display_account_variances(self, portfolio: DomainPortfolio) -> None:
         self.stdout.write(self.style.MIGRATE_LABEL("\nACCOUNT-LEVEL VARIANCES"))

@@ -189,6 +189,9 @@ class AllocationStrategy(models.Model):
     modified_date = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
 
+    # Class constant for total allocation percentage
+    TOTAL_ALLOCATION_PCT = Decimal("100.00")
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
@@ -250,7 +253,7 @@ class AllocationStrategy(models.Model):
 
         if cash_provided:
             # User specified cash explicitly - must sum to exactly 100%
-            if total != Decimal("100.00"):
+            if total != self.TOTAL_ALLOCATION_PCT:
                 raise ValueError(
                     f"Allocations sum to {total}%, expected exactly 100% "
                     f"when Cash is explicitly provided"
@@ -258,14 +261,12 @@ class AllocationStrategy(models.Model):
             # Use provided allocations as-is
             final_allocations = allocations
         else:
-            # User omitted cash - calculate as plug
-            if total > Decimal("100.00"):
-                raise ValueError(
-                    f"Non-cash allocations sum to {total}%, which exceeds 100%"
-                )
+            # User omitted cash - calculate as plug using dedicated method
+            if total > self.TOTAL_ALLOCATION_PCT:
+                raise ValueError(f"Non-cash allocations sum to {total}%, which exceeds 100%")
 
-            # Add calculated cash allocation
-            cash_percent = Decimal("100.00") - total
+            # Calculate cash using dedicated method
+            cash_percent = self.calculate_cash_allocation(allocations)
             final_allocations = allocations.copy()
 
             # Only add cash if it's non-zero
@@ -285,6 +286,34 @@ class AllocationStrategy(models.Model):
                         asset_class_id=asset_class_id,
                         target_percent=target_percent,
                     )
+
+    def calculate_cash_allocation(self, non_cash_allocations: dict[int, Decimal]) -> Decimal:
+        """
+        Calculate cash allocation as the remainder to reach 100%.
+
+        Separated into its own method for:
+        - Explicit business rule documentation
+        - Easier unit testing
+        - Single source of truth for cash calculation logic
+
+        Args:
+            non_cash_allocations: Dict of {asset_class_id: target_percent}
+                                  excluding cash
+
+        Returns:
+            Cash allocation percentage (100% - sum of non_cash)
+            Will be Decimal("0.00") if non_cash allocations sum to 100%
+
+        Examples:
+            >>> strategy.calculate_cash_allocation({1: Decimal("60.00"), 2: Decimal("30.00")})
+            Decimal('10.00')
+
+            >>> strategy.calculate_cash_allocation({1: Decimal("100.00")})
+            Decimal('0.00')
+        """
+        total = sum(non_cash_allocations.values())
+        cash_percent = self.TOTAL_ALLOCATION_PCT - total
+        return cash_percent
 
     def get_allocations_dict(self) -> dict[int, Decimal]:
         """

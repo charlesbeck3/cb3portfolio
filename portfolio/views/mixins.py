@@ -21,30 +21,31 @@ class PortfolioContextMixin:
         return context
 
     def get_sidebar_context(self) -> dict[str, Any]:
-        """Get sidebar data for all portfolio views."""
+        """
+        Get sidebar data for all portfolio views.
+
+        REFACTORED: Now uses AllocationCalculationEngine for both drifts and totals,
+        eliminating duplicate calculation logic and improving performance.
+        """
         user = self.request.user
         assert user.is_authenticated
 
         from portfolio.services.allocation_calculations import AllocationCalculationEngine
 
         engine = AllocationCalculationEngine()
-        drifts = engine.calculate_account_drifts(user)
 
-        # Fetch accounts with necessary relationships
+        # Get both drifts and totals from engine (single data source)
+        drifts = engine.calculate_account_drifts(user)
+        account_totals = engine.get_account_totals(user)  # NEW: Use engine
+        grand_total = sum(account_totals.values())
+
+        # Fetch accounts with minimal relationships (no holdings prefetch needed!)
+        # Holdings are already processed by the engine
         accounts = (
             Account.objects.filter(user=user)
             .select_related("account_type__group", "institution")
-            .prefetch_related("holdings")
+            .order_by("account_type__group__sort_order", "name")
         )
-
-        # Calculate account totals using prefetched holdings
-        account_totals = {}
-        grand_total = Decimal(0)
-
-        for acc in accounts:
-            val = acc.total_value()
-            account_totals[acc.id] = val
-            grand_total += val
 
         # Build groups structure
         all_groups = AccountGroup.objects.all().order_by("sort_order", "name")
@@ -57,8 +58,9 @@ class PortfolioContextMixin:
         if "Other" not in groups:
             groups["Other"] = {"label": "Other", "total": Decimal("0.00"), "accounts": []}
 
-        # Populate groups with accounts
+        # Populate groups with accounts (no more acc.total_value() calls!)
         for account in accounts:
+            # Get pre-calculated total from engine
             account_total = account_totals.get(account.id, Decimal(0))
 
             # Determine group
@@ -73,7 +75,7 @@ class PortfolioContextMixin:
                 {
                     "id": account.id,
                     "name": account.name,
-                    "institution": account.institution.name if account.institution else "N/A",
+                    "institution": (account.institution.name if account.institution else "N/A"),
                     "total": account_total,
                     "absolute_deviation_pct": Decimal(str(drifts.get(account.id, 0.0))),
                 }

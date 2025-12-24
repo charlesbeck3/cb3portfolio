@@ -98,13 +98,8 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
     def test_update_strategy_recalculates_cash(self) -> None:
         """Verify updating strategy recalculates cash correctly."""
         # Initial: 60/30 -> 10 Cash
-        strategy = AllocationStrategy.objects.create(
-            user=self.user, name="Update Test Strategy"
-        )
-        strategy.save_allocations({
-            self.ac1.id: Decimal("60.00"),
-            self.ac2.id: Decimal("30.00")
-        })
+        strategy = AllocationStrategy.objects.create(user=self.user, name="Update Test Strategy")
+        strategy.save_allocations({self.ac1.id: Decimal("60.00"), self.ac2.id: Decimal("30.00")})
         self.assertEqual(strategy.cash_allocation, Decimal("10.00"))
 
         # Update: 50/20 -> 30 Cash
@@ -141,16 +136,14 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
 
         # Verify allocations match exactly what was provided
         self.assertEqual(
-            strategy.target_allocations.get(asset_class=self.ac1).target_percent,
-            Decimal("60.00")
+            strategy.target_allocations.get(asset_class=self.ac1).target_percent, Decimal("60.00")
         )
         self.assertEqual(
-            strategy.target_allocations.get(asset_class=self.ac2).target_percent,
-            Decimal("30.00")
+            strategy.target_allocations.get(asset_class=self.ac2).target_percent, Decimal("30.00")
         )
         self.assertEqual(
             strategy.target_allocations.get(asset_class=self.ac_cash).target_percent,
-            Decimal("10.00")
+            Decimal("10.00"),
         )
 
         # Verify total is 100%
@@ -192,17 +185,16 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
 
     def test_save_allocations_direct_with_explicit_cash(self) -> None:
         """Test save_allocations() domain method with explicit cash."""
-        strategy = AllocationStrategy.objects.create(
-            user=self.user,
-            name="Direct Test"
-        )
+        strategy = AllocationStrategy.objects.create(user=self.user, name="Direct Test")
 
         # Explicit cash that sums to 100%
-        strategy.save_allocations({
-            self.ac1.id: Decimal("60.00"),
-            self.ac2.id: Decimal("30.00"),
-            self.ac_cash.id: Decimal("10.00")
-        })
+        strategy.save_allocations(
+            {
+                self.ac1.id: Decimal("60.00"),
+                self.ac2.id: Decimal("30.00"),
+                self.ac_cash.id: Decimal("10.00"),
+            }
+        )
 
         self.assertEqual(strategy.cash_allocation, Decimal("10.00"))
         total = sum(ta.target_percent for ta in strategy.target_allocations.all())
@@ -210,50 +202,42 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
 
     def test_save_allocations_direct_explicit_cash_wrong_sum(self) -> None:
         """Test save_allocations() domain method errors on wrong sum with explicit cash."""
-        strategy = AllocationStrategy.objects.create(
-            user=self.user,
-            name="Direct Test Error"
-        )
+        strategy = AllocationStrategy.objects.create(user=self.user, name="Direct Test Error")
 
         # Explicit cash that doesn't sum to 100%
         with self.assertRaises(ValueError) as ctx:
-            strategy.save_allocations({
-                self.ac1.id: Decimal("60.00"),
-                self.ac2.id: Decimal("30.00"),
-                self.ac_cash.id: Decimal("15.00")  # Total: 105%
-            })
+            strategy.save_allocations(
+                {
+                    self.ac1.id: Decimal("60.00"),
+                    self.ac2.id: Decimal("30.00"),
+                    self.ac_cash.id: Decimal("15.00"),  # Total: 105%
+                }
+            )
 
         self.assertIn("105", str(ctx.exception))
         self.assertIn("100", str(ctx.exception))
 
     def test_save_allocations_direct_implicit_cash(self) -> None:
         """Test save_allocations() domain method with implicit cash (existing test)."""
-        strategy = AllocationStrategy.objects.create(
-            user=self.user,
-            name="Direct Implicit"
-        )
+        strategy = AllocationStrategy.objects.create(user=self.user, name="Direct Implicit")
 
         # No cash provided - should auto-calculate
-        strategy.save_allocations({
-            self.ac1.id: Decimal("60.00"),
-            self.ac2.id: Decimal("30.00")
-        })
+        strategy.save_allocations({self.ac1.id: Decimal("60.00"), self.ac2.id: Decimal("30.00")})
 
         self.assertEqual(strategy.cash_allocation, Decimal("10.00"))
 
     def test_save_allocations_direct_implicit_cash_over_100(self) -> None:
         """Test save_allocations() errors when implicit cash would be negative."""
-        strategy = AllocationStrategy.objects.create(
-            user=self.user,
-            name="Direct Over 100"
-        )
+        strategy = AllocationStrategy.objects.create(user=self.user, name="Direct Over 100")
 
         # No cash, but allocations exceed 100%
         with self.assertRaises(ValueError) as ctx:
-            strategy.save_allocations({
-                self.ac1.id: Decimal("60.00"),
-                self.ac2.id: Decimal("50.00")  # Total: 110%
-            })
+            strategy.save_allocations(
+                {
+                    self.ac1.id: Decimal("60.00"),
+                    self.ac2.id: Decimal("50.00"),  # Total: 110%
+                }
+            )
 
         self.assertIn("110", str(ctx.exception))
         self.assertIn("100", str(ctx.exception))

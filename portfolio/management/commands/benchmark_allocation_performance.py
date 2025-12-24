@@ -21,6 +21,7 @@ from portfolio.services.allocation_presentation import AllocationPresentationFor
 
 User = get_user_model()
 
+
 class Command(BaseCommand):
     help = "Benchmark allocation performance with vectorized vs loop implementation."
 
@@ -37,7 +38,7 @@ class Command(BaseCommand):
         n_categories = 5
         n_ac_per_cat = 5
         n_accounts = 20
-        n_holdings_per_account = 20 # Total 400 holdings
+        n_holdings_per_account = 20  # Total 400 holdings
 
         parent_cat = AssetClassCategory.objects.get_or_create(code="ROOT", label="Root")[0]
         categories = []
@@ -50,9 +51,7 @@ class Command(BaseCommand):
         asset_classes = []
         for cat in categories:
             for j in range(n_ac_per_cat):
-                ac = AssetClass.objects.get_or_create(
-                    name=f"AC_{cat.code}_{j}", category=cat
-                )[0]
+                ac = AssetClass.objects.get_or_create(name=f"AC_{cat.code}_{j}", category=cat)[0]
                 asset_classes.append(ac)
 
         portfolio = Portfolio.objects.create(user=user, name="Benchmark Portfolio")
@@ -65,8 +64,11 @@ class Command(BaseCommand):
         accounts = []
         for i in range(n_accounts):
             acc = Account.objects.create(
-                user=user, name=f"Account {i}", portfolio=portfolio,
-                account_type=ac_type, institution=inst
+                user=user,
+                name=f"Account {i}",
+                portfolio=portfolio,
+                account_type=ac_type,
+                institution=inst,
             )
             accounts.append(acc)
 
@@ -77,10 +79,14 @@ class Command(BaseCommand):
                 sec = Security.objects.get_or_create(
                     ticker=f"SEC_{ac.id}_{j}", name=f"Security {j}", asset_class=ac
                 )[0]
-                holdings.append(Holding(
-                    account=acc, security=sec, shares=Decimal("100"),
-                    current_price=Decimal("10.00")
-                ))
+                holdings.append(
+                    Holding(
+                        account=acc,
+                        security=sec,
+                        shares=Decimal("100"),
+                        current_price=Decimal("10.00"),
+                    )
+                )
         Holding.objects.bulk_create(holdings)
 
         self.stdout.write(f"Created {len(holdings)} holdings across {n_accounts} accounts.")

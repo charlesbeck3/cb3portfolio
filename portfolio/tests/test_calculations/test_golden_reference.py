@@ -49,7 +49,9 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
     See: cb3portfolio_gold_reference_calculations.xlsx
     """
 
-    def _get_effective_allocations_as_domain_objects(self, user: CustomUser) -> dict[int, list[AssetAllocation]]:
+    def _get_effective_allocations_as_domain_objects(
+        self, user: CustomUser
+    ) -> dict[int, list[AssetAllocation]]:
         """Adapter to convert Engine's map format to Domain Objects expected by Portfolio domain."""
         engine = AllocationCalculationEngine()
         target_map = engine.get_effective_target_map(user)

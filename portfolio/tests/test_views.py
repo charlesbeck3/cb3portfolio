@@ -230,7 +230,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         # US Row - Current $1,000, Target $750, Variance $250
         self.assertIn("1,000", content)
         self.assertIn("750", content)
-        self.assertIn("250", content) # Variance might be +250 or $250
+        self.assertIn("250", content)  # Variance might be +250 or $250
 
         # Intl Row - Current $500, Target $600, Variance -$100
         self.assertIn("500", content)

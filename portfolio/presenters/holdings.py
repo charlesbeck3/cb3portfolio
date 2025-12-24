@@ -111,7 +111,9 @@ class HoldingsTableBuilder:
 
         # Add metadata columns (VECTORIZED)
         df["Group_Code"] = df["Asset_Class"].map(lambda x: ac_meta.get(x, {}).get("group_code", ""))
-        df["Group_Label"] = df["Asset_Class"].map(lambda x: ac_meta.get(x, {}).get("group_label", ""))
+        df["Group_Label"] = df["Asset_Class"].map(
+            lambda x: ac_meta.get(x, {}).get("group_label", "")
+        )
         df["Category_Code"] = df["Asset_Class"].map(
             lambda x: ac_meta.get(x, {}).get("category_code", "")
         )
@@ -123,7 +125,14 @@ class HoldingsTableBuilder:
         # We group by Group/Category/Asset_Class/Ticker to keep hierarchy info
         ticker_agg = (
             df.groupby(
-                ["Group_Code", "Group_Label", "Category_Code", "Category_Label", "Asset_Class", "Ticker"]
+                [
+                    "Group_Code",
+                    "Group_Label",
+                    "Category_Code",
+                    "Category_Label",
+                    "Asset_Class",
+                    "Ticker",
+                ]
             )
             .agg({"Value": "sum", "Target_Value": "sum", "Shares": "sum", "Price": "first"})
             .reset_index()
@@ -212,6 +221,7 @@ class HoldingsTableBuilder:
         grand_total = [r for r in rows if r.is_grand_total]
 
         from collections import defaultdict
+
         h_by_cat = defaultdict(list)
         for h in holdings:
             h_by_cat[h.category_code].append(h)

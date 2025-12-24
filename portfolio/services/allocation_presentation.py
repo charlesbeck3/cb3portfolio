@@ -49,7 +49,9 @@ class AllocationPresentationFormatter:
         )
 
         # Step 2: Convert assets to dicts (using fast to_dict('records'))
-        asset_rows = self._dataframe_rows_to_dicts(df_assets, accounts_by_type, target_strategies, mode)
+        asset_rows = self._dataframe_rows_to_dicts(
+            df_assets, accounts_by_type, target_strategies, mode
+        )
 
         # Step 3: Convert aggregation rows to dicts
         subtotal_rows = (
@@ -59,7 +61,9 @@ class AllocationPresentationFormatter:
         )
 
         group_rows = (
-            self._dataframe_rows_to_dicts(df_group_totals, accounts_by_type, target_strategies, mode)
+            self._dataframe_rows_to_dicts(
+                df_group_totals, accounts_by_type, target_strategies, mode
+            )
             if not df_group_totals.empty
             else []
         )
@@ -71,7 +75,9 @@ class AllocationPresentationFormatter:
         )
 
         # Step 4: Interleave rows in hierarchical order
-        result = self._interleave_hierarchical_rows(asset_rows, subtotal_rows, group_rows, grand_rows)
+        result = self._interleave_hierarchical_rows(
+            asset_rows, subtotal_rows, group_rows, grand_rows
+        )
 
         return result
 
@@ -99,7 +105,9 @@ class AllocationPresentationFormatter:
             else f"{col_prefix}_weighted_target_pct"
         )
         tgt_col = (
-            f"{col_prefix}_target" if f"{col_prefix}_target" in df.columns else f"{col_prefix}_weighted_target"
+            f"{col_prefix}_target"
+            if f"{col_prefix}_target" in df.columns
+            else f"{col_prefix}_weighted_target"
         )
 
         if tgt_pct_col in df.columns and mode == "percent":
@@ -264,16 +272,24 @@ class AllocationPresentationFormatter:
                     "current": row.get(f"{type_code}_current_fmt", ""),
                     "current_raw": float(row.get(f"{type_code}_current", 0.0)),
                     "current_pct": float(row.get(f"{type_code}_current_pct", 0.0)),
-                    "target_input": (f"{at_target_input:.1f}%" if at_target_input is not None else ""),
+                    "target_input": (
+                        f"{at_target_input:.1f}%" if at_target_input is not None else ""
+                    ),
                     "target_input_raw": at_target_input,
-                    "target_input_value": (f"{at_target_input:.1f}%" if at_target_input is not None else ""),
+                    "target_input_value": (
+                        f"{at_target_input:.1f}%" if at_target_input is not None else ""
+                    ),
                     "weighted_target": row.get(f"{type_code}_target_fmt", ""),
                     "weighted_target_raw": float(row.get(f"{type_code}_weighted_target", 0.0)),
                     "weighted_target_pct": float(row.get(f"{type_code}_weighted_target_pct", 0.0)),
                     "variance": row.get(f"{type_code}_variance_fmt", ""),
                     "variance_raw": float(row.get(f"{type_code}_variance", 0.0)),
                     "variance_pct": float(row.get(f"{type_code}_variance_pct", 0.0)),
-                    "vtarget": row.get(f"{type_code}_variance_fmt", ""),
+                    "vtarget": (
+                        f"{row.get(f'{type_code}_variance_pct', 0.0):+.1f}%"
+                        if mode == "percent"
+                        else row.get(f"{type_code}_variance_fmt", "")
+                    ),
                     "active_strategy_id": target_strategies.get("at_strategy_map", {}).get(type_id),
                     "active_accounts": account_columns,
                     "accounts": account_columns,

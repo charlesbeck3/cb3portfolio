@@ -91,7 +91,6 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
                 ]
             )
 
-
         # Build Effective Targets Map
         from portfolio.services.allocation_calculations import AllocationCalculationEngine
 

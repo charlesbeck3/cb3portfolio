@@ -120,7 +120,7 @@ class TestFrontendAllocations(PortfolioTestMixin):
         expect(page.locator(row_total_selector)).to_contain_text("100.0%")
 
         # Verify Variance Updates (Current 1000 / Total 1000 = 100%, Target 100% -> 0% variance)
-        # Wait, the vTarget display might be formatted.
+        # The Drift display might be formatted.
         row_var_selector = f"#allocations-table #row-var-{self.ac_us.id}"
         expect(page.locator(row_var_selector)).to_contain_text("0.0%")
 

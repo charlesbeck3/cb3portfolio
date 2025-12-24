@@ -318,9 +318,9 @@ class AllocationCalculationEngine:
         # Respect sort_order from database if present (non-zero), otherwise fallback to portfolio_target descending.
         # We use transform to calculate group and category aggregates to ensure assets stay grouped.
         df["group_target_sum"] = df.groupby("group_code")["portfolio_target"].transform("sum")
-        df["cat_target_sum"] = (
-            df.groupby(["group_code", "category_code"])["portfolio_target"].transform("sum")
-        )
+        df["cat_target_sum"] = df.groupby(["group_code", "category_code"])[
+            "portfolio_target"
+        ].transform("sum")
 
         # Sorting priority:
         # 1. group_sort_order (ascending)
@@ -547,7 +547,9 @@ class AllocationCalculationEngine:
                 df[f"{acc_prefix}_target"] = df[f"{acc_prefix}_target_pct"] / 100 * acc_total
 
                 # Calculate variance
-                df[f"{acc_prefix}_variance"] = df[f"{acc_prefix}_current"] - df[f"{acc_prefix}_target"]
+                df[f"{acc_prefix}_variance"] = (
+                    df[f"{acc_prefix}_current"] - df[f"{acc_prefix}_target"]
+                )
 
         return df
 
@@ -585,6 +587,11 @@ class AllocationCalculationEngine:
 
             # Calculate variance
             df[f"{type_code}_variance"] = df[f"{type_code}_current"] - weighted_target
+            
+            # Calculate variance percentage
+            df[f"{type_code}_variance_pct"] = (
+                df[f"{type_code}_current_pct"] - df[f"{type_code}_weighted_target_pct"]
+            )
 
         return df
 
@@ -673,9 +680,7 @@ class AllocationCalculationEngine:
             # Filter to only existing columns to avoid KeyError (some might be in index)
             existing_meta = [c for c in metadata_cols if c in df.columns]
             category_metadata = (
-                df[existing_meta]
-                .groupby(level=["group_code", "category_code"], sort=False)
-                .first()
+                df[existing_meta].groupby(level=["group_code", "category_code"], sort=False).first()
             )
             category_subtotals = category_subtotals.join(category_metadata)
             category_subtotals["row_type"] = "subtotal"
@@ -783,9 +788,9 @@ class AllocationCalculationEngine:
 
         from portfolio.models import AssetClass
 
-        asset_classes = AssetClass.objects.select_related(
-            "category", "category__parent"
-        ).order_by("category__parent__sort_order", "category__sort_order", "name")
+        asset_classes = AssetClass.objects.select_related("category", "category__parent").order_by(
+            "category__parent__sort_order", "category__sort_order", "name"
+        )
 
         ac_metadata = {}
         hierarchy: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
@@ -832,8 +837,10 @@ class AllocationCalculationEngine:
 
         from portfolio.models import Account
 
-        accounts = Account.objects.filter(user=user).select_related("account_type").order_by(
-            "account_type__group__sort_order", "account_type__label", "name"
+        accounts = (
+            Account.objects.filter(user=user)
+            .select_related("account_type")
+            .order_by("account_type__group__sort_order", "account_type__label", "name")
         )
 
         account_list = []
@@ -883,9 +890,9 @@ class AllocationCalculationEngine:
         }
 
         # Account Type assignments
-        at_assignments = AccountTypeStrategyAssignment.objects.filter(
-            user=user
-        ).select_related("allocation_strategy")
+        at_assignments = AccountTypeStrategyAssignment.objects.filter(user=user).select_related(
+            "allocation_strategy"
+        )
 
         strategy_ids: set[int] = set()
         at_strategy_map = {}
@@ -919,6 +926,7 @@ class AllocationCalculationEngine:
         # AllocationStrategy.save_allocations() domain model.
         # Add defensive validation to catch data integrity issues.
         import logging
+
         logger = logging.getLogger(__name__)
 
         for strat_id in strategy_ids:
@@ -1000,6 +1008,93 @@ class AllocationCalculationEngine:
             drifts[account.id] = drift_pct
 
         return drifts
+
+    def get_account_totals(self, user: Any) -> dict[int, Decimal]:
+        """
+        Get current total value for all user accounts.
+
+        Efficient extraction using pandas aggregation on holdings DataFrame.
+        This is the authoritative source for account totals used across the application.
+
+        Performance: O(H) where H = total holdings (single pandas groupby)
+        vs. O(N*H) for iterating accounts calling total_value()
+
+        Args:
+            user: User object to get accounts for
+
+        Returns:
+            Dict of {account_id: total_value_as_Decimal}
+            Returns empty dict if user has no holdings
+
+        Example:
+            >>> engine = AllocationCalculationEngine()
+            >>> totals = engine.get_account_totals(user)
+            >>> totals
+            {1: Decimal('50000.00'), 2: Decimal('75000.00')}
+        """
+        # Build holdings DataFrame (reuses existing efficient query)
+        df = self._build_holdings_dataframe(user)
+
+        if df.empty:
+            return {}
+
+        # Pandas vectorized aggregation - much faster than Python loops
+        account_totals = df.groupby(level="Account_ID")["Value"].sum()
+
+        # Convert to Decimal for consistency with domain models
+        return {
+            int(account_id): Decimal(str(total)) for account_id, total in account_totals.items()
+        }
+
+    def get_portfolio_total(self, user: Any) -> Decimal:
+        """
+        Get total portfolio value across all accounts.
+
+        Args:
+            user: User object
+
+        Returns:
+            Total portfolio value as Decimal
+        """
+        account_totals = self.get_account_totals(user)
+        return sum(account_totals.values(), Decimal("0.00"))
+
+    def _build_holdings_dataframe(self, user: Any) -> pd.DataFrame:
+        """
+        Build a flat DataFrame of holdings for the user.
+        Exposed internally to support different aggregation types.
+        """
+        from portfolio.models import Holding
+
+        holdings = (
+            Holding.objects.filter(account__user=user)
+            .select_related("account", "security__asset_class")
+            .values(
+                "account_id",
+                "security__asset_class__name",
+                "shares",
+                "current_price",
+            )
+        )
+
+        if not holdings:
+            return pd.DataFrame()
+
+        data = []
+        for h in holdings:
+            price = h["current_price"] or 0
+            value = float(h["shares"] * price)
+            data.append(
+                {
+                    "Account_ID": h["account_id"],
+                    "Asset_Class": h["security__asset_class__name"],
+                    "Value": value,
+                }
+            )
+
+        df = pd.DataFrame(data)
+        df = df.set_index(["Account_ID", "Asset_Class"])
+        return df
 
     def _empty_allocations(self) -> dict[str, pd.DataFrame]:
         """Return empty DataFrames for empty portfolio."""

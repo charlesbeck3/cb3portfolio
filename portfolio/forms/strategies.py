@@ -64,7 +64,9 @@ class AllocationStrategyForm(forms.ModelForm):
             field_name = f"target_{self.cash_asset_class.id}"
             initial_value = 0
             if self.instance.pk:
-                target = self.instance.target_allocations.filter(asset_class=self.cash_asset_class).first()
+                target = self.instance.target_allocations.filter(
+                    asset_class=self.cash_asset_class
+                ).first()
                 if target:
                     initial_value = target.target_percent
 
@@ -138,4 +140,3 @@ class AllocationStrategyForm(forms.ModelForm):
                 )
 
         return cleaned_data
-

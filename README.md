@@ -63,6 +63,9 @@ Cash is treated as a first-class asset class with flexible handling:
 - Users can omit cash and it's auto-calculated as the plug
 - All cash allocations are stored in the database
 - `AllocationStrategy.save_allocations()` is the single source of truth
+- `AllocationStrategy.calculate_cash_allocation()` contains the isolated cash calculation logic
+
+**Business Rule:** Cash percentage = 100% - sum(all other allocations)
 
 **Example:**
 ```python

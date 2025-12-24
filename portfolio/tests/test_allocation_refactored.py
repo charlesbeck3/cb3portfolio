@@ -350,10 +350,10 @@ class TestPerformance(SimpleTestCase):
         n_assets = 100
         data = {
             "group_code": ["EQUITY"] * n_assets,
-            "category_code": [f"CAT_{i//10}" for i in range(n_assets)],
+            "category_code": [f"CAT_{i // 10}" for i in range(n_assets)],
             "asset_class_name": [f"Asset_{i}" for i in range(n_assets)],
             "group_label": ["Equities"] * n_assets,
-            "category_label": [f"Label_{i//10}" for i in range(n_assets)],
+            "category_label": [f"Label_{i // 10}" for i in range(n_assets)],
             "asset_class_id": list(range(n_assets)),
             "portfolio_current": [float(i * 1000) for i in range(n_assets)],
             "portfolio_target": [float(i * 950) for i in range(n_assets)],

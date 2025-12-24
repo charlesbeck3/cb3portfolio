@@ -188,9 +188,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
     def test_redundant_subtotals(self) -> None:
         """Verify redundant subtotal rows are suppressed/shown correctly."""
         # Add another category with 1 asset
-        bond_cat = AssetClassCategory.objects.create(
-            label="Test Bonds", code="BONDS", sort_order=2
-        )
+        bond_cat = AssetClassCategory.objects.create(label="Test Bonds", code="BONDS", sort_order=2)
         AssetClass.objects.create(name="US Bond", category=bond_cat)
 
         # Ensure Equities has multiple assets (US Stocks + Intl Stocks)
@@ -363,7 +361,8 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         # 1. Verify Subtotal Calculation (50% of account)
         # Find FI subtotal
         fi_row_pct = next(
-            (r for r in rows_pct if "Fixed Income" in r["asset_class_name"] and r["is_subtotal"]), None
+            (r for r in rows_pct if "Fixed Income" in r["asset_class_name"] and r["is_subtotal"]),
+            None,
         )
         self.assertIsNotNone(fi_row_pct, "Fixed Income Total row not found")
 
@@ -529,7 +528,8 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
 
         # Group Total Row "Global Equities" (Sum of 2500 + 1000 = 3500)
         group_row = next(
-            (r for r in rows if r["is_group_total"] and "Global Equities" in r["asset_class_name"]), None
+            (r for r in rows if r["is_group_total"] and "Global Equities" in r["asset_class_name"]),
+            None,
         )
         self.assertIsNotNone(group_row)
         assert group_row is not None
