@@ -76,11 +76,11 @@
     </thead>
     <tbody>
         {% for row in rows %}
-        <tr {% if row.is_cash %}class="table-warning fw-bold"{% elif row.is_subtotal %}class="table-info fw-bold"{% elif row.is_group_total %}class="fw-bold" style="background-color: #e2e3e5;"{% elif row.is_grand_total %}class="table-dark fw-bold"{% endif %}>
+        <tr {% if row.is_subtotal %}class="table-info fw-bold"{% elif row.is_group_total %}class="fw-bold" style="background-color: #e2e3e5;"{% elif row.is_grand_total %}class="table-dark fw-bold"{% endif %}>
             <td class="ps-4">{{ row.asset_class_name }}</td>
 
             {% for group in row.account_types %}
-                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.current|safe }}</td>
+                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.current|safe }}</td>
 
                 <td class="text-end pe-1 small">
                     {{ group.target_input|default:"--"|safe }}
@@ -98,7 +98,7 @@
                 {% endfor %}
             {% endfor %}
 
-            <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.current|safe }}</td>
+            <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.current|safe }}</td>
             <td class="text-end pe-2 table-active"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-total"

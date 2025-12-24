@@ -314,6 +314,33 @@ class AllocationCalculationEngine:
         # Step 9: Calculate portfolio weighted targets (VECTORIZED)
         df = self._calculate_portfolio_weighted_targets(df, accounts_by_type, portfolio_total)
 
+        # Step 9.5: Sort the DataFrame
+        # Respect sort_order from database if present (non-zero), otherwise fallback to portfolio_target descending.
+        # We use transform to calculate group and category aggregates to ensure assets stay grouped.
+        df["group_target_sum"] = df.groupby("group_code")["portfolio_target"].transform("sum")
+        df["cat_target_sum"] = (
+            df.groupby(["group_code", "category_code"])["portfolio_target"].transform("sum")
+        )
+
+        # Sorting priority:
+        # 1. group_sort_order (ascending)
+        # 2. group_target_sum (descending) - fallback for groups
+        # 3. category_sort_order (ascending)
+        # 4. cat_target_sum (descending) - fallback for categories
+        # 5. portfolio_target (descending) - asset level
+        # 6. asset_class_name (ascending) - tie breaker
+        df = df.sort_values(
+            by=[
+                "group_sort_order",
+                "group_target_sum",
+                "category_sort_order",
+                "cat_target_sum",
+                "portfolio_target",
+                "asset_class_name",
+            ],
+            ascending=[True, False, True, False, False, True],
+        )
+
         # Step 10: Set MultiIndex
         df = df.set_index(["group_code", "category_code", "asset_class_name"])
 
@@ -332,16 +359,18 @@ class AllocationCalculationEngine:
             category_label, asset_class_name, asset_class_id, is_cash, row_type
         """
         rows = []
-        for group_code in sorted(hierarchy.keys()):
-            for category_code in sorted(hierarchy[group_code].keys()):
+        for group_code in hierarchy:
+            for category_code in hierarchy[group_code]:
                 for ac_name in hierarchy[group_code][category_code]:
                     meta = ac_metadata[ac_name]
                     rows.append(
                         {
                             "group_code": group_code,
                             "group_label": meta["group_label"],
+                            "group_sort_order": meta["group_sort_order"],
                             "category_code": category_code,
                             "category_label": meta["category_label"],
+                            "category_sort_order": meta["category_sort_order"],
                             "asset_class_name": ac_name,
                             "asset_class_id": meta["id"],
                             "is_cash": category_code == "CASH" or ac_name == "Cash",
@@ -629,8 +658,10 @@ class AllocationCalculationEngine:
         ]
 
         # Category subtotals: group by first two index levels
-        category_counts = df.groupby(level=["group_code", "category_code"]).size()
-        category_subtotals = df[numeric_cols].groupby(level=["group_code", "category_code"]).sum()
+        category_counts = df.groupby(level=["group_code", "category_code"], sort=False).size()
+        category_subtotals = (
+            df[numeric_cols].groupby(level=["group_code", "category_code"], sort=False).sum()
+        )
 
         # Filter redundant categories (only 1 asset)
         non_redundant_categories = category_counts[category_counts > 1].index
@@ -641,13 +672,17 @@ class AllocationCalculationEngine:
             metadata_cols = ["group_label", "category_label", "group_code", "category_code"]
             # Filter to only existing columns to avoid KeyError (some might be in index)
             existing_meta = [c for c in metadata_cols if c in df.columns]
-            category_metadata = df[existing_meta].groupby(level=["group_code", "category_code"]).first()
+            category_metadata = (
+                df[existing_meta]
+                .groupby(level=["group_code", "category_code"], sort=False)
+                .first()
+            )
             category_subtotals = category_subtotals.join(category_metadata)
             category_subtotals["row_type"] = "subtotal"
 
         # Group totals: group by first index level only
-        group_counts = df.groupby(level="group_code").size()
-        group_totals = df[numeric_cols].groupby(level="group_code").sum()
+        group_counts = df.groupby(level="group_code", sort=False).size()
+        group_totals = df[numeric_cols].groupby(level="group_code", sort=False).sum()
 
         # Filter redundant groups (only 1 asset child)
         non_redundant_groups = group_counts[group_counts > 1].index
@@ -657,7 +692,7 @@ class AllocationCalculationEngine:
         if not group_totals.empty:
             metadata_cols = ["group_label", "group_code"]
             existing_meta = [c for c in metadata_cols if c in df.columns]
-            group_metadata = df[existing_meta].groupby(level="group_code").first()
+            group_metadata = df[existing_meta].groupby(level="group_code", sort=False).first()
             group_totals = group_totals.join(group_metadata)
             group_totals["row_type"] = "group_total"
 
@@ -779,20 +814,24 @@ class AllocationCalculationEngine:
             if ac.category.parent:
                 group_code = ac.category.parent.code
                 group_label = ac.category.parent.label
+                group_sort_order = ac.category.parent.sort_order
             else:
                 group_code = ac.category.code
                 group_label = ac.category.label
+                group_sort_order = ac.category.sort_order
 
             cat_code = ac.category.code
             cat_label = ac.category.label
+            cat_sort_order = ac.category.sort_order
 
             ac_metadata[ac.name] = {
                 "id": ac.id,
                 "group_code": group_code,
                 "group_label": group_label,
+                "group_sort_order": group_sort_order,
                 "category_code": cat_code,
                 "category_label": cat_label,
-                "sort_order": ac.category.sort_order,
+                "category_sort_order": cat_sort_order,
             }
 
             hierarchy[group_code][cat_code].append(ac.name)

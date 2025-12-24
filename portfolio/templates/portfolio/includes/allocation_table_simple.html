@@ -23,14 +23,14 @@
         </thead>
         <tbody>
             {% for row in rows %}
-            <tr {% if row.is_cash %}class="table-warning fw-bold"{% elif row.is_subtotal %}class="table-info fw-bold"{% elif row.is_group_total %}class="fw-bold" style="background-color: #e2e3e5;"{% elif row.is_grand_total %}class="table-dark fw-bold"{% endif %}>
+            <tr {% if row.is_subtotal %}class="table-info fw-bold"{% elif row.is_group_total %}class="fw-bold" style="background-color: #e2e3e5;"{% elif row.is_grand_total %}class="table-dark fw-bold"{% endif %}>
                 <td class="ps-4">{{ row.asset_class_name }}</td>
                 {% for at_col in row.account_types %}
-                    <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ at_col.current|safe }}</td>
+                    <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ at_col.current|safe }}</td>
                     <td class="text-end pe-1 small">{{ at_col.weighted_target|safe }}</td>
                     <td class="text-end pe-1 small fw-bold">{{ at_col.variance|safe }}</td>
                 {% endfor %}
-                <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_cash or row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.current|safe }}</td>
+                <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.current|safe }}</td>
                 <td class="text-end pe-2 table-active">{{ row.portfolio.target|safe }}</td>
                 <td class="text-end pe-2 table-active fw-bold">{{ row.portfolio.variance|safe }}</td>
             </tr>

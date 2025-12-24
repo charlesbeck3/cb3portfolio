@@ -303,9 +303,9 @@ class AllocationPresentationFormatter:
             grouped[row["group_code"]][row["category_code"]].append(row)
 
         result = []
-        for group_code in sorted(grouped.keys()):
+        for group_code in grouped:
             cat_dict = grouped[group_code]
-            for category_code in sorted(cat_dict.keys()):
+            for category_code in cat_dict:
                 result.extend(cat_dict[category_code])
                 if (group_code, category_code) in subtotals_by_key:
                     result.append(subtotals_by_key[(group_code, category_code)])

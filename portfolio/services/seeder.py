@@ -124,9 +124,19 @@ class SystemSeederService:
                 "parent": "EQUITIES",
                 "sort_order": 3,
             },
-            {"code": "FIXED_INCOME", "label": "Fixed Income", "parent": None, "sort_order": 4},
-            {"code": "REAL_ASSETS", "label": "Real Assets", "parent": None, "sort_order": 5},
-            {"code": "CASH", "label": "Cash", "parent": None, "sort_order": 6},
+            {
+                "code": "CASH_AND_FIXED_INCOME",
+                "label": "Cash and Fixed Income",
+                "parent": None,
+                "sort_order": 4,
+            },
+            {
+                "code": "FIXED_INCOME",
+                "label": "Fixed Income",
+                "parent": "CASH_AND_FIXED_INCOME",
+                "sort_order": 5,
+            },
+            {"code": "CASH", "label": "Cash", "parent": "CASH_AND_FIXED_INCOME", "sort_order": 6},
         ]
         self.category_objects: dict[str, AssetClassCategory] = {}
         for cat_data in categories:
