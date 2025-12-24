@@ -205,14 +205,33 @@ class AllocationStrategy(models.Model):
 
     def save_allocations(self, allocations: dict[int, Decimal]) -> None:
         """
-        Save target allocations for this strategy, automatically calculating cash remainder.
+        Save target allocations for this strategy.
+
+        Handles cash allocation flexibly:
+        - If cash is provided: Validates that all allocations sum to exactly 100%
+        - If cash is omitted: Automatically calculates cash as the plug (100% - sum)
 
         Args:
             allocations: Dict of asset_class_id -> target_percent
-                        Should NOT include Cash - it will be calculated
+                        May include or exclude Cash asset class
 
         Raises:
-            ValueError: If allocations sum to > 100%
+            ValueError: If allocations sum to != 100% (when cash provided)
+                        If allocations sum to > 100% (when cash omitted)
+
+        Examples:
+            # Explicit cash (must sum to exactly 100%)
+            strategy.save_allocations({
+                stocks_id: Decimal("60.00"),
+                bonds_id: Decimal("30.00"),
+                cash_id: Decimal("10.00")
+            })
+
+            # Implicit cash (auto-calculated as plug)
+            strategy.save_allocations({
+                stocks_id: Decimal("60.00"),
+                bonds_id: Decimal("30.00")
+            })  # Cash will be 10%
         """
         from django.db import transaction
 
@@ -221,32 +240,51 @@ class AllocationStrategy(models.Model):
         if not cash_ac:
             raise ValueError("Cash asset class must exist")
 
-        # Validate: non-cash allocations can't exceed 100%
-        total = sum(allocations.values())
-        if total > Decimal("100.00"):
-            raise ValueError(f"Allocations sum to {total}%, which exceeds 100%")
+        cash_id = cash_ac.id
 
+        # Check if user explicitly provided cash allocation
+        cash_provided = cash_id in allocations
+
+        # Calculate total
+        total = sum(allocations.values())
+
+        if cash_provided:
+            # User specified cash explicitly - must sum to exactly 100%
+            if total != Decimal("100.00"):
+                raise ValueError(
+                    f"Allocations sum to {total}%, expected exactly 100% "
+                    f"when Cash is explicitly provided"
+                )
+            # Use provided allocations as-is
+            final_allocations = allocations
+        else:
+            # User omitted cash - calculate as plug
+            if total > Decimal("100.00"):
+                raise ValueError(
+                    f"Non-cash allocations sum to {total}%, which exceeds 100%"
+                )
+
+            # Add calculated cash allocation
+            cash_percent = Decimal("100.00") - total
+            final_allocations = allocations.copy()
+
+            # Only add cash if it's non-zero
+            if cash_percent > Decimal("0.00"):
+                final_allocations[cash_id] = cash_percent
+
+        # Save to database
         with transaction.atomic():
             # Clear existing allocations
             self.target_allocations.all().delete()
 
-            # Create non-cash allocations
-            for asset_class_id, target_percent in allocations.items():
-                if target_percent > 0:  # Only create non-zero allocations
+            # Create all allocations (only non-zero values)
+            for asset_class_id, target_percent in final_allocations.items():
+                if target_percent > Decimal("0.00"):
                     TargetAllocation.objects.create(
                         strategy=self,
                         asset_class_id=asset_class_id,
                         target_percent=target_percent,
                     )
-
-            # Calculate and create cash allocation (remainder)
-            cash_percent = Decimal("100.00") - total
-            if cash_percent > 0:
-                TargetAllocation.objects.create(
-                    strategy=self,
-                    asset_class=cash_ac,
-                    target_percent=cash_percent,
-                )
 
     def get_allocations_dict(self) -> dict[int, Decimal]:
         """

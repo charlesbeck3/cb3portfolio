@@ -28,20 +28,19 @@ class AllocationStrategyCreateView(LoginRequiredMixin, PortfolioContextMixin, Cr
             form.instance.user = cast(Any, self.request.user)
             self.object = form.save()
 
-            # 2. Collect non-cash allocations from form
+            # 2. Collect allocations from form (including optional cash)
             allocations = {}
-            # Exclude Cash - it will be calculated automatically
-            asset_classes = AssetClass.objects.exclude(name="Cash")
+            asset_classes = AssetClass.objects.all()
 
             for ac in asset_classes:
                 field_name = f"target_{ac.id}"
                 raw_value = form.cleaned_data.get(field_name)
 
-                # Only create records for non-zero allocations
+                # Only include non-zero allocations
                 if raw_value and raw_value > 0:
                     allocations[ac.id] = raw_value
 
-            # 3. Save allocations (automatically calculates cash)
+            # 3. Save allocations (automatically calculates cash if not provided)
             try:
                 self.object.save_allocations(allocations)
             except ValueError as e:
@@ -78,9 +77,9 @@ class AllocationStrategyUpdateView(LoginRequiredMixin, PortfolioContextMixin, Up
             # Update the strategy
             self.object = form.save()
 
-            # Collect non-cash allocations
+            # Collect allocations (including optional cash)
             allocations = {}
-            asset_classes = AssetClass.objects.exclude(name="Cash")
+            asset_classes = AssetClass.objects.all()
 
             for ac in asset_classes:
                 field_name = f"target_{ac.id}"
@@ -89,7 +88,7 @@ class AllocationStrategyUpdateView(LoginRequiredMixin, PortfolioContextMixin, Up
                 if raw_value and raw_value > 0:
                     allocations[ac.id] = raw_value
 
-            # Save allocations (automatically calculates cash)
+            # Save allocations (automatically calculates cash if not provided)
             try:
                 self.object.save_allocations(allocations)
             except ValueError as e:
