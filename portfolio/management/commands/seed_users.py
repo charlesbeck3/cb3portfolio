@@ -15,7 +15,6 @@ from portfolio.models import (
     Institution,
     Portfolio,
     Security,
-    TargetAllocation,
 )
 from users.models import CustomUser
 
@@ -337,10 +336,6 @@ class Command(BaseCommand):
 
                 allocations_by_type.setdefault(key, {})[ac_name] = Decimal(str(val))
 
-        cash_ac = AssetClass.objects.filter(name="Cash").first()
-        if cash_ac is None:
-            return
-
         portfolio_default_strategy, _ = AllocationStrategy.objects.update_or_create(
             user=user,
             name="Portfolio Default",
@@ -350,11 +345,7 @@ class Command(BaseCommand):
         portfolio.save(update_fields=["allocation_strategy"])
 
         # Ensure the portfolio default strategy is at least defined (100% cash).
-        TargetAllocation.objects.update_or_create(
-            strategy=portfolio_default_strategy,
-            asset_class=cash_ac,
-            defaults={"target_percent": Decimal("100.00")},
-        )
+        portfolio_default_strategy.save_allocations({})
 
         for at_code, allocation_map in allocations_by_type.items():
             account_type = type_objects[at_code]
@@ -365,28 +356,18 @@ class Command(BaseCommand):
                 defaults={"description": f"Default strategy for {account_type.label}"},
             )
 
-            # Replace allocations for this strategy.
-            strategy.target_allocations.all().delete()
-
-            total = Decimal("0.00")
+            # Convert asset class names to IDs and exclude Cash
+            allocations_dict = {}
             for ac_name, pct in allocation_map.items():
                 try:
                     asset_class = AssetClass.objects.get(name=ac_name)
+                    if asset_class.name != "Cash":  # Exclude cash - it's calculated
+                        allocations_dict[asset_class.id] = Decimal(str(pct))
                 except AssetClass.DoesNotExist:
                     continue
-                TargetAllocation.objects.create(
-                    strategy=strategy,
-                    asset_class=asset_class,
-                    target_percent=Decimal(str(pct)),
-                )
-                total += Decimal(str(pct))
 
-            if total < Decimal("100.00"):
-                TargetAllocation.objects.update_or_create(
-                    strategy=strategy,
-                    asset_class=cash_ac,
-                    defaults={"target_percent": Decimal("100.00") - total},
-                )
+            # Use domain model - automatically handles cash remainder and persistence
+            strategy.save_allocations(allocations_dict)
 
             AccountTypeStrategyAssignment.objects.update_or_create(
                 user=user,
