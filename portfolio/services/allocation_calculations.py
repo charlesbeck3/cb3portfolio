@@ -949,56 +949,55 @@ class AllocationCalculationEngine:
         """
         Calculate absolute deviation drift percentage for each account.
 
+        Uses Account domain model method for consistency and DRY principle.
+
         Returns:
             Dict of {account_id: drift_pct}
         """
-        from portfolio.models import Portfolio
-
-        portfolio = Portfolio.objects.filter(user=user).first()
-        if not portfolio:
-            return {}
-
-        holdings_df = portfolio.to_dataframe()
-        if holdings_df.empty:
-            # Even with no holdings, we can still have drift if there are targets.
-            # But we'll handle that below by checking targets_map.
-            by_account = pd.DataFrame()
-        else:
-            allocations = self.calculate_allocations(holdings_df)
-            by_account = allocations["by_account"]
-
-        # Get effective targets map: {account_id: {asset_class_name: target_pct}}
-        targets_map = self.get_effective_target_map(user)
+        from portfolio.domain.allocation import AssetAllocation
+        from portfolio.models import Account
 
         drifts = {}
-        # Union of accounts with holdings and accounts with targets
-        all_account_ids = set(targets_map.keys())
-        if not by_account.empty:
-            all_account_ids.update(by_account.index)
 
-        for acc_id in all_account_ids:
-            targets = targets_map.get(acc_id, {})
-            drift = 0.0
+        accounts = (
+            Account.objects.filter(user=user)
+            .select_related(
+                "account_type",
+                "allocation_strategy",
+                "portfolio",
+            )
+            .prefetch_related(
+                "holdings__security__asset_class",
+                "allocation_strategy__target_allocations__asset_class",
+            )
+        )
 
-            if not by_account.empty and acc_id in by_account.index:
-                acc_row = by_account.loc[acc_id]
+        for account in accounts:
+            # Get effective strategy for this account
+            strategy = account.get_effective_allocation_strategy()
+            if not strategy:
+                continue
 
-                # Identify all unique asset class names across targets and actuals
-                all_asset_classes = set(targets.keys())
-                for col in by_account.columns:
-                    if col.endswith("_pct"):
-                        ac_name = col[:-4]
-                        all_asset_classes.add(ac_name)
+            # Convert TargetAllocations to AssetAllocation domain objects
+            allocations = [
+                AssetAllocation(
+                    asset_class_name=ta.asset_class.name,
+                    target_pct=ta.target_percent,
+                )
+                for ta in strategy.target_allocations.all()
+            ]
 
-                for ac_name in all_asset_classes:
-                    target_pct = float(targets.get(ac_name, 0.0))
-                    current_pct = float(acc_row.get(f"{ac_name}_pct", 0.0))
-                    drift += abs(current_pct - target_pct)
+            # Use Account domain method - single source of truth
+            account_total = account.total_value()
+            if account_total == Decimal("0.00"):
+                # Empty account with targets = 100% drift
+                drift_pct = float(sum(a.target_pct for a in allocations))
             else:
-                # No holdings. If it has targets, drift is 100% (sum of target_pct).
-                drift = float(sum(targets.values())) if targets else 0.0
+                # Calculate deviation using domain model
+                deviation = account.calculate_deviation_from_allocations(allocations)
+                drift_pct = float(deviation / account_total * 100)
 
-            drifts[acc_id] = drift
+            drifts[account.id] = drift_pct
 
         return drifts
 

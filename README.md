@@ -18,6 +18,68 @@ A Django-based web application for managing multi-account investment portfolios 
 - **CVXPY** - Portfolio optimization engine
 - **NumPy & Pandas** - Data manipulation
 
+## Architecture
+
+cb3portfolio follows domain-driven design principles with clear separation of concerns:
+
+### Layer Responsibilities
+
+- **Domain Models** (`portfolio/models.py`) - Business logic and validation
+  - `AllocationStrategy` - Manages target allocations with automatic cash calculation
+  - `Account` - Aggregates holdings and calculates drift from targets
+  - `Portfolio` - Container for accounts with rollup calculations
+  - **Rule**: Business logic lives here, not in views or services
+
+- **Services** (`portfolio/services/`) - Orchestration and aggregation
+  - `AllocationCalculationEngine` - Portfolio-wide calculation orchestration
+  - `AllocationPresentationFormatter` - Formats data for templates
+  - **Rule**: Services orchestrate domain models, they don't duplicate business logic
+
+- **Forms** (`portfolio/forms/`) - User input validation
+  - Validate user input before passing to domain models
+  - **Rule**: Forms validate, domain models enforce business rules
+
+- **Views** (`portfolio/views/`) - Presentation and HTTP handling
+  - Handle HTTP requests/responses
+  - Call services and domain models
+  - **Rule**: No business logic in views
+
+- **Templates** - Display only (no business logic)
+  - Render data provided by views
+  - **Rule**: Templates display, they don't calculate
+
+### Key Principles
+
+1. **Single Source of Truth** - Business logic lives in domain models
+2. **DRY** - No duplicate calculation logic across layers
+3. **Trust the Database** - Domain models ensure data integrity
+4. **Clear Boundaries** - Each layer has specific responsibilities
+
+### Cash Allocation Pattern
+
+Cash is treated as a first-class asset class with flexible handling:
+
+- Users can explicitly provide cash allocation (must sum to 100%)
+- Users can omit cash and it's auto-calculated as the plug
+- All cash allocations are stored in the database
+- `AllocationStrategy.save_allocations()` is the single source of truth
+
+**Example:**
+```python
+# Implicit cash (auto-calculated)
+strategy.save_allocations({
+    stocks_id: Decimal("60.00"),
+    bonds_id: Decimal("30.00")
+})  # Cash = 10%
+
+# Explicit cash (validated)
+strategy.save_allocations({
+    stocks_id: Decimal("60.00"),
+    bonds_id: Decimal("30.00"),
+    cash_id: Decimal("10.00")
+})  # Must sum to exactly 100%
+```
+
 ## Quick Start
 
 ### Prerequisites
