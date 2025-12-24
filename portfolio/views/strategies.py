@@ -40,7 +40,21 @@ class AllocationStrategyCreateView(LoginRequiredMixin, PortfolioContextMixin, Cr
                 if raw_value and raw_value > 0:
                     allocations[ac.id] = raw_value
 
-            # 3. Save allocations (automatically calculates cash if not provided)
+            # 3. Pre-validate before attempting to save
+            # This provides better error messages than catching ValueError
+            # Check if cash was provided to determine if we allow implicit cash
+            cash_ac = AssetClass.get_cash()
+            cash_provided = cash_ac.id in allocations if cash_ac else False
+
+            is_valid, error_msg = self.object.validate_allocations(
+                allocations, allow_implicit_cash=not cash_provided
+            )
+            if not is_valid:
+                form.add_error(None, error_msg)
+                return self.form_invalid(form)
+
+            # 4. Save allocations (automatically calculates cash if not provided)
+            # This also has its own defensive validation as a last resort
             try:
                 self.object.save_allocations(allocations)
             except ValueError as e:
@@ -88,7 +102,18 @@ class AllocationStrategyUpdateView(LoginRequiredMixin, PortfolioContextMixin, Up
                 if raw_value and raw_value > 0:
                     allocations[ac.id] = raw_value
 
-            # Save allocations (automatically calculates cash if not provided)
+            # 3. Pre-validate before attempting to save
+            cash_ac = AssetClass.get_cash()
+            cash_provided = cash_ac.id in allocations if cash_ac else False
+
+            is_valid, error_msg = self.object.validate_allocations(
+                allocations, allow_implicit_cash=not cash_provided
+            )
+            if not is_valid:
+                form.add_error(None, error_msg)
+                return self.form_invalid(form)
+
+            # 4. Save allocations (automatically calculates cash if not provided)
             try:
                 self.object.save_allocations(allocations)
             except ValueError as e:

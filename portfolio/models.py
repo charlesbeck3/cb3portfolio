@@ -304,6 +304,7 @@ class AllocationStrategy(models.Model):
         Raises:
             ValueError: If allocations sum to != 100% (when cash provided)
                         If allocations sum to > 100% (when cash omitted)
+                        If final allocations don't sum to exactly 100% (data integrity)
 
         Examples:
             # Explicit cash (must sum to exactly 100%)
@@ -334,9 +335,12 @@ class AllocationStrategy(models.Model):
         # Calculate total
         total = sum(allocations.values())
 
+        # Prepare final allocations dict
+        final_allocations: dict[int, Decimal] = {}
+
         if cash_provided:
             # User specified cash explicitly - must sum to exactly 100%
-            if total != self.TOTAL_ALLOCATION_PCT:
+            if abs(total - self.TOTAL_ALLOCATION_PCT) > self.ALLOCATION_TOLERANCE:
                 raise ValueError(
                     f"Allocations sum to {total}%, expected exactly {self.TOTAL_ALLOCATION_PCT}% "
                     f"when Cash is explicitly provided"
@@ -345,7 +349,7 @@ class AllocationStrategy(models.Model):
             final_allocations = allocations
         else:
             # User omitted cash - calculate as plug using dedicated method
-            if total > self.TOTAL_ALLOCATION_PCT:
+            if total > self.TOTAL_ALLOCATION_PCT + self.ALLOCATION_TOLERANCE:
                 raise ValueError(f"Non-cash allocations sum to {total}%, which exceeds 100%")
 
             # Calculate cash using dedicated method
@@ -355,6 +359,19 @@ class AllocationStrategy(models.Model):
             # Only add cash if it's non-zero
             if cash_percent > Decimal("0.00"):
                 final_allocations[cash_id] = cash_percent
+
+        # DEFENSIVE VALIDATION: Verify final allocations sum to exactly 100%
+        # This catches rounding errors, logic bugs, or any other issues
+        # before persisting to database
+        is_valid, error_msg = self.validate_allocations(final_allocations)
+        if not is_valid:
+            # This should never happen if logic is correct
+            # If it does, it indicates a bug that must be fixed
+            raise ValueError(
+                f"Data integrity error: {error_msg}. "
+                f"This indicates a bug in allocation calculation logic. "
+                f"Allocations: {final_allocations}"
+            )
 
         # Save to database
         with transaction.atomic():
@@ -427,19 +444,57 @@ class AllocationStrategy(models.Model):
             for ta in self.target_allocations.select_related("asset_class").all()
         }
 
-    def validate_allocations(self) -> tuple[bool, str]:
+    def validate_allocations(
+        self,
+        allocations: dict[int, Decimal] | None = None,
+        tolerance: Decimal | None = None,
+        allow_implicit_cash: bool = False,
+    ) -> tuple[bool, str]:
         """
-        Validate that allocations sum to 100%.
+        Validate that allocations sum to 100% within tolerance.
+
+        This helper method can be used to validate allocations before
+        attempting to save them, allowing for graceful error handling
+        in views or forms.
+
+        Args:
+            allocations: Optional dict of asset_class_id -> target_percent.
+                        If None, validates existing allocations from database.
+            tolerance: Optional acceptable deviation from 100%.
+                       If None, uses self.ALLOCATION_TOLERANCE.
+            allow_implicit_cash: If True, allows total to be <= 100% (assuming
+                                cash will be added later).
 
         Returns:
             Tuple of (is_valid, error_message)
-        """
-        total = sum(ta.target_percent for ta in self.target_allocations.all())
+            - is_valid: True if allocations are valid
+            - error_message: Description of validation error, or empty string if valid
 
-        if total == Decimal("100.00"):
+        Example:
+            >>> is_valid, error = strategy.validate_allocations(allocations)
+            >>> if not is_valid:
+            ...     return render(request, 'form.html', {'error': error})
+        """
+        if tolerance is None:
+            tolerance = self.ALLOCATION_TOLERANCE
+
+        if allocations is None:
+            total = sum(ta.target_percent for ta in self.target_allocations.all())
+        else:
+            total = sum(allocations.values())
+
+        if allow_implicit_cash:
+            if total > self.TOTAL_ALLOCATION_PCT + tolerance:
+                return False, f"Total allocation is {total}%, which exceeds 100% (±{tolerance}%)"
             return True, ""
 
-        return False, f"Allocations sum to {total}%, expected 100%"
+        if abs(total - self.TOTAL_ALLOCATION_PCT) > tolerance:
+            return False, (
+                f"Total allocation is {total}%, must equal "
+                f"{self.TOTAL_ALLOCATION_PCT}% (±{tolerance}%)"
+            )
+
+        return True, ""
 
     @property
     def cash_allocation(self) -> Decimal:

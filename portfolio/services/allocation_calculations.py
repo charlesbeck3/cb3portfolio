@@ -1061,21 +1061,12 @@ class AllocationCalculationEngine:
 
         # Cash allocations are already stored in TargetAllocation table via
         # AllocationStrategy.save_allocations() domain model.
-        # Add defensive validation to catch data integrity issues.
-        import logging
-
-        logger = logging.getLogger(__name__)
-
-        for strat_id in strategy_ids:
-            targets = strategy_targets[strat_id]
-            total = sum(targets.values())
-
-            # Validate database has complete allocations (should sum to ~100%)
-            if abs(total - Decimal("100.0")) > Decimal("0.1"):
-                logger.warning(
-                    f"Strategy {strat_id} allocations sum to {total}%, expected ~100%. "
-                    f"Data integrity issue - strategy may need to be re-saved."
-                )
+        #
+        # Note: Data integrity validation removed from service layer.
+        # AllocationStrategy.save_allocations() now enforces 100% total
+        # at write-time, preventing bad data from ever entering the database.
+        # If this method encounters invalid data, it indicates a bug in
+        # save_allocations() that should be fixed, not worked around.
 
         # Map to account types
         for at_id, strategy_id in at_strategy_map.items():
