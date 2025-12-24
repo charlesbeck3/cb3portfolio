@@ -243,13 +243,151 @@ class AllocationCalculationEngine:
             else 0.0,
             axis=1,
         )
-        df["Variance"] = df["Value"] - df["Target_Value"]
+        df["Value_Variance"] = df["Value"] - df["Target_Value"]
 
         # Rename Security to Ticker if needed
         if "Security" in df.columns:
             df.rename(columns={"Security": "Ticker"}, inplace=True)
 
         return df
+
+    def build_holdings_dataframe(self, user: Any, account_id: int | None = None) -> pd.DataFrame:
+        """
+        Build holdings DataFrame with all necessary metadata for display.
+
+        This method constructs a complete holdings view with account, security,
+        and asset class hierarchy information.
+
+        Args:
+            user: User object to filter holdings
+            account_id: Optional account ID to filter to single account
+
+        Returns:
+            DataFrame with columns:
+            - Account_ID, Account_Name, Account_Type
+            - Asset_Class, Asset_Category, Asset_Group
+            - Group_Code, Category_Code
+            - Ticker, Security_Name, Shares, Price, Value
+
+            Returns empty DataFrame if no holdings found.
+        """
+        from portfolio.models import Holding
+
+        # Build query with optimal prefetching
+        holdings_qs = Holding.objects.filter(account__user=user)
+        if account_id:
+            holdings_qs = holdings_qs.filter(account_id=account_id)
+
+        holdings_qs = holdings_qs.select_related(
+            "account",
+            "account__account_type",
+            "account__account_type__group",
+            "security",
+            "security__asset_class",
+            "security__asset_class__category",
+            "security__asset_class__category__parent",
+        )
+
+        if not holdings_qs.exists():
+            return pd.DataFrame()
+
+        # Extract data with complete hierarchy
+        data = []
+        for h in holdings_qs:
+            ac = h.security.asset_class
+            category = ac.category if ac else None
+            parent = category.parent if category else None
+
+            # Determine hierarchy labels
+            if parent:
+                group_code = parent.code
+                group_label = parent.label
+                category_code = category.code if category else "UNC"
+                category_label = category.label if category else "Unclassified"
+            elif category:
+                group_code = category.code
+                group_label = category.label
+                category_code = category.code
+                category_label = category.label
+            else:
+                group_code = "UNC"
+                group_label = "Unclassified"
+                category_code = "UNC"
+                category_label = "Unclassified"
+
+            data.append({
+                "Account_ID": h.account_id,
+                "Account_Name": h.account.name,
+                "Account_Type": h.account.account_type.label,
+                "Asset_Class": ac.name if ac else "Unclassified",
+                "Asset_Category": category_label,
+                "Asset_Group": group_label,
+                "Group_Code": group_code,
+                "Category_Code": category_code,
+                "Ticker": h.security.ticker,
+                "Security_Name": h.security.name,
+                "Shares": float(h.shares),
+                "Price": float(h.current_price) if h.current_price else 0.0,
+                "Value": float(h.market_value),
+            })
+
+        return pd.DataFrame(data)
+
+    def calculate_holdings_with_targets(
+        self,
+        user: Any,
+        account_id: int | None = None
+    ) -> pd.DataFrame:
+        """
+        Calculate holdings with target allocations and variances.
+
+        This is the main entry point for holdings view - it builds the complete
+        holdings DataFrame with all target calculations.
+
+        Args:
+            user: User object
+            account_id: Optional account ID to filter to single account
+
+        Returns:
+            DataFrame with numeric columns ready for formatting:
+            - All columns from build_holdings_dataframe()
+            - Target_Shares, Shares_Variance
+            - Target_Value, Value_Variance
+            - Allocation_Pct, Target_Allocation_Pct, Allocation_Variance_Pct
+
+            Returns empty DataFrame if no holdings.
+        """
+        # Step 1: Build base holdings DataFrame
+        df = self.build_holdings_dataframe(user, account_id)
+
+        if df.empty:
+            return df
+
+        # Step 2: Get effective targets for all accounts
+        effective_targets_map = self.get_effective_target_map(user)
+
+        # Step 3: Calculate targets using existing method
+        # Note: calculate_holdings_detail expects columns: Account_ID, Asset_Class,
+        # Ticker (or Security), Value, Shares, Price
+        df_with_targets = self.calculate_holdings_detail(df, effective_targets_map)
+        # Calculate allocation percentages relative to total value
+        total_value = df_with_targets["Value"].sum()
+        if total_value > 0:
+            df_with_targets["Allocation_Pct"] = (df_with_targets["Value"] / total_value) * 100
+            df_with_targets["Target_Allocation_Pct"] = (df_with_targets["Target_Value"] / total_value) * 100
+        else:
+            df_with_targets["Allocation_Pct"] = 0.0
+            df_with_targets["Target_Allocation_Pct"] = 0.0
+        df_with_targets["Allocation_Variance_Pct"] = (
+            df_with_targets["Allocation_Pct"] - df_with_targets["Target_Allocation_Pct"]
+        )
+        # Calculate Share Targets and Variances
+        df_with_targets["Target_Shares"] = df_with_targets.apply(
+            lambda r: r["Target_Value"] / r["Price"] if r["Price"] > 0 else 0, axis=1
+        )
+        df_with_targets["Shares_Variance"] = df_with_targets["Shares"] - df_with_targets["Target_Shares"]
+
+        return df_with_targets
 
     def build_presentation_dataframe(
         self,
@@ -587,7 +725,6 @@ class AllocationCalculationEngine:
 
             # Calculate variance
             df[f"{type_code}_variance"] = df[f"{type_code}_current"] - weighted_target
-            
             # Calculate variance percentage
             df[f"{type_code}_variance_pct"] = (
                 df[f"{type_code}_current_pct"] - df[f"{type_code}_weighted_target_pct"]
