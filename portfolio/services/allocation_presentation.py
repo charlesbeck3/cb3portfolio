@@ -157,7 +157,7 @@ class AllocationPresentationFormatter:
                     if not df.empty:
                         dfs[i] = self._format_dataframe_columns(df, acc_prefix, mode)
 
-        return tuple(dfs)  # type: ignore
+        return tuple(dfs)
 
     def _dataframe_rows_to_dicts(
         self,

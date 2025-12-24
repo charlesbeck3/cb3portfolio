@@ -376,7 +376,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             if group_fi:
                 # Should be "50.0" raw (percent value)
                 self.assertAlmostEqual(
-                    Decimal(str(group_fi["weighted_target_raw"])), Decimal("50.0"), places=1
+                    Decimal(str(group_fi["weighted_target_pct"])), Decimal("50.0"), places=1
                 )
 
         # 2. Verify Individual Account Display (No Dollar Signs)
