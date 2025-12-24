@@ -295,6 +295,26 @@ class AllocationStrategy(models.Model):
         """
         return {ta.asset_class_id: ta.target_percent for ta in self.target_allocations.all()}
 
+    def get_allocations_by_name(self) -> dict[str, Decimal]:
+        """
+        Get all target allocations keyed by asset class name.
+
+        Convenience method for when you need names instead of IDs
+        (common in display/calculation logic).
+
+        Returns:
+            Dict of {asset_class_name: target_percent}
+            Includes all allocations (including Cash).
+
+        Example:
+            >>> strategy.get_allocations_by_name()
+            {'US Equities': Decimal('60.00'), 'Bonds': Decimal('30.00'), 'Cash': Decimal('10.00')}
+        """
+        return {
+            ta.asset_class.name: ta.target_percent
+            for ta in self.target_allocations.select_related("asset_class").all()
+        }
+
     def validate_allocations(self) -> tuple[bool, str]:
         """
         Validate that allocations sum to 100%.
@@ -518,6 +538,25 @@ class Account(models.Model):
             return assignment.allocation_strategy
 
         return self.portfolio.allocation_strategy
+
+    def get_target_allocations_by_name(self) -> dict[str, Decimal]:
+        """
+        Get effective target allocations for this account keyed by asset class name.
+
+        Follows hierarchy: Account override -> Account Type -> Portfolio default.
+
+        Returns:
+            Dict of {asset_class_name: target_percent}
+            Empty dict if no strategy assigned.
+
+        Example:
+            >>> account.get_target_allocations_by_name()
+            {'US Equities': Decimal('60.00'), 'Bonds': Decimal('30.00'), 'Cash': Decimal('10.00')}
+        """
+        strategy = self.get_effective_allocation_strategy()
+        if not strategy:
+            return {}
+        return strategy.get_allocations_by_name()
 
     # ===== Aggregate Methods =====
 

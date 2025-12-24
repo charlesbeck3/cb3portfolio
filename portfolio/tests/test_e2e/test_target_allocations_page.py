@@ -77,7 +77,8 @@ class TestFrontendAllocations(PortfolioTestMixin):
         )
 
         self.strategy_all_cash = AllocationStrategy.objects.create(user=self.user, name="All Cash")
-        # No allocations means 100% cash in this system
+        # Save 100% cash allocation using domain method
+        self.strategy_all_cash.save_allocations({self.ac_cash.id: Decimal("100.00")})
 
     def test_calculation_persistence(self, page: Page, live_server_url: str) -> None:
         """

@@ -750,44 +750,24 @@ class AllocationCalculationEngine:
         """
         Get map of {account_id: {asset_class_name: target_pct}}.
 
+        Uses Account domain method for cleaner code.
+
         Used by HoldingsView and calculate_holdings_detail.
         """
-        from portfolio.models import Account, AssetClass
+        from portfolio.models import Account
 
-        # Get target strategies
-        strategies_data = self._get_target_strategies(user)
-        account_targets = strategies_data["account"]
-        type_targets = strategies_data["account_type"]
+        # Use Account domain method - much simpler!
+        accounts = (
+            Account.objects.filter(user=user)
+            .select_related(
+                "account_type",
+                "allocation_strategy",
+                "portfolio__allocation_strategy",
+            )
+            .prefetch_related("allocation_strategy__target_allocations__asset_class")
+        )
 
-        # Asset class ID to name map
-        ac_map = {ac.id: ac.name for ac in AssetClass.objects.all()}
-
-        # Get accounts
-        accounts = Account.objects.filter(user=user)
-
-        result = {}
-
-        for account in accounts:
-            acc_id = account.id
-            at_id = account.account_type_id
-
-            # Determine effective strategy (Account > Account Type)
-            effective_ac_ids = {}
-
-            if acc_id in account_targets and account_targets[acc_id]:
-                effective_ac_ids = account_targets[acc_id]
-            elif at_id in type_targets:
-                effective_ac_ids = type_targets[at_id]
-
-            # Convert {ac_id: pct} to {ac_name: pct}
-            name_map = {}
-            for ac_id_key, pct in effective_ac_ids.items():
-                if ac_id_key in ac_map:
-                    name_map[ac_map[ac_id_key]] = pct
-
-            result[acc_id] = name_map
-
-        return result
+        return {account.id: account.get_target_allocations_by_name() for account in accounts}
 
     def _get_asset_class_metadata(
         self,
@@ -892,7 +872,6 @@ class AllocationCalculationEngine:
         from portfolio.models import (
             Account,
             AccountTypeStrategyAssignment,
-            AssetClass,
             TargetAllocation,
         )
 
@@ -936,18 +915,22 @@ class AllocationCalculationEngine:
         for ta in target_allocations:
             strategy_targets[ta.strategy_id][ta.asset_class_id] = ta.target_percent
 
-        # Implicit Cash Calculation
-        cash_ac = AssetClass.objects.filter(name="Cash").first()
-        cash_id = cash_ac.id if cash_ac else None
+        # Cash allocations are already stored in TargetAllocation table via
+        # AllocationStrategy.save_allocations() domain model.
+        # Add defensive validation to catch data integrity issues.
+        import logging
+        logger = logging.getLogger(__name__)
 
-        if cash_id:
-            for strat_id in strategy_ids:
-                targets = strategy_targets[strat_id]
-                total_allocated = sum(targets.values())
-                remainder = Decimal("100.0") - total_allocated
+        for strat_id in strategy_ids:
+            targets = strategy_targets[strat_id]
+            total = sum(targets.values())
 
-                if remainder > Decimal("0.001"):
-                    targets[cash_id] = targets.get(cash_id, Decimal("0.0")) + remainder
+            # Validate database has complete allocations (should sum to ~100%)
+            if abs(total - Decimal("100.0")) > Decimal("0.1"):
+                logger.warning(
+                    f"Strategy {strat_id} allocations sum to {total}%, expected ~100%. "
+                    f"Data integrity issue - strategy may need to be re-saved."
+                )
 
         # Map to account types
         for at_id, strategy_id in at_strategy_map.items():
