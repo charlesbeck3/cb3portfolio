@@ -25,12 +25,19 @@ class PortfolioContextMixin:
         user = self.request.user
         assert user.is_authenticated
 
+        from portfolio.services.allocation_calculations import AllocationCalculationEngine
+
+        engine = AllocationCalculationEngine()
+        drifts = engine.calculate_account_drifts(user)
+
         # Fetch accounts with necessary relationships
-        accounts = Account.objects.filter(user=user).select_related(
-            "account_type__group", "institution"
+        accounts = (
+            Account.objects.filter(user=user)
+            .select_related("account_type__group", "institution")
+            .prefetch_related("holdings")
         )
 
-        # Calculate account totals using ORM
+        # Calculate account totals using prefetched holdings
         account_totals = {}
         grand_total = Decimal(0)
 
@@ -68,9 +75,7 @@ class PortfolioContextMixin:
                     "name": account.name,
                     "institution": account.institution.name if account.institution else "N/A",
                     "total": account_total,
-                    "absolute_deviation_pct": Decimal(
-                        0
-                    ),  # TODO: Calculate drift in future enhancement
+                    "absolute_deviation_pct": Decimal(str(drifts.get(account.id, 0.0))),
                 }
             )
             groups[group_name]["total"] += account_total

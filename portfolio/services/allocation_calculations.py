@@ -962,6 +962,63 @@ class AllocationCalculationEngine:
 
         return result
 
+    def calculate_account_drifts(self, user: Any) -> dict[int, float]:
+        """
+        Calculate absolute deviation drift percentage for each account.
+
+        Returns:
+            Dict of {account_id: drift_pct}
+        """
+        from portfolio.models import Portfolio
+
+        portfolio = Portfolio.objects.filter(user=user).first()
+        if not portfolio:
+            return {}
+
+        holdings_df = portfolio.to_dataframe()
+        if holdings_df.empty:
+            # Even with no holdings, we can still have drift if there are targets.
+            # But we'll handle that below by checking targets_map.
+            by_account = pd.DataFrame()
+        else:
+            allocations = self.calculate_allocations(holdings_df)
+            by_account = allocations["by_account"]
+
+        # Get effective targets map: {account_id: {asset_class_name: target_pct}}
+        targets_map = self.get_effective_target_map(user)
+
+        drifts = {}
+        # Union of accounts with holdings and accounts with targets
+        all_account_ids = set(targets_map.keys())
+        if not by_account.empty:
+            all_account_ids.update(by_account.index)
+
+        for acc_id in all_account_ids:
+            targets = targets_map.get(acc_id, {})
+            drift = 0.0
+
+            if not by_account.empty and acc_id in by_account.index:
+                acc_row = by_account.loc[acc_id]
+
+                # Identify all unique asset class names across targets and actuals
+                all_asset_classes = set(targets.keys())
+                for col in by_account.columns:
+                    if col.endswith("_pct"):
+                        ac_name = col[:-4]
+                        all_asset_classes.add(ac_name)
+
+                for ac_name in all_asset_classes:
+                    target_pct = float(targets.get(ac_name, 0.0))
+                    current_pct = float(acc_row.get(f"{ac_name}_pct", 0.0))
+                    drift += abs(current_pct - target_pct)
+            else:
+                # No holdings. If it has targets, drift is 100% (sum of target_pct).
+                drift = float(sum(targets.values())) if targets else 0.0
+
+            drifts[acc_id] = drift
+
+        return drifts
+
     def _empty_allocations(self) -> dict[str, pd.DataFrame]:
         """Return empty DataFrames for empty portfolio."""
         return {

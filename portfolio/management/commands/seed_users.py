@@ -241,12 +241,14 @@ class Command(BaseCommand):
                 "TAXABLE": Decimal("0.0"),
                 "TRADITIONAL_IRA": Decimal("0.0"),
                 "ROTH_IRA": Decimal("0.0"),
+                "DEPOSIT": Decimal("50.0"),
             },
             {
                 "asset_class": "Cash",
                 "TAXABLE": Decimal("0.0"),
                 "TRADITIONAL_IRA": Decimal("0.0"),
                 "ROTH_IRA": Decimal("0.0"),
+                "DEPOSIT": Decimal("50.0"),
             },
         ]
 
