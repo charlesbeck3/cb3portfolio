@@ -452,7 +452,10 @@ class AllocationCalculationEngine:
         # Step 9: Calculate portfolio weighted targets (VECTORIZED)
         df = self._calculate_portfolio_weighted_targets(df, accounts_by_type, portfolio_total)
 
-        # Step 9.5: Sort the DataFrame
+        # Step 10: Calculate portfolio explicit targets (VECTORIZED)
+        df = self._calculate_portfolio_explicit_targets(df, target_strategies, portfolio_total)
+
+        # Step 11: Sort the DataFrame
         # Respect sort_order from database if present (non-zero), otherwise fallback to portfolio_target descending.
         # We use transform to calculate group and category aggregates to ensure assets stay grouped.
         df["group_target_sum"] = df.groupby("group_code")["portfolio_target"].transform("sum")
@@ -765,6 +768,29 @@ class AllocationCalculationEngine:
 
         return df
 
+    def _calculate_portfolio_explicit_targets(
+        self,
+        df: pd.DataFrame,
+        target_strategies: dict[str, Any],
+        portfolio_total: float,
+    ) -> pd.DataFrame:
+        """
+        Calculate portfolio-level explicit targets.
+        """
+        explicit_targets = target_strategies.get("portfolio_explicit", {})
+        target_map = pd.Series(
+            {ac_id: float(pct) for ac_id, pct in explicit_targets.items()}, dtype=float
+        )
+
+        df["portfolio_explicit_target_pct"] = (
+            df["asset_class_id"].map(target_map).fillna(0.0).astype(float)
+        )
+        df["portfolio_explicit_target"] = (
+            df["portfolio_explicit_target_pct"] / 100 * portfolio_total
+        )
+
+        return df
+
     def aggregate_presentation_levels(
         self,
         df: pd.DataFrame,
@@ -1008,7 +1034,8 @@ class AllocationCalculationEngine:
                 'account_type': {type_id: {ac_id: target_pct}},
                 'account': {account_id: {ac_id: target_pct}},
                 'at_strategy_map': {type_id: strategy_id},
-                'acc_strategy_map': {account_id: strategy_id}
+                'acc_strategy_map': {account_id: strategy_id},
+                'portfolio_explicit': {ac_id: target_pct}
             }
         """
         from collections import defaultdict
@@ -1016,6 +1043,7 @@ class AllocationCalculationEngine:
         from portfolio.models import (
             Account,
             AccountTypeStrategyAssignment,
+            Portfolio,
             TargetAllocation,
         )
 
@@ -1024,32 +1052,41 @@ class AllocationCalculationEngine:
             "account": {},
             "at_strategy_map": {},
             "acc_strategy_map": {},
+            "portfolio_explicit": {},
         }
+
+        # 1. Gather all relevant strategy IDs
+        strategy_ids: set[int] = set()
+
+        # Portfolio level strategy
+        portfolio = (
+            Portfolio.objects.filter(user=user).select_related("allocation_strategy").first()
+        )
+        portfolio_strategy_id = None
+        if portfolio and portfolio.allocation_strategy_id:
+            portfolio_strategy_id = portfolio.allocation_strategy_id
+            strategy_ids.add(portfolio_strategy_id)
 
         # Account Type assignments
         at_assignments = AccountTypeStrategyAssignment.objects.filter(user=user).select_related(
             "allocation_strategy"
         )
-
-        strategy_ids: set[int] = set()
         at_strategy_map = {}
-
         for assignment in at_assignments:
             at_strategy_map[assignment.account_type_id] = assignment.allocation_strategy_id
             strategy_ids.add(assignment.allocation_strategy_id)
 
         # Account-level overrides
         accounts = Account.objects.filter(
-            user=user, allocation_strategy__isnull=False
+            user=user, allocation_strategy_id__isnull=False
         ).select_related("allocation_strategy")
-
         acc_strategy_map = {}
         for acc in accounts:
             if acc.allocation_strategy_id:
                 acc_strategy_map[acc.id] = acc.allocation_strategy_id
                 strategy_ids.add(acc.allocation_strategy_id)
 
-        # Fetch all target allocations
+        # 2. Fetch all target allocations for these strategies
         target_allocations = TargetAllocation.objects.filter(
             strategy_id__in=strategy_ids
         ).select_related("asset_class")
@@ -1059,14 +1096,9 @@ class AllocationCalculationEngine:
         for ta in target_allocations:
             strategy_targets[ta.strategy_id][ta.asset_class_id] = ta.target_percent
 
-        # Cash allocations are already stored in TargetAllocation table via
-        # AllocationStrategy.save_allocations() domain model.
-        #
-        # Note: Data integrity validation removed from service layer.
-        # AllocationStrategy.save_allocations() now enforces 100% total
-        # at write-time, preventing bad data from ever entering the database.
-        # If this method encounters invalid data, it indicates a bug in
-        # save_allocations() that should be fixed, not worked around.
+        # 3. Map targets to the result structure
+        if portfolio_strategy_id:
+            result["portfolio_explicit"] = strategy_targets.get(portfolio_strategy_id, {})
 
         # Map to account types
         for at_id, strategy_id in at_strategy_map.items():

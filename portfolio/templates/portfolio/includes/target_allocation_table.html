@@ -55,7 +55,7 @@
                     </th>
                 {% endfor %}
             {% endfor %}
-            <th scope="col" class="text-center table-active border-bottom-0" colspan="3">Total Portfolio ({% if mode == 'percent' %}%{% else %}${% endif %})</th>
+            <th scope="col" class="text-center table-active border-bottom-0" colspan="4">Total Portfolio ({% if mode == 'percent' %}%{% else %}${% endif %})</th>
         </tr>
         <tr>
             {% for group in account_types %}
@@ -70,7 +70,8 @@
                 {% endfor %}
             {% endfor %}
             <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 60px; min-width: 60px;">Current</th>
-            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 90px; min-width: 90px;">Target</th>
+            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 70px; min-width: 70px;">Exp. Target</th>
+            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 70px; min-width: 70px;">Wt. Target</th>
             <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 70px; min-width: 70px;">Drift</th>
         </tr>
     </thead>
@@ -99,7 +100,12 @@
             {% endfor %}
 
             <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.current|safe }}</td>
-            <td class="text-end pe-2 table-active"
+            <td class="text-end pe-1 table-active text-muted small"
+                {% if row.is_cash %}id="cash-exp-target"
+                {% elif row.is_subtotal %}id="sub-total-exp-target-{{ row.category_code }}"
+                {% elif not row.is_group_total and not row.is_grand_total %}id="row-exp-target-{{ row.asset_class_id }}"{% endif %}
+            >{{ row.portfolio.explicit_target|safe }}</td>
+            <td class="text-end pe-1 table-active small"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-total"
                 {% elif row.is_subtotal %}id="sub-total-target-{{ row.category_code }}"

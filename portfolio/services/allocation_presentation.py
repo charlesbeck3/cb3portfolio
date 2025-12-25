@@ -115,6 +115,18 @@ class AllocationPresentationFormatter:
         elif tgt_col in df.columns:
             df[f"{col_prefix}_target_fmt"] = df[tgt_col].apply(lambda x: f"${x:,.0f}")
 
+        # Format explicit target (Portfolio only)
+        exp_tgt_pct_col = f"{col_prefix}_explicit_target_pct"
+        exp_tgt_col = f"{col_prefix}_explicit_target"
+        if exp_tgt_pct_col in df.columns and mode == "percent":
+            df[f"{col_prefix}_explicit_target_fmt"] = df[exp_tgt_pct_col].apply(
+                lambda x: f"{x:.1f}%"
+            )
+        elif exp_tgt_col in df.columns:
+            df[f"{col_prefix}_explicit_target_fmt"] = df[exp_tgt_col].apply(
+                lambda x: f"${x:,.0f}"
+            )
+
         # Format variance
         var_pct_col = f"{col_prefix}_variance_pct"
         var_col = f"{col_prefix}_variance"
@@ -228,6 +240,7 @@ class AllocationPresentationFormatter:
         result["portfolio"] = {
             "current": row.get("portfolio_current_fmt", ""),
             "target": row.get("portfolio_target_fmt", ""),
+            "explicit_target": row.get("portfolio_explicit_target_fmt", ""),
             "variance": row.get("portfolio_variance_fmt", ""),
         }
 
