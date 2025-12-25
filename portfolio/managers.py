@@ -4,10 +4,10 @@ from users.models import CustomUser
 
 
 class AccountQuerySet(models.QuerySet):
-    def for_user(self, user: CustomUser) -> "AccountQuerySet":
+    def for_user(self, user: CustomUser) -> AccountQuerySet:
         return self.filter(user=user)
 
-    def with_details(self) -> "AccountQuerySet":
+    def with_details(self) -> AccountQuerySet:
         return self.select_related("institution", "account_type__group").prefetch_related(
             "holdings__security__asset_class"
         )
@@ -25,13 +25,13 @@ class AccountManager(models.Manager):
 
 
 class HoldingQuerySet(models.QuerySet):
-    def for_user(self, user: CustomUser) -> "HoldingQuerySet":
+    def for_user(self, user: CustomUser) -> HoldingQuerySet:
         return self.filter(account__user=user)
 
-    def with_security_details(self) -> "HoldingQuerySet":
+    def with_security_details(self) -> HoldingQuerySet:
         return self.select_related("security")
 
-    def with_summary_details(self) -> "HoldingQuerySet":
+    def with_summary_details(self) -> HoldingQuerySet:
         return self.select_related(
             "account",
             "account__account_type",
@@ -41,7 +41,7 @@ class HoldingQuerySet(models.QuerySet):
             "security__asset_class__category__parent",
         )
 
-    def for_category_view(self) -> "HoldingQuerySet":
+    def for_category_view(self) -> HoldingQuerySet:
         return self.select_related(
             "account", "account__account_type", "security", "security__asset_class"
         )
@@ -65,7 +65,7 @@ class HoldingManager(models.Manager):
 
 
 class TargetAllocationQuerySet(models.QuerySet):
-    def with_details(self) -> "TargetAllocationQuerySet":
+    def with_details(self) -> TargetAllocationQuerySet:
         return self.select_related("asset_class", "strategy")
 
 
