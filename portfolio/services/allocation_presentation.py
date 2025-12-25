@@ -466,6 +466,7 @@ class AllocationPresentationFormatter:
 
         # Format shares (4 decimals for holdings, 2 for targets)
         formatted["shares_display"] = formatted["Shares"].apply(lambda x: f"{x:,.4f}")
+        formatted["shares_input"] = formatted["Shares"].apply(lambda x: f"{x:.4f}")
         formatted["target_shares_display"] = formatted["Target_Shares"].apply(lambda x: f"{x:,.2f}")
         formatted["shares_variance_display"] = formatted["Shares_Variance"].apply(
             lambda x: f"{x:+,.2f}" if abs(x) > 0.01 else "—"
@@ -514,6 +515,7 @@ class AllocationPresentationFormatter:
                 # Display values (formatted strings)
                 "price": row["price_display"],
                 "shares": row["shares_display"],
+                "shares_input": row["shares_input"],
                 "target_shares": row["target_shares_display"],
                 "shares_variance": row["shares_variance_display"],
                 "value": row["value_display"],

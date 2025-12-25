@@ -88,15 +88,15 @@
                                         <!-- Shares -->
                                         <th class="text-end" style="width: 6%;">Current</th>
                                         <th class="text-end" style="width: 6%;">Target</th>
-                                        <th class="text-end" style="width: 6%;">Drift</th>
+                                        <th class="text-end" style="width: 6%;">Variance</th>
                                         <!-- Value -->
                                         <th class="text-end" style="width: 8%;">Current</th>
                                         <th class="text-end" style="width: 8%;">Target</th>
-                                        <th class="text-end" style="width: 8%;">Drift</th>
+                                        <th class="text-end" style="width: 8%;">Variance</th>
                                         <!-- Allocation -->
                                         <th class="text-end" style="width: 5%;">Current</th>
                                         <th class="text-end" style="width: 5%;">Target</th>
-                                        <th class="text-end" style="width: 5%;">Drift</th>
+                                        <th class="text-end" style="width: 5%;">Variance</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -116,7 +116,7 @@
                                                     {% endif %}
                                                 </div>
                                             </td>
-                                            <td>{{ row.name }}</td>
+                                            <td>{{ row.security_name }}</td>
                                             <td>{{ row.asset_class }}</td>
                                             <td class="text-end">{{ row.price }}</td>
                                             
@@ -124,7 +124,7 @@
                                             <td class="text-end" style="min-width: 100px;">
                                                 {% if account %}
                                                     <input type="number" name="shares_{{ row.ticker }}" 
-                                                           value="{{ row.shares }}" 
+                                                           value="{{ row.shares_input }}" 
                                                            step="0.0001" class="form-control form-control-sm p-1 text-end"
                                                            style="font-size: 0.8rem;">
                                                 {% else %}

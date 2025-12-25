@@ -1174,19 +1174,19 @@ class AllocationCalculationEngine:
 
         return result
 
-    def calculate_account_drifts(self, user: Any) -> dict[int, float]:
+    def calculate_account_variances(self, user: Any) -> dict[int, float]:
         """
-        Calculate absolute deviation drift percentage for each account.
+        Calculate absolute deviation variance percentage for each account.
 
         Uses Account domain model method for consistency and DRY principle.
 
         Returns:
-            Dict of {account_id: drift_pct}
+            Dict of {account_id: variance_pct}
         """
         from portfolio.domain.allocation import AssetAllocation
         from portfolio.models import Account
 
-        drifts = {}
+        variances = {}
 
         accounts = (
             Account.objects.filter(user=user)
@@ -1219,16 +1219,16 @@ class AllocationCalculationEngine:
             # Use Account domain method - single source of truth
             account_total = account.total_value()
             if account_total == Decimal("0.00"):
-                # Empty account with targets = 100% drift
-                drift_pct = float(sum(a.target_pct for a in allocations))
+                # Empty account with targets = 100% variance
+                variance_pct = float(sum(a.target_pct for a in allocations))
             else:
                 # Calculate deviation using domain model
                 deviation = account.calculate_deviation_from_allocations(allocations)
-                drift_pct = float(deviation / account_total * 100)
+                variance_pct = float(deviation / account_total * 100)
 
-            drifts[account.id] = drift_pct
+            variances[account.id] = variance_pct
 
-        return drifts
+        return variances
 
     def get_account_totals(self, user: Any) -> dict[int, Decimal]:
         """

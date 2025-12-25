@@ -75,14 +75,14 @@ class TestPortfolioExplicitTarget(PortfolioTestMixin):
         # Sub-headers for Total Portfolio section (Current, Exp. Target, Wt. Target, Drift)
         sub_headers = page.locator('#allocations-table thead tr').nth(1).locator('th.table-active')
 
-        # New behavior: Current, Exp. Target, Wt. Target, Drift (4 columns)
+        # New behavior: Actual, Policy, Effective, Variance (4 columns)
         expect(sub_headers).to_have_count(4)
 
         texts = [sub_headers.nth(i).inner_text().strip() for i in range(4)]
-        assert "Current" in texts
-        assert "Exp. Target" in texts
-        assert "Wt. Target" in texts
-        assert "Drift" in texts
+        assert "Actual" in texts
+        assert "Policy" in texts
+        assert "Effective" in texts
+        assert "Variance" in texts
 
     def test_portfolio_target_values(self, page: Page, live_server: Any) -> None:
         """Verify that values in Exp. Target and Wt. Target are correct."""
@@ -108,11 +108,11 @@ class TestPortfolioExplicitTarget(PortfolioTestMixin):
         portfolio_cells = us_eq_row.locator('td.table-active')
         expect(portfolio_cells).to_have_count(4)
 
-        # Current: 100.0%
+        # Actual: 100.0%
         expect(portfolio_cells.nth(0)).to_contain_text("100.0%")
-        # Exp. Target: 60.0%
+        # Policy: 60.0%
         expect(portfolio_cells.nth(1)).to_contain_text("60.0%")
-        # Wt. Target: 100.0%
+        # Effective: 100.0%
         expect(portfolio_cells.nth(2)).to_contain_text("100.0%")
-        # Drift: 0.0%
+        # Variance: 0.0%
         expect(portfolio_cells.nth(3)).to_contain_text("0.0%")

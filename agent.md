@@ -133,7 +133,7 @@ problem.solve()
 
 **Key Functions:**
 - `calculate_rebalancing(account, threshold=0.05)` - Calculate trades needed
-- `get_portfolio_drift(holdings, targets)` - Measure deviation from target
+- `get_portfolio_variance(holdings, targets)` - Measure deviation from target
 - Returns: List of Trade objects with security, action, shares, amount
 
 **Algorithm:**
@@ -173,7 +173,7 @@ class SecurityAdmin(admin.ModelAdmin):
 - Button to save to TargetAllocationByAccount
 
 **Rebalancing View:**
-- Show current drift from target
+- Show current variance from target
 - Calculate and display recommended trades
 - Export to CSV
 
@@ -190,7 +190,7 @@ class SecurityAdmin(admin.ModelAdmin):
       <th>Asset Class</th>
       <th>Target %</th>
       <th>Current %</th>
-      <th>Drift</th>
+      <th>Variance</th>
     </tr>
   </thead>
   <tbody>
@@ -199,8 +199,8 @@ class SecurityAdmin(admin.ModelAdmin):
       <td>{{ allocation.asset_class }}</td>
       <td>{{ allocation.target_pct }}%</td>
       <td>{{ allocation.current_pct }}%</td>
-      <td class="{% if allocation.drift > 5 %}text-danger{% endif %}">
-        {{ allocation.drift }}%
+      <td class="{% if allocation.variance > 5 %}text-danger{% endif %}">
+        {{ allocation.variance }}%
       </td>
     </tr>
     {% endfor %}

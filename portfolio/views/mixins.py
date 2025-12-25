@@ -34,8 +34,8 @@ class PortfolioContextMixin:
 
         engine = AllocationCalculationEngine()
 
-        # Get both drifts and totals from engine (single data source)
-        drifts = engine.calculate_account_drifts(user)
+        # Get both variances and totals from engine (single data source)
+        variances = engine.calculate_account_variances(user)
         account_totals = engine.get_account_totals(user)  # NEW: Use engine
         grand_total = sum(account_totals.values())
 
@@ -77,7 +77,7 @@ class PortfolioContextMixin:
                     "name": account.name,
                     "institution": (account.institution.name if account.institution else "N/A"),
                     "total": account_total,
-                    "absolute_deviation_pct": Decimal(str(drifts.get(account.id, 0.0))),
+                    "absolute_deviation_pct": Decimal(str(variances.get(account.id, 0.0))),
                 }
             )
             groups[group_name]["total"] += account_total
