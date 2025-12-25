@@ -12,13 +12,15 @@
             <tr>
                 <th></th>
                 {% for at in account_types %}
-                    <th scope="col" class="text-center small text-muted">Current</th>
-                    <th scope="col" class="text-center small text-muted">Target</th>
-                    <th scope="col" class="text-center small text-muted">Drift</th>
+                    <th scope="col" class="text-center small text-muted">Actual</th>
+                    <th scope="col" class="text-center small text-muted col-mode-policy d-none">Policy</th>
+                    <th scope="col" class="text-center small text-muted col-mode-effective">Effective</th>
+                    <th scope="col" class="text-center small text-muted">Variance</th>
                 {% endfor %}
-                <th scope="col" class="text-center small table-active text-muted">Current</th>
-                <th scope="col" class="text-center small table-active text-muted">Target</th>
-                <th scope="col" class="text-center small table-active text-muted">Drift</th>
+                <th scope="col" class="text-center small table-active text-muted">Actual</th>
+                <th scope="col" class="text-center small table-active text-muted col-mode-policy d-none">Policy</th>
+                <th scope="col" class="text-center small table-active text-muted col-mode-effective">Effective</th>
+                <th scope="col" class="text-center small table-active text-muted">Variance</th>
             </tr>
         </thead>
         <tbody>
@@ -26,13 +28,23 @@
             <tr {% if row.is_subtotal %}class="table-info fw-bold"{% elif row.is_group_total %}class="fw-bold" style="background-color: #e2e3e5;"{% elif row.is_grand_total %}class="table-dark fw-bold"{% endif %}>
                 <td class="ps-4">{{ row.asset_class_name }}</td>
                 {% for at_col in row.account_types %}
-                    <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ at_col.current|safe }}</td>
-                    <td class="text-end pe-1 small">{{ at_col.weighted_target|safe }}</td>
-                    <td class="text-end pe-1 small fw-bold">{{ at_col.variance|safe }}</td>
+                    <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ at_col.actual|safe }}</td>
+                    <td class="text-end pe-1 small col-mode-policy d-none {% if row.is_grand_total %}text-white{% endif %}">{{ at_col.policy|safe }}</td>
+                    <td class="text-end pe-1 small col-mode-effective {% if row.is_grand_total %}text-white{% endif %}">{{ at_col.effective|safe }}</td>
+                    <td class="text-end pe-1 small fw-bold variance-col {% if row.is_grand_total %}text-white{% endif %}"
+                        data-effective-variance="{{ at_col.effective_variance|safe }}"
+                        data-policy-variance="{{ at_col.policy_variance|safe }}">
+                        <span class="variance-value">{{ at_col.effective_variance|safe }}</span>
+                    </td>
                 {% endfor %}
-                <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.current|safe }}</td>
-                <td class="text-end pe-2 table-active">{{ row.portfolio.target|safe }}</td>
-                <td class="text-end pe-2 table-active fw-bold">{{ row.portfolio.variance|safe }}</td>
+                <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.actual|safe }}</td>
+                <td class="text-end pe-2 table-active col-mode-policy d-none {% if row.is_grand_total %}text-white{% endif %}">{{ row.portfolio.explicit_target|safe }}</td>
+                <td class="text-end pe-2 table-active col-mode-effective {% if row.is_grand_total %}text-white{% endif %}">{{ row.portfolio.effective|safe }}</td>
+                <td class="text-end pe-2 table-active fw-bold variance-col {% if row.is_grand_total %}text-white{% endif %}"
+                    data-effective-variance="{{ row.portfolio.effective_variance|safe }}"
+                    data-policy-variance="{{ row.portfolio.effective_variance|safe }}"> <!-- Portfolio only has effective variance currently, or we might need to clarify if it has policy variance -->
+                    <span class="variance-value">{{ row.portfolio.effective_variance|safe }}</span>
+                </td>
             </tr>
             {% endfor %}
         </tbody>

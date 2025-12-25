@@ -4,7 +4,7 @@
         <tr>
             <th scope="col" class="ps-4" rowspan="2" style="width: 250px; min-width: 250px; white-space: nowrap;">Asset Class</th>
             {% for group in account_types %}
-                <th scope="col" class="text-center border-bottom-0 position-relative pb-3" colspan="4">
+                <th scope="col" class="text-center border-bottom-0 position-relative pb-3" colspan="3">
                     <div>{{ group.label }}</div>
                     <div class="fw-normal mt-1">
                         {% if mode == 'percent' %}
@@ -55,24 +55,24 @@
                     </th>
                 {% endfor %}
             {% endfor %}
-            <th scope="col" class="text-center table-active border-bottom-0" colspan="4">Total Portfolio ({% if mode == 'percent' %}%{% else %}${% endif %})</th>
+            <th scope="col" class="text-center table-active border-bottom-0" colspan="3">Total Portfolio ({% if mode == 'percent' %}%{% else %}${% endif %})</th>
         </tr>
         <tr>
             {% for group in account_types %}
-                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 60px; min-width: 60px;">Current</th>
-                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 90px; min-width: 90px;">Target</th>
-                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 70px; min-width: 70px;">Wt. Target</th>
-                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 70px; min-width: 70px;">Drift</th>
+                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 60px; min-width: 60px;">Actual</th>
+                <th scope="col" class="text-center small border-top-0 text-muted col-mode-policy d-none" style="width: 90px; min-width: 90px;">Policy</th>
+                <th scope="col" class="text-center small border-top-0 text-muted col-mode-effective" style="width: 70px; min-width: 70px;">Effective</th>
+                <th scope="col" class="text-center small border-top-0 text-muted variance-col" style="width: 70px; min-width: 70px;">Variance</th>
                 {% for _acc in group.active_accounts %}
-                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 60px; min-width: 60px;">Current</th>
-                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 90px; min-width: 90px;">Target</th>
-                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 70px; min-width: 70px;">Drift</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 60px; min-width: 60px;">Actual</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 90px; min-width: 90px;">Policy</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 70px; min-width: 70px;">Variance</th>
                 {% endfor %}
             {% endfor %}
-            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 60px; min-width: 60px;">Current</th>
-            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 70px; min-width: 70px;">Exp. Target</th>
-            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 70px; min-width: 70px;">Wt. Target</th>
-            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 70px; min-width: 70px;">Drift</th>
+            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 60px; min-width: 60px;">Actual</th>
+            <th scope="col" class="text-center small table-active border-top-0 text-muted col-mode-policy d-none" style="width: 70px; min-width: 70px;">Policy</th>
+            <th scope="col" class="text-center small table-active border-top-0 text-muted col-mode-effective" style="width: 70px; min-width: 70px;">Effective</th>
+            <th scope="col" class="text-center small table-active border-top-0 text-muted variance-col" style="width: 70px; min-width: 70px;">Variance</th>
         </tr>
     </thead>
     <tbody>
@@ -81,42 +81,55 @@
             <td class="ps-4">{{ row.asset_class_name }}</td>
 
             {% for group in row.account_types %}
-                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.current|safe }}</td>
+                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.actual|safe }}</td>
 
-                <td class="text-end pe-1 small">
-                    {{ group.target_input|default:"--"|safe }}
+                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% endif %} col-mode-policy d-none">
+                    {{ group.policy|default:"--"|safe }}
                 </td>
 
-                <td class="text-end pe-1 small fw-bold text-muted d-none d-md-table-cell">{{ group.weighted_target|safe }}</td>
-                <td class="text-end pe-1 small fw-bold">{{ group.vtarget|safe }}</td>
+                <td class="text-end pe-1 small fw-bold {% if row.is_grand_total %}text-white{% else %}text-muted{% endif %} col-mode-effective">{{ group.effective|safe }}</td>
+                <td class="text-end pe-1 small fw-bold variance-col"
+                    data-effective-variance="{{ group.effective_variance|safe }}"
+                    data-policy-variance="{{ group.policy_variance|safe }}"
+                    data-effective-variance-pct="{{ group.effective_variance_pct }}"
+                    data-policy-variance-pct="{{ group.policy_variance_pct }}">
+                    <span class="variance-value">{{ group.effective_variance|safe }}</span>
+                </td>
 
                 {% for acc in group.accounts %}
-                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">{{ acc.current|safe }}</td>
+                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">{{ acc.actual|safe }}</td>
                     <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">
-                        {{ acc.target|safe }}
+                        {{ acc.policy|safe }}
                     </td>
-                    <td class="text-end pe-2 small table-warning d-none col-acc-{{ group.id }}">{{ acc.variance|safe }}</td>
+                    <td class="text-end pe-2 small table-warning d-none col-acc-{{ group.id }}">
+                         <!-- Individual accounts only have policy variance -->
+                         <span class="variance-value">{{ acc.policy_variance|safe }}</span>
+                    </td>
                 {% endfor %}
             {% endfor %}
 
-            <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.current|safe }}</td>
-            <td class="text-end pe-1 table-active text-muted small"
+            <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.actual|safe }}</td>
+            <td class="text-end pe-1 table-active small {% if row.is_grand_total %}text-white{% else %}text-muted{% endif %} col-mode-policy d-none"
                 {% if row.is_cash %}id="cash-exp-target"
                 {% elif row.is_subtotal %}id="sub-total-exp-target-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-exp-target-{{ row.asset_class_id }}"{% endif %}
             >{{ row.portfolio.explicit_target|safe }}</td>
-            <td class="text-end pe-1 table-active small"
+            <td class="text-end pe-1 table-active small {% if row.is_grand_total %}text-white{% endif %} col-mode-effective"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-total"
                 {% elif row.is_subtotal %}id="sub-total-target-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-total-{{ row.asset_class_id }}"{% endif %}
-            >{{ row.portfolio.target|safe }}</td>
-            <td class="text-end pe-2 table-active fw-bold"
+            >{{ row.portfolio.effective|safe }}</td>
+            <td class="text-end pe-2 table-active fw-bold variance-col"
+                data-effective-variance="{{ row.portfolio.effective_variance|safe }}"
+                data-effective-variance-pct="{{ row.portfolio.effective_variance_pct }}"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-var"
                 {% elif row.is_subtotal %}id="sub-total-var-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-var-{{ row.asset_class_id }}"{% endif %}
-            >{{ row.portfolio.variance|safe }}</td>
+            >
+                <span class="variance-value">{{ row.portfolio.effective_variance|safe }}</span>
+            </td>
         </tr>
         {% endfor %}
     </tbody>

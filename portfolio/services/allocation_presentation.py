@@ -89,31 +89,34 @@ class AllocationPresentationFormatter:
     ) -> pd.DataFrame:
         """
         Format a set of numeric columns for display using vectorized operations.
+
+        Formats columns: _actual, _policy, _effective, _policy_variance, _effective_variance
+        Creates formatted columns with _fmt suffix.
         """
-        # Format current
-        curr_pct_col = f"{col_prefix}_current_pct"
-        curr_col = f"{col_prefix}_current"
-        if curr_pct_col in df.columns and mode == "percent":
-            df[f"{col_prefix}_current_fmt"] = df[curr_pct_col].apply(lambda x: f"{x:.1f}%")
-        elif curr_col in df.columns:
-            df[f"{col_prefix}_current_fmt"] = df[curr_col].apply(lambda x: f"${x:,.0f}")
 
-        # Format target
-        tgt_pct_col = (
-            f"{col_prefix}_target_pct"
-            if f"{col_prefix}_target_pct" in df.columns
-            else f"{col_prefix}_weighted_target_pct"
-        )
-        tgt_col = (
-            f"{col_prefix}_target"
-            if f"{col_prefix}_target" in df.columns
-            else f"{col_prefix}_weighted_target"
-        )
+        # Format actual
+        actual_pct_col = f"{col_prefix}_actual_pct"
+        actual_col = f"{col_prefix}_actual"
+        if actual_pct_col in df.columns and mode == "percent":
+            df[f"{col_prefix}_actual_fmt"] = df[actual_pct_col].apply(lambda x: f"{x:.1f}%")
+        elif actual_col in df.columns:
+            df[f"{col_prefix}_actual_fmt"] = df[actual_col].apply(lambda x: f"${x:,.0f}")
 
-        if tgt_pct_col in df.columns and mode == "percent":
-            df[f"{col_prefix}_target_fmt"] = df[tgt_pct_col].apply(lambda x: f"{x:.1f}%")
-        elif tgt_col in df.columns:
-            df[f"{col_prefix}_target_fmt"] = df[tgt_col].apply(lambda x: f"${x:,.0f}")
+        # Format policy target
+        policy_pct_col = f"{col_prefix}_policy_pct"
+        policy_col = f"{col_prefix}_policy"
+        if policy_pct_col in df.columns and mode == "percent":
+            df[f"{col_prefix}_policy_fmt"] = df[policy_pct_col].apply(lambda x: f"{x:.1f}%")
+        elif policy_col in df.columns:
+            df[f"{col_prefix}_policy_fmt"] = df[policy_col].apply(lambda x: f"${x:,.0f}")
+
+        # Format effective target
+        effective_pct_col = f"{col_prefix}_effective_pct"
+        effective_col = f"{col_prefix}_effective"
+        if effective_pct_col in df.columns and mode == "percent":
+            df[f"{col_prefix}_effective_fmt"] = df[effective_pct_col].apply(lambda x: f"{x:.1f}%")
+        elif effective_col in df.columns:
+            df[f"{col_prefix}_effective_fmt"] = df[effective_col].apply(lambda x: f"${x:,.0f}")
 
         # Format explicit target (Portfolio only)
         exp_tgt_pct_col = f"{col_prefix}_explicit_target_pct"
@@ -127,13 +130,27 @@ class AllocationPresentationFormatter:
                 lambda x: f"${x:,.0f}"
             )
 
-        # Format variance
-        var_pct_col = f"{col_prefix}_variance_pct"
-        var_col = f"{col_prefix}_variance"
-        if var_pct_col in df.columns and mode == "percent":
-            df[f"{col_prefix}_variance_fmt"] = df[var_pct_col].apply(lambda x: f"{x:+.1f}%")
-        elif var_col in df.columns:
-            df[f"{col_prefix}_variance_fmt"] = df[var_col].apply(
+        # Format policy variance
+        policy_var_pct_col = f"{col_prefix}_policy_variance_pct"
+        policy_var_col = f"{col_prefix}_policy_variance"
+        if policy_var_pct_col in df.columns and mode == "percent":
+            df[f"{col_prefix}_policy_variance_fmt"] = df[policy_var_pct_col].apply(
+                lambda x: f"{x:+.1f}%"
+            )
+        elif policy_var_col in df.columns:
+            df[f"{col_prefix}_policy_variance_fmt"] = df[policy_var_col].apply(
+                lambda x: self._format_money(Decimal(str(x)))
+            )
+
+        # Format effective variance
+        effective_var_pct_col = f"{col_prefix}_effective_variance_pct"
+        effective_var_col = f"{col_prefix}_effective_variance"
+        if effective_var_pct_col in df.columns and mode == "percent":
+            df[f"{col_prefix}_effective_variance_fmt"] = df[effective_var_pct_col].apply(
+                lambda x: f"{x:+.1f}%"
+            )
+        elif effective_var_col in df.columns:
+            df[f"{col_prefix}_effective_variance_fmt"] = df[effective_var_col].apply(
                 lambda x: self._format_money(Decimal(str(x)))
             )
 
@@ -238,10 +255,17 @@ class AllocationPresentationFormatter:
         }
 
         result["portfolio"] = {
-            "current": row.get("portfolio_current_fmt", ""),
-            "target": row.get("portfolio_target_fmt", ""),
+            "actual": row.get("portfolio_actual_fmt", ""),
+            "actual_raw": float(row.get("portfolio_actual", 0.0)),
+            "actual_pct": float(row.get("portfolio_actual_pct", 0.0)),
+            "effective": row.get("portfolio_effective_fmt", ""),
+            "effective_raw": float(row.get("portfolio_effective", 0.0)),
+            "effective_pct": float(row.get("portfolio_effective_pct", 0.0)),
+            "effective_variance": row.get("portfolio_effective_variance_fmt", ""),
+            "effective_variance_raw": float(row.get("portfolio_effective_variance", 0.0)),
+            "effective_variance_pct": float(row.get("portfolio_effective_variance_pct", 0.0)),
+            # Explicit target for reference if needed
             "explicit_target": row.get("portfolio_explicit_target_fmt", ""),
-            "variance": row.get("portfolio_variance_fmt", ""),
         }
 
         account_type_columns = []
@@ -258,17 +282,17 @@ class AllocationPresentationFormatter:
                     {
                         "id": acc_meta["id"],
                         "name": acc_meta["name"],
-                        "current": row.get(f"{acc_prefix}_current_fmt", ""),
-                        "current_raw": float(row.get(f"{acc_prefix}_current", 0.0)),
-                        "current_pct": float(row.get(f"{acc_prefix}_current_pct", 0.0)),
-                        "target": row.get(f"{acc_prefix}_target_fmt", ""),
-                        "target_raw": float(row.get(f"{acc_prefix}_target", 0.0)),
-                        "target_pct": float(row.get(f"{acc_prefix}_target_pct", 0.0)),
-                        "variance": row.get(f"{acc_prefix}_variance_fmt", ""),
-                        "variance_raw": float(row.get(f"{acc_prefix}_variance", 0.0)),
-                        "variance_pct": float(
-                            row.get(f"{acc_prefix}_current_pct", 0.0)
-                            - row.get(f"{acc_prefix}_target_pct", 0.0)
+                        "actual": row.get(f"{acc_prefix}_actual_fmt", ""),
+                        "actual_raw": float(row.get(f"{acc_prefix}_actual", 0.0)),
+                        "actual_pct": float(row.get(f"{acc_prefix}_actual_pct", 0.0)),
+                        "policy": row.get(f"{acc_prefix}_policy_fmt", ""),
+                        "policy_raw": float(row.get(f"{acc_prefix}_policy", 0.0)),
+                        "policy_pct": float(row.get(f"{acc_prefix}_policy_pct", 0.0)),
+                        "policy_variance": row.get(f"{acc_prefix}_policy_variance_fmt", ""),
+                        "policy_variance_raw": float(row.get(f"{acc_prefix}_policy_variance", 0.0)),
+                        "policy_variance_pct": float(
+                            row.get(f"{acc_prefix}_actual_pct", 0.0)
+                            - row.get(f"{acc_prefix}_policy_pct", 0.0)
                         ),
                         "allocation_strategy_id": target_strategies.get("acc_strategy_map", {}).get(
                             acc_meta["id"]
@@ -276,33 +300,26 @@ class AllocationPresentationFormatter:
                     }
                 )
 
-            at_target_input = row.get(f"{type_code}_target_input")
             account_type_columns.append(
                 {
                     "id": type_id,
                     "code": type_code,
                     "label": type_label,
-                    "current": row.get(f"{type_code}_current_fmt", ""),
-                    "current_raw": float(row.get(f"{type_code}_current", 0.0)),
-                    "current_pct": float(row.get(f"{type_code}_current_pct", 0.0)),
-                    "target_input": (
-                        f"{at_target_input:.1f}%" if at_target_input is not None else ""
-                    ),
-                    "target_input_raw": at_target_input,
-                    "target_input_value": (
-                        f"{at_target_input:.1f}%" if at_target_input is not None else ""
-                    ),
-                    "weighted_target": row.get(f"{type_code}_target_fmt", ""),
-                    "weighted_target_raw": float(row.get(f"{type_code}_weighted_target", 0.0)),
-                    "weighted_target_pct": float(row.get(f"{type_code}_weighted_target_pct", 0.0)),
-                    "variance": row.get(f"{type_code}_variance_fmt", ""),
-                    "variance_raw": float(row.get(f"{type_code}_variance", 0.0)),
-                    "variance_pct": float(row.get(f"{type_code}_variance_pct", 0.0)),
-                    "vtarget": (
-                        f"{row.get(f'{type_code}_variance_pct', 0.0):+.1f}%"
-                        if mode == "percent"
-                        else row.get(f"{type_code}_variance_fmt", "")
-                    ),
+                    "actual": row.get(f"{type_code}_actual_fmt", ""),
+                    "actual_raw": float(row.get(f"{type_code}_actual", 0.0)),
+                    "actual_pct": float(row.get(f"{type_code}_actual_pct", 0.0)),
+                    "policy": row.get(f"{type_code}_policy_fmt", ""),
+                    "policy_raw": float(row.get(f"{type_code}_policy", 0.0)),
+                    "policy_pct": float(row.get(f"{type_code}_policy_pct", 0.0)),
+                    "effective": row.get(f"{type_code}_effective_fmt", ""),
+                    "effective_raw": float(row.get(f"{type_code}_effective", 0.0)),
+                    "effective_pct": float(row.get(f"{type_code}_effective_pct", 0.0)),
+                    "policy_variance": row.get(f"{type_code}_policy_variance_fmt", ""),
+                    "policy_variance_raw": float(row.get(f"{type_code}_policy_variance", 0.0)),
+                    "policy_variance_pct": float(row.get(f"{type_code}_policy_variance_pct", 0.0)),
+                    "effective_variance": row.get(f"{type_code}_effective_variance_fmt", ""),
+                    "effective_variance_raw": float(row.get(f"{type_code}_effective_variance", 0.0)),
+                    "effective_variance_pct": float(row.get(f"{type_code}_effective_variance_pct", 0.0)),
                     "active_strategy_id": target_strategies.get("at_strategy_map", {}).get(type_id),
                     "active_accounts": account_columns,
                     "accounts": account_columns,

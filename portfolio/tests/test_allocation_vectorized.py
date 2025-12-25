@@ -62,10 +62,10 @@ class TestAllocationVectorized(TestCase):
         self.assertEqual(df.index.names, ["group_code", "category_code", "asset_class_name"])
 
         # Verify columns
-        self.assertIn("portfolio_current", df.columns)
-        self.assertIn("portfolio_target", df.columns)
-        self.assertIn("TAX_current", df.columns)
-        self.assertIn("TAX_Brokerage_current", df.columns)
+        self.assertIn("portfolio_actual", df.columns)
+        self.assertIn("portfolio_effective", df.columns)
+        self.assertIn("TAX_actual", df.columns)
+        self.assertIn("TAX_Brokerage_actual", df.columns)
 
     def test_aggregation_vectorized(self) -> None:
         """Verify that aggregate_presentation_levels returns correct structure."""
@@ -114,5 +114,5 @@ class TestAllocationVectorized(TestCase):
         self.assertTrue(len(rows) > 0)
         first_row = rows[0]
         self.assertIn("portfolio", first_row)
-        self.assertIn("current", first_row["portfolio"])
-        self.assertTrue(str(first_row["portfolio"]["current"]).endswith("%"))
+        self.assertIn("actual", first_row["portfolio"])
+        self.assertTrue(str(first_row["portfolio"]["actual"]).endswith("%"))

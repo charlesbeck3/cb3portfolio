@@ -84,7 +84,7 @@ class AllocationCalculationEngine:
 
         # Combine into single DataFrame with MultiIndex columns
         result = pd.concat(
-            [by_asset_class.add_suffix("_dollars"), percentages.add_suffix("_pct")],
+            [by_asset_class.add_suffix("_actual"), percentages.add_suffix("_actual_pct")],
             axis=1,
         )
 
@@ -112,7 +112,7 @@ class AllocationCalculationEngine:
 
         # Combine
         result = pd.concat(
-            [by_asset_class.add_suffix("_dollars"), percentages.add_suffix("_pct")],
+            [by_asset_class.add_suffix("_actual"), percentages.add_suffix("_actual_pct")],
             axis=1,
         )
 
@@ -401,9 +401,20 @@ class AllocationCalculationEngine:
         Returns:
             DataFrame with MultiIndex(group_code, category_code, asset_class_name) and columns:
             - Metadata: group_label, category_label, asset_class_id, row_type, is_*
-            - Portfolio: portfolio_current, portfolio_target, portfolio_variance
-            - Account Types: {type_code}_current, {type_code}_target, {type_code}_variance
-            - Accounts: {type_code}_{acc_name}_current, {type_code}_{acc_name}_target, etc.
+            - Portfolio:
+                portfolio_actual, portfolio_actual_pct,
+                portfolio_effective, portfolio_effective_pct,
+                portfolio_effective_variance, portfolio_effective_variance_pct
+            - Account Types:
+                {type_code}_actual, {type_code}_actual_pct,
+                {type_code}_policy, {type_code}_policy_pct,
+                {type_code}_effective, {type_code}_effective_pct,
+                {type_code}_policy_variance, {type_code}_policy_variance_pct,
+                {type_code}_effective_variance, {type_code}_effective_variance_pct
+            - Accounts:
+                {type_code}_{acc_name}_actual, {type_code}_{acc_name}_actual_pct,
+                {type_code}_{acc_name}_policy, {type_code}_{acc_name}_policy_pct,
+                {type_code}_{acc_name}_policy_variance, {type_code}_{acc_name}_policy_variance_pct
 
             All values are NUMERIC (no formatting).
         """
@@ -418,7 +429,7 @@ class AllocationCalculationEngine:
         if holdings_df.empty:
             return pd.DataFrame()
 
-        # Step 1: Calculate current allocations
+        # Step 1: Calculate actual allocations
         allocations = self.calculate_allocations(holdings_df)
 
         # Step 2: Get metadata
@@ -456,11 +467,11 @@ class AllocationCalculationEngine:
         df = self._calculate_portfolio_explicit_targets(df, target_strategies, portfolio_total)
 
         # Step 11: Sort the DataFrame
-        # Respect sort_order from database if present (non-zero), otherwise fallback to portfolio_target descending.
+        # Respect sort_order from database if present (non-zero), otherwise fallback to portfolio_effective descending.
         # We use transform to calculate group and category aggregates to ensure assets stay grouped.
-        df["group_target_sum"] = df.groupby("group_code")["portfolio_target"].transform("sum")
+        df["group_target_sum"] = df.groupby("group_code")["portfolio_effective"].transform("sum")
         df["cat_target_sum"] = df.groupby(["group_code", "category_code"])[
-            "portfolio_target"
+            "portfolio_effective"
         ].transform("sum")
 
         # Sorting priority:
@@ -468,7 +479,7 @@ class AllocationCalculationEngine:
         # 2. group_target_sum (descending) - fallback for groups
         # 3. category_sort_order (ascending)
         # 4. cat_target_sum (descending) - fallback for categories
-        # 5. portfolio_target (descending) - asset level
+        # 5. portfolio_effective (descending) - asset level
         # 6. asset_class_name (ascending) - tie breaker
         df = df.sort_values(
             by=[
@@ -476,7 +487,7 @@ class AllocationCalculationEngine:
                 "group_target_sum",
                 "category_sort_order",
                 "cat_target_sum",
-                "portfolio_target",
+                "portfolio_effective",
                 "asset_class_name",
             ],
             ascending=[True, False, True, False, False, True],
@@ -528,24 +539,24 @@ class AllocationCalculationEngine:
         portfolio_total: float,
     ) -> pd.DataFrame:
         """
-        Add portfolio-level current/target/variance columns using vectorized merge.
+        Add portfolio-level actual allocations using vectorized merge.
 
-        Adds columns: portfolio_current, portfolio_current_pct
+        Adds columns: portfolio_actual, portfolio_actual_pct
         """
         df_portfolio = allocations["by_asset_class"]
 
-        # Merge current values
+        # Merge actual values
         df = df.merge(
-            df_portfolio[["dollars"]].rename(columns={"dollars": "portfolio_current"}),
+            df_portfolio[["dollars"]].rename(columns={"dollars": "portfolio_actual"}),
             left_on="asset_class_name",
             right_index=True,
             how="left",
         )
-        df["portfolio_current"] = df["portfolio_current"].fillna(0.0)
+        df["portfolio_actual"] = df["portfolio_actual"].fillna(0.0)
 
         # Calculate percentages
-        df["portfolio_current_pct"] = (
-            df["portfolio_current"] / portfolio_total * 100 if portfolio_total > 0 else 0.0
+        df["portfolio_actual_pct"] = (
+            df["portfolio_actual"] / portfolio_total * 100 if portfolio_total > 0 else 0.0
         )
 
         return df
@@ -559,12 +570,15 @@ class AllocationCalculationEngine:
         account_totals: dict[str, dict[int, float]],
     ) -> pd.DataFrame:
         """
-        Add account type columns using vectorized operations.
+        Add account type columns with actual and policy targets.
 
         For each account type, adds:
-        - {type_code}_current
-        - {type_code}_current_pct
-        - {type_code}_target_input
+        - {type_code}_actual
+        - {type_code}_actual_pct
+        - {type_code}_policy
+        - {type_code}_policy_pct
+        - {type_code}_policy_variance
+        - {type_code}_policy_variance_pct
         """
         df_account_type = allocations["by_account_type"]
 
@@ -574,17 +588,17 @@ class AllocationCalculationEngine:
             type_label = type_accounts[0]["type_label"]
             type_code = type_accounts[0]["type_code"]
 
-            # Extract current values for this account type
+            # Extract actual values for this account type
             type_data = {}
             if not df_account_type.empty and type_label in df_account_type.index:
                 for ac_name in df["asset_class_name"].unique():
-                    col_name = f"{ac_name}_dollars"
+                    col_name = f"{ac_name}_actual"
                     if col_name in df_account_type.columns:
                         type_data[ac_name] = df_account_type.loc[type_label, col_name]
 
-            # Create temporary series and merge
+            # Merge actual values
             if type_data:
-                type_series = pd.Series(type_data, name=f"{type_code}_current")
+                type_series = pd.Series(type_data, name=f"{type_code}_actual")
                 df = df.merge(
                     type_series,
                     left_on="asset_class_name",
@@ -592,24 +606,35 @@ class AllocationCalculationEngine:
                     how="left",
                 )
             else:
-                df[f"{type_code}_current"] = 0.0
+                df[f"{type_code}_actual"] = 0.0
 
-            df[f"{type_code}_current"] = df[f"{type_code}_current"].fillna(0.0)
+            df[f"{type_code}_actual"] = df[f"{type_code}_actual"].fillna(0.0)
 
-            # Calculate percentages
+            # Calculate actual percentages
             at_total = account_totals["account_type"].get(type_id, 0.0)
-            df[f"{type_code}_current_pct"] = (
-                df[f"{type_code}_current"] / at_total * 100 if at_total > 0 else 0.0
+            df[f"{type_code}_actual_pct"] = (
+                df[f"{type_code}_actual"] / at_total * 100 if at_total > 0 else 0.0
             )
 
-            # Add target inputs
-            df[f"{type_code}_target_input"] = 0.0
+            # Add policy targets (percentages from strategy)
+            df[f"{type_code}_policy_pct"] = 0.0
             if type_id in target_strategies.get("account_type", {}):
                 type_targets = target_strategies["account_type"][type_id]
                 target_map = pd.Series(type_targets)
-                df[f"{type_code}_target_input"] = (
+                df[f"{type_code}_policy_pct"] = (
                     df["asset_class_id"].map(target_map).fillna(0.0).astype(float)
                 )
+
+            # Calculate policy targets (dollars)
+            df[f"{type_code}_policy"] = df[f"{type_code}_policy_pct"] / 100 * at_total
+
+            # Calculate policy variance
+            df[f"{type_code}_policy_variance"] = (
+                df[f"{type_code}_actual"] - df[f"{type_code}_policy"]
+            )
+            df[f"{type_code}_policy_variance_pct"] = (
+                df[f"{type_code}_actual_pct"] - df[f"{type_code}_policy_pct"]
+            )
 
         return df
 
@@ -622,14 +647,15 @@ class AllocationCalculationEngine:
         account_totals: dict[str, dict[int, float]],
     ) -> pd.DataFrame:
         """
-        Add individual account columns using vectorized operations.
+        Add individual account columns with actual and policy targets.
 
         For each account, adds:
-        - {type_code}_{acc_name}_current
-        - {type_code}_{acc_name}_current_pct
-        - {type_code}_{acc_name}_target
-        - {type_code}_{acc_name}_target_pct
-        - {type_code}_{acc_name}_variance
+        - {type_code}_{acc_name}_actual
+        - {type_code}_{acc_name}_actual_pct
+        - {type_code}_{acc_name}_policy
+        - {type_code}_{acc_name}_policy_pct
+        - {type_code}_{acc_name}_policy_variance
+        - {type_code}_{acc_name}_policy_variance_pct
         """
         df_account = allocations["by_account"]
 
@@ -638,25 +664,25 @@ class AllocationCalculationEngine:
                 continue
             type_code = type_accounts[0]["type_code"]
 
-            # Get type target input for fallback
-            at_target_input = df[f"{type_code}_target_input"]
+            # Get type policy target for fallback
+            at_policy_pct = df[f"{type_code}_policy_pct"]
 
             for acc_meta in type_accounts:
                 acc_id = acc_meta["id"]
                 acc_name = acc_meta["name"]
                 acc_prefix = f"{type_code}_{acc_name}"
 
-                # Extract current values
+                # Extract actual values
                 acc_data = {}
                 if not df_account.empty and acc_id in df_account.index:
                     for ac_name in df["asset_class_name"].unique():
-                        col_name = f"{ac_name}_dollars"
+                        col_name = f"{ac_name}_actual"
                         if col_name in df_account.columns:
                             acc_data[ac_name] = df_account.loc[acc_id, col_name]
 
-                # Merge
+                # Merge actual values
                 if acc_data:
-                    acc_series = pd.Series(acc_data, name=f"{acc_prefix}_current")
+                    acc_series = pd.Series(acc_data, name=f"{acc_prefix}_actual")
                     df = df.merge(
                         acc_series,
                         left_on="asset_class_name",
@@ -664,32 +690,39 @@ class AllocationCalculationEngine:
                         how="left",
                     )
                 else:
-                    df[f"{acc_prefix}_current"] = 0.0
+                    df[f"{acc_prefix}_actual"] = 0.0
 
-                df[f"{acc_prefix}_current"] = df[f"{acc_prefix}_current"].fillna(0.0)
+                df[f"{acc_prefix}_actual"] = df[f"{acc_prefix}_actual"].fillna(0.0)
 
-                # Calculate percentages
+                # Calculate actual percentages
                 acc_total = account_totals["account"].get(acc_id, 0.0)
-                df[f"{acc_prefix}_current_pct"] = (
-                    df[f"{acc_prefix}_current"] / acc_total * 100 if acc_total > 0 else 0.0
+                df[f"{acc_prefix}_actual_pct"] = (
+                    df[f"{acc_prefix}_actual"] / acc_total * 100 if acc_total > 0 else 0.0
                 )
 
-                # Add targets
-                df[f"{acc_prefix}_target_pct"] = at_target_input
-
+                # Add policy targets
+                # If account has its own strategy, use it exclusively
+                # Otherwise, fall back to account-type strategy
                 if acc_id in target_strategies.get("account", {}):
+                    # Account has override - use ONLY this strategy
                     acc_targets = target_strategies["account"][acc_id]
                     target_map = pd.Series(acc_targets)
-                    # Override with account-specific target if exists
-                    df[f"{acc_prefix}_target_pct"] = (
-                        df["asset_class_id"].map(target_map).fillna(df[f"{acc_prefix}_target_pct"])
+                    df[f"{acc_prefix}_policy_pct"] = (
+                        df["asset_class_id"].map(target_map).fillna(0.0)
                     ).astype(float)
+                else:
+                    # No override - use account-type strategy
+                    df[f"{acc_prefix}_policy_pct"] = at_policy_pct
 
-                df[f"{acc_prefix}_target"] = df[f"{acc_prefix}_target_pct"] / 100 * acc_total
+                # Calculate policy targets (dollars)
+                df[f"{acc_prefix}_policy"] = df[f"{acc_prefix}_policy_pct"] / 100 * acc_total
 
-                # Calculate variance
-                df[f"{acc_prefix}_variance"] = (
-                    df[f"{acc_prefix}_current"] - df[f"{acc_prefix}_target"]
+                # Calculate policy variance
+                df[f"{acc_prefix}_policy_variance"] = (
+                    df[f"{acc_prefix}_actual"] - df[f"{acc_prefix}_policy"]
+                )
+                df[f"{acc_prefix}_policy_variance_pct"] = (
+                    df[f"{acc_prefix}_actual_pct"] - df[f"{acc_prefix}_policy_pct"]
                 )
 
         return df
@@ -701,36 +734,52 @@ class AllocationCalculationEngine:
         account_totals: dict[str, dict[int, float]],
     ) -> pd.DataFrame:
         """
-        Calculate weighted target columns for account types.
+        Calculate effective target columns (weighted average) for account types.
 
         Must be called AFTER _add_account_calculations.
+
+        For each account type, adds:
+        - {type_code}_effective
+        - {type_code}_effective_pct
+        - {type_code}_effective_variance
+        - {type_code}_effective_variance_pct
         """
         for type_id, type_accounts in sorted(accounts_by_type.items()):
             if not type_accounts:
                 continue
             type_code = type_accounts[0]["type_code"]
 
-            # Sum all account targets for this type
-            weighted_target = pd.Series(0.0, index=df.index)
+            # Sum all account policy targets for this type (weighted average)
+            effective_target = pd.Series(0.0, index=df.index)
 
             for acc_meta in type_accounts:
                 acc_name = acc_meta["name"]
                 acc_prefix = f"{type_code}_{acc_name}"
-                weighted_target += df[f"{acc_prefix}_target"]
+                effective_target += df[f"{acc_prefix}_policy"]  # Sum dollar policies
 
-            df[f"{type_code}_weighted_target"] = weighted_target
-
-            # Calculate weighted percentage
+            # Calculate Implicit Cash (unassigned value from unassigned accounts or partial strategies)
             at_total = account_totals["account_type"].get(type_id, 0.0)
-            df[f"{type_code}_weighted_target_pct"] = (
-                weighted_target / at_total * 100 if at_total > 0 else 0.0
+            assigned_total = float(effective_target.sum())
+            unassigned = at_total - assigned_total
+
+            if unassigned > 0.01 and "is_cash" in df.columns:
+                # Attribute unassigned value to Cash
+                effective_target.loc[df["is_cash"]] += unassigned
+
+            df[f"{type_code}_effective"] = effective_target
+
+            # Calculate effective percentage
+            at_total = account_totals["account_type"].get(type_id, 0.0)
+            df[f"{type_code}_effective_pct"] = (
+                effective_target / at_total * 100 if at_total > 0 else 0.0
             )
 
-            # Calculate variance
-            df[f"{type_code}_variance"] = df[f"{type_code}_current"] - weighted_target
-            # Calculate variance percentage
-            df[f"{type_code}_variance_pct"] = (
-                df[f"{type_code}_current_pct"] - df[f"{type_code}_weighted_target_pct"]
+            # Calculate effective variance (actual - effective)
+            df[f"{type_code}_effective_variance"] = (
+                df[f"{type_code}_actual"] - df[f"{type_code}_effective"]
+            )
+            df[f"{type_code}_effective_variance_pct"] = (
+                df[f"{type_code}_actual_pct"] - df[f"{type_code}_effective_pct"]
             )
 
         return df
@@ -742,29 +791,41 @@ class AllocationCalculationEngine:
         portfolio_total: float,
     ) -> pd.DataFrame:
         """
-        Calculate portfolio-level weighted targets.
+        Calculate portfolio-level effective targets (weighted average).
 
         Must be called AFTER _calculate_weighted_targets.
+
+        Adds columns:
+        - portfolio_effective
+        - portfolio_effective_pct
+        - portfolio_effective_variance
+        - portfolio_effective_variance_pct
+
+        Note: Portfolio level has no policy target (no single portfolio strategy).
         """
-        # Sum all account type weighted targets
-        portfolio_target = pd.Series(0.0, index=df.index)
+        # Sum all account type effective targets
+        portfolio_effective = pd.Series(0.0, index=df.index)
 
         for _type_id, type_accounts in accounts_by_type.items():
             if not type_accounts:
                 continue
             type_code = type_accounts[0]["type_code"]
-            portfolio_target += df[f"{type_code}_weighted_target"]
+            portfolio_effective += df[f"{type_code}_effective"]
 
-        df["portfolio_target"] = portfolio_target
+        df["portfolio_effective"] = portfolio_effective
 
         # Calculate percentage
-        df["portfolio_target_pct"] = (
-            portfolio_target / portfolio_total * 100 if portfolio_total > 0 else 0.0
+        df["portfolio_effective_pct"] = (
+            portfolio_effective / portfolio_total * 100 if portfolio_total > 0 else 0.0
         )
 
-        # Calculate variance
-        df["portfolio_variance"] = df["portfolio_current"] - portfolio_target
-        df["portfolio_variance_pct"] = df["portfolio_current_pct"] - df["portfolio_target_pct"]
+        # Calculate effective variance (actual - effective)
+        df["portfolio_effective_variance"] = (
+            df["portfolio_actual"] - df["portfolio_effective"]
+        )
+        df["portfolio_effective_variance_pct"] = (
+            df["portfolio_actual_pct"] - df["portfolio_effective_pct"]
+        )
 
         return df
 
@@ -895,12 +956,12 @@ class AllocationCalculationEngine:
 
         account_totals = {}
         if not df_account.empty:
-            dollar_cols = [c for c in df_account.columns if c.endswith("_dollars")]
+            dollar_cols = [c for c in df_account.columns if c.endswith("_actual")]
             account_totals = df_account[dollar_cols].sum(axis=1).to_dict()
 
         account_type_totals = {}
         if not df_account_type.empty:
-            dollar_cols = [c for c in df_account_type.columns if c.endswith("_dollars")]
+            dollar_cols = [c for c in df_account_type.columns if c.endswith("_actual")]
             type_label_totals = df_account_type[dollar_cols].sum(axis=1).to_dict()
 
             # Map type_id to its total value

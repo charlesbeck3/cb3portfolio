@@ -87,11 +87,11 @@ class TestPureCalculations(SimpleTestCase):
         result = self.engine._calculate_by_account(self.holdings_df)
 
         # Account 1 should have 50% equities, 50% bonds
-        equities_pct = result.loc[1, "Equities_pct"]
+        equities_pct = result.loc[1, "Equities_actual_pct"]
         self.assertAlmostEqual(equities_pct, 50.0, places=1)
 
         # Should have dollar amounts too
-        equities_dollars = result.loc[1, "Equities_dollars"]
+        equities_dollars = result.loc[1, "Equities_actual"]
         self.assertAlmostEqual(equities_dollars, 5000.0, places=1)
 
     def test_empty_holdings_returns_empty_dfs(self) -> None:
@@ -121,9 +121,9 @@ class TestDataFrameAggregation(SimpleTestCase):
             "group_label": ["Equities", "Equities", "Fixed Income"],
             "category_label": ["US Equities", "Intl Equities", "Fixed Income Bonds"],
             "asset_class_id": [1, 2, 3],
-            "portfolio_current": [100.0, 50.0, 150.0],
-            "portfolio_target": [120.0, 60.0, 120.0],
-            "portfolio_variance": [-20.0, -10.0, 30.0],
+            "portfolio_actual": [100.0, 50.0, 150.0],
+            "portfolio_effective": [120.0, 60.0, 120.0],
+            "portfolio_effective_variance": [-20.0, -10.0, 30.0],
         }
 
         df = pd.DataFrame(data)
@@ -139,11 +139,11 @@ class TestDataFrameAggregation(SimpleTestCase):
         self.assertIn("grand_total", result)
 
         # Category subtotals should have correct sums
-        equity_total = result["group_totals"].loc["EQUITY", "portfolio_current"]
+        equity_total = result["group_totals"].loc["EQUITY", "portfolio_actual"]
         self.assertAlmostEqual(equity_total, 150.0, places=1)
 
         # Grand total should sum everything
-        grand_total = result["grand_total"].iloc[0]["portfolio_current"]
+        grand_total = result["grand_total"].iloc[0]["portfolio_actual"]
         self.assertAlmostEqual(grand_total, 300.0, places=1)
 
     def test_category_subtotals_correct(self) -> None:
@@ -155,9 +155,9 @@ class TestDataFrameAggregation(SimpleTestCase):
             "group_label": ["Equities", "Equities"],
             "category_label": ["US Equities", "US Equities"],
             "asset_class_id": [1, 2],
-            "portfolio_current": [100.0, 50.0],
-            "portfolio_target": [90.0, 60.0],
-            "portfolio_variance": [10.0, -10.0],
+            "portfolio_actual": [100.0, 50.0],
+            "portfolio_effective": [90.0, 60.0],
+            "portfolio_effective_variance": [10.0, -10.0],
         }
 
         df = pd.DataFrame(data)
@@ -167,11 +167,11 @@ class TestDataFrameAggregation(SimpleTestCase):
         result = engine.aggregate_presentation_levels(df)
 
         # US category should sum both assets
-        us_subtotal = result["category_subtotals"].loc[("EQUITY", "US"), "portfolio_current"]
+        us_subtotal = result["category_subtotals"].loc[("EQUITY", "US"), "portfolio_actual"]
         self.assertAlmostEqual(us_subtotal, 150.0, places=1)
 
         # Variance should net out
-        us_variance = result["category_subtotals"].loc[("EQUITY", "US"), "portfolio_variance"]
+        us_variance = result["category_subtotals"].loc[("EQUITY", "US"), "portfolio_effective_variance"]
         self.assertAlmostEqual(us_variance, 0.0, places=1)
 
     def test_empty_dataframe_aggregation(self) -> None:
@@ -248,12 +248,12 @@ class TestFormatting(SimpleTestCase):
             "category_label": ["US Equities"],
             "is_cash": [False],
             "row_type": ["asset"],
-            "portfolio_current": [100.0],
-            "portfolio_current_pct": [10.0],
-            "portfolio_target": [120.0],
-            "portfolio_target_pct": [12.0],
-            "portfolio_variance": [-20.0],
-            "portfolio_variance_pct": [-2.0],
+            "portfolio_actual": [100.0],
+            "portfolio_actual_pct": [10.0],
+            "portfolio_effective": [120.0],
+            "portfolio_effective_pct": [12.0],
+            "portfolio_effective_variance": [-20.0],
+            "portfolio_effective_variance_pct": [-2.0],
         }
 
         df_assets = pd.DataFrame(asset_data)
@@ -288,8 +288,8 @@ class TestFormatting(SimpleTestCase):
         self.assertIn("is_asset", row)
 
         # Portfolio values should be formatted strings
-        self.assertIsInstance(row["portfolio"]["current"], str)
-        self.assertIn("%", row["portfolio"]["current"])
+        self.assertIsInstance(row["portfolio"]["actual"], str)
+        self.assertIn("%", row["portfolio"]["actual"])
 
 
 class TestCalculationAccuracy(TestCase):

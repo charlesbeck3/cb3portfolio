@@ -20,10 +20,33 @@
                     <small>Aggregate targets are calculated bottom-up based on account values.</small>
                 </p>
             </div>
-            <div>
-                 <a href="{% url 'portfolio:dashboard' %}" class="btn btn-outline-secondary me-2">Cancel</a>
+            <div class="d-flex align-items-center gap-3">
+                 <!-- Variance Mode Toggle -->
+                 <div class="btn-group" role="group" aria-label="Variance display mode">
+                    <input type="radio" class="btn-check" name="variance-mode" id="variance-effective" value="effective" checked autocomplete="off">
+                    <label class="btn btn-outline-primary" for="variance-effective" title="Show variance from weighted average target (for rebalancing)">
+                        <i class="bi bi-graph-up"></i> Effective Variance
+                    </label>
+                    
+                    <input type="radio" class="btn-check" name="variance-mode" id="variance-policy" value="policy" autocomplete="off">
+                    <label class="btn btn-outline-primary" for="variance-policy" title="Show variance from stated strategy (for policy adherence)">
+                        <i class="bi bi-clipboard-check"></i> Policy Variance
+                    </label>
+                </div>
+                
+                 <a href="{% url 'portfolio:dashboard' %}" class="btn btn-outline-secondary">Cancel</a>
                  <button type="submit" form="allocation-form" id="save-button-top" class="btn btn-primary">Save Targets</button>
             </div>
+        </div>
+
+        <!-- Info alert explaining variance modes -->
+        <div class="alert alert-info alert-dismissible fade show" role="alert" id="variance-info">
+            <strong><i class="bi bi-info-circle"></i> Variance Modes:</strong>
+            <ul class="mb-0 mt-2">
+                <li><strong>Effective Variance</strong> (default) - Shows how far you are from your <em>achievable</em> target given your account balances. Use this for <strong>rebalancing decisions</strong>.</li>
+                <li><strong>Policy Variance</strong> - Shows how far you are from your <em>stated strategy</em>. Use this to <strong>monitor strategy adherence</strong>.</li>
+            </ul>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
 
         <form method="post" id="allocation-form">
@@ -80,7 +103,80 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Simplified JS: Just handle column toggles.
+    // Variance toggle functionality
+    const varianceModeInputs = document.querySelectorAll('input[name="variance-mode"]');
+    
+    /**
+     * Update variance display based on selected mode
+     * @param {string} mode - Either 'effective' or 'policy'
+     */
+    function updateVarianceDisplay(mode) {
+        // 1. Toggle Variance Values
+        const varianceCells = document.querySelectorAll('.variance-col');
+        varianceCells.forEach(cell => {
+            const valueSpan = cell.querySelector('.variance-value');
+            if (!valueSpan) return;
+            
+            if (mode === 'effective') {
+                // Show effective variance
+                const effectiveVar = cell.dataset.effectiveVariance;
+                if (effectiveVar) {
+                    valueSpan.textContent = effectiveVar;
+                }
+            } else {
+                // Show policy variance (if it exists)
+                const policyVar = cell.dataset.policyVariance;
+                if (policyVar) {
+                    valueSpan.textContent = policyVar;
+                } else {
+                    // Portfolio level doesn't have policy variance, keep effective
+                    valueSpan.textContent = cell.dataset.effectiveVariance || '';
+                }
+            }
+        });
+        
+        // 2. Toggle Allocation Columns (Policy vs Effective)
+        const policyCols = document.querySelectorAll('.col-mode-policy');
+        const effectiveCols = document.querySelectorAll('.col-mode-effective');
+        
+        if (mode === 'effective') {
+            policyCols.forEach(el => el.classList.add('d-none'));
+            effectiveCols.forEach(el => el.classList.remove('d-none'));
+        } else {
+            policyCols.forEach(el => el.classList.remove('d-none'));
+            effectiveCols.forEach(el => el.classList.add('d-none'));
+        }
+        
+        // Store preference in localStorage for persistence
+        localStorage.setItem('varianceMode', mode);
+    }
+    
+    // Add event listeners to radio buttons
+    varianceModeInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            if (this.checked) {
+                updateVarianceDisplay(this.value);
+                
+                // Flash the variance columns briefly to indicate change
+                const varianceCells = document.querySelectorAll('.variance-col');
+                varianceCells.forEach(cell => {
+                    cell.style.transition = 'background-color 0.3s ease';
+                    cell.style.backgroundColor = '#fff3cd';
+                    setTimeout(() => {
+                        cell.style.backgroundColor = '';
+                    }, 300);
+                });
+            }
+        });
+    });
+    
+    // Restore saved preference or default to 'effective'
+    const savedMode = localStorage.getItem('varianceMode') || 'effective';
+    const savedInput = document.getElementById(`variance-${savedMode}`);
+    if (savedInput) {
+        savedInput.checked = true;
+        updateVarianceDisplay(savedMode);
+    }
 });
 </script>
 

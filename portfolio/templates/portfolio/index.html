@@ -44,7 +44,20 @@
                         <h1 class="mb-0">Dashboard</h1>
                         <p class="lead mb-0 text-muted">Welcome to your portfolio manager.</p>
                     </div>
-                    <div>
+                    <div class="d-flex align-items-center gap-3">
+                         <!-- Variance Mode Toggle -->
+                         <div class="btn-group" role="group" aria-label="Variance display mode">
+                            <input type="radio" class="btn-check" name="variance-mode" id="variance-effective" value="effective" checked autocomplete="off">
+                            <label class="btn btn-outline-primary" for="variance-effective" title="Show variance from weighted average target">
+                                <i class="bi bi-graph-up"></i> Effective Variance
+                            </label>
+                            
+                            <input type="radio" class="btn-check" name="variance-mode" id="variance-policy" value="policy" autocomplete="off">
+                            <label class="btn btn-outline-primary" for="variance-policy" title="Show variance from stated strategy">
+                                <i class="bi bi-clipboard-check"></i> Policy Variance
+                            </label>
+                        </div>
+                        
                         <a href="{% url 'portfolio:holdings' %}" class="btn btn-primary">View Holdings</a>
                         <a href="#" class="btn btn-secondary">Rebalance</a>
                     </div>
@@ -101,4 +114,56 @@
     </div>
 </div>
 {% endwith %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const varianceModeInputs = document.querySelectorAll('input[name="variance-mode"]');
+    
+    function updateVarianceDisplay(mode) {
+        // 1. Toggle Variance Values
+        const varianceCells = document.querySelectorAll('.variance-col');
+        varianceCells.forEach(cell => {
+            const valueSpan = cell.querySelector('.variance-value');
+            if (!valueSpan) return;
+            
+            if (mode === 'effective') {
+                const effectiveVar = cell.dataset.effectiveVariance;
+                if (effectiveVar) valueSpan.textContent = effectiveVar;
+            } else {
+                const policyVar = cell.dataset.policyVariance;
+                if (policyVar) valueSpan.textContent = policyVar;
+            }
+        });
+        
+        // 2. Toggle Allocation Columns (Policy vs Effective)
+        const policyCols = document.querySelectorAll('.col-mode-policy');
+        const effectiveCols = document.querySelectorAll('.col-mode-effective');
+        
+        if (mode === 'effective') {
+            policyCols.forEach(el => el.classList.add('d-none'));
+            effectiveCols.forEach(el => el.classList.remove('d-none'));
+        } else {
+            policyCols.forEach(el => el.classList.remove('d-none'));
+            effectiveCols.forEach(el => el.classList.add('d-none'));
+        }
+        
+        localStorage.setItem('varianceModeDashboard', mode);
+    }
+    
+    varianceModeInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            if (this.checked) {
+                updateVarianceDisplay(this.value);
+            }
+        });
+    });
+    
+    const savedMode = localStorage.getItem('varianceModeDashboard') || 'effective';
+    const savedInput = document.getElementById(`variance-${savedMode}`);
+    if (savedInput) {
+        savedInput.checked = true;
+        updateVarianceDisplay(savedMode);
+    }
+});
+</script>
 {% endblock %}

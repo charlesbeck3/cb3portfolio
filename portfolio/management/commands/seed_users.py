@@ -247,6 +247,18 @@ class Command(BaseCommand):
                     "Inflation Adjusted Bond": Decimal("50.0"),
                 },
             },
+            {
+                "name": "All Cash",
+                "account_name": "WF Cash Account",
+                "allocations": {},  # Domain model auto-fills 100% cash
+            },
+            {
+                "name": "All IBond",
+                "account_name": "Treasury Direct",
+                "allocations": {
+                    "Inflation Adjusted Bond": Decimal("100.0"),
+                },
+            },
         ]
 
         self.seed_user_portfolio(admin_user, admin_portfolio, main_accounts, type_objects)
@@ -352,3 +364,9 @@ class Command(BaseCommand):
                         account_type=account_type,
                         defaults={"allocation_strategy": strategy},
                     )
+
+            acc_name = strategy_data.get("account_name")
+            if acc_name:
+                Account.objects.filter(user=user, name=acc_name).update(
+                    allocation_strategy=strategy
+                )

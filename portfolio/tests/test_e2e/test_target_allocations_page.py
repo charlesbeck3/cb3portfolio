@@ -184,3 +184,39 @@ class TestFrontendAllocations(PortfolioTestMixin):
         select_locator.select_option(label="All Cash")
         page.click("#save-button-top")
         expect(page.locator(cash_total_selector)).to_contain_text("100.0%")
+
+    def test_variance_mode_column_toggle(self, page: Page, live_server_url: str) -> None:
+        """Verify allocating table columns toggle based on variance mode."""
+        # Login
+        page.goto(f"{live_server_url}/accounts/login/")
+        page.fill('input[name="username"]', "testuser")
+        page.fill('input[name="password"]', "password")
+        page.click('button[type="submit"]')
+        page.goto(f"{live_server_url}/targets/")
+
+        # Locators for columns (using the classes we added)
+        policy_cols = page.locator(".col-mode-policy")
+        effective_cols = page.locator(".col-mode-effective")
+
+        # Locators for mode labels (since inputs are hidden)
+        label_effective = page.locator('label[for="variance-effective"]')
+        label_policy = page.locator('label[for="variance-policy"]')
+
+        # DEFAULT: Effective Mode
+        # Ensure effective is selected. Can click it to be sure.
+        label_effective.click()
+
+        # Verify Effective columns are visible (not hidden)
+        expect(effective_cols.first).to_be_visible()
+
+        # Verify Policy columns are hidden
+        expect(policy_cols.first).not_to_be_visible()
+
+        # SWITCH TO POLICY MODE
+        label_policy.click()
+
+        # Verify Policy columns are visible
+        expect(policy_cols.first).to_be_visible()
+
+        # Verify Effective columns are hidden
+        expect(effective_cols.first).not_to_be_visible()

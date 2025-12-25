@@ -51,7 +51,7 @@ class TargetAllocationViewService:
             )
 
             # Calculate portfolio total for display
-            portfolio_total = Decimal(float(aggregated["grand_total"].iloc[0]["portfolio_current"]))
+            portfolio_total = Decimal(float(aggregated["grand_total"].iloc[0]["portfolio_actual"]))
 
         strategies = AllocationStrategy.objects.filter(user=user).order_by("name")
 

@@ -48,6 +48,43 @@ cb3portfolio follows domain-driven design principles with clear separation of co
   - Render data provided by views
   - **Rule**: Templates display, they don't calculate
 
+### Allocation Terminology
+
+Standardized naming is used throughout the application to distinguish between three concepts:
+
+1.  **Actual Allocation** (Current Holdings)
+    - **What it is**: Current dollar and percentage allocation based on actual holdings.
+    - **Use case**: Shows what you currently own.
+
+2.  **Policy Target** (Stated Strategy)
+    - **What it is**: Target allocation percentage assigned in an `AllocationStrategy`.
+    - **Use case**: Shows what the investment policy says you should own.
+
+3.  **Effective Target** (Weighted Average)
+    - **What it is**: The weighted average of policy targets across all accounts.
+    - **Use case**: Shows the achievable target given account constraints and individual strategies. Useful for rebalancing.
+
+### Variance Concepts
+
+1.  **Policy Variance** (Actual - Policy)
+    - **Purpose**: Strategy adherence monitoring - "Am I following my investment policy?"
+
+2.  **Effective Variance** (Actual - Effective)
+    - **Purpose**: Practical rebalancing - "How much do I need to trade to hit my targets?"
+
+### Naming Conventions
+
+The calculation engine uses a standardized suffix pattern for DataFrame columns:
+
+- `{prefix}_actual`: Current holdings (dollars)
+- `{prefix}_actual_pct`: Current holdings (percentage)
+- `{prefix}_policy`: Policy target (dollars)
+- `{prefix}_policy_pct`: Policy target (percentage)
+- `{prefix}_policy_variance`: actual - policy (dollars)
+- `{prefix}_effective`: Weighted average target (dollars)
+- `{prefix}_effective_pct`: Weighted average target (percentage)
+- `{prefix}_effective_variance`: actual - effective (dollars)
+
 ### Key Principles
 
 1. **Single Source of Truth** - Business logic lives in domain models
