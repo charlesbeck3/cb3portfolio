@@ -185,74 +185,72 @@ class Command(BaseCommand):
             },
         ]
 
-        # Realistic Targets
-        main_targets = [
+        # Realistic Strategies
+        main_strategies: list[dict[str, Any]] = [
             {
-                "asset_class": "US Equities",
-                "TAXABLE": Decimal("30.0"),
-                "TRADITIONAL_IRA": Decimal("25.0"),
-                "ROTH_IRA": Decimal("25.0"),
+                "name": "Portfolio Default",
+                "is_portfolio_default": True,
+                "allocations": {
+                    "US Equities": Decimal("27.5"),
+                    "US Real Estate": Decimal("10.0"),
+                    "US Quality Equities": Decimal("5.0"),
+                    "US Small Cap Value Equities": Decimal("5.0"),
+                    "International Developed Equities": Decimal("17.5"),
+                    "International Emerging Equities": Decimal("5.0"),
+                    "US Treasuries - Short": Decimal("15.0"),
+                    "US Treasuries - Intermediate": Decimal("5.0"),
+                    "Inflation Adjusted Bond": Decimal("5.0"),
+                },
             },
             {
-                "asset_class": "US Real Estate",
-                "TAXABLE": Decimal("0.0"),
-                "TRADITIONAL_IRA": Decimal("30.0"),
-                "ROTH_IRA": Decimal("25.0"),
+                "name": "Taxable Strategy",
+                "account_type_code": "TAXABLE",
+                "allocations": {
+                    "US Equities": Decimal("30.0"),
+                    "US Small Cap Value Equities": Decimal("10.0"),
+                    "US Quality Equities": Decimal("10.0"),
+                    "International Developed Equities": Decimal("25.0"),
+                    "International Emerging Equities": Decimal("10.0"),
+                    "US Treasuries - Short": Decimal("10.0"),
+                    "US Treasuries - Intermediate": Decimal("5.0"),
+                },
             },
             {
-                "asset_class": "US Small Cap Value Equities",
-                "TAXABLE": Decimal("10.0"),
-                "TRADITIONAL_IRA": Decimal("0.0"),
-                "ROTH_IRA": Decimal("5.0"),
+                "name": "Traditional IRA Strategy",
+                "account_type_code": "TRADITIONAL_IRA",
+                "allocations": {
+                    "US Equities": Decimal("25.0"),
+                    "US Real Estate": Decimal("30.0"),
+                    "International Developed Equities": Decimal("10.0"),
+                    "US Treasuries - Short": Decimal("30.0"),
+                    "US Treasuries - Intermediate": Decimal("5.0"),
+                },
             },
             {
-                "asset_class": "US Quality Equities",
-                "TAXABLE": Decimal("10.0"),
-                "TRADITIONAL_IRA": Decimal("0.0"),
-                "ROTH_IRA": Decimal("5.0"),
+                "name": "Roth IRA Strategy",
+                "account_type_code": "ROTH_IRA",
+                "allocations": {
+                    "US Equities": Decimal("25.0"),
+                    "US Real Estate": Decimal("25.0"),
+                    "US Small Cap Value Equities": Decimal("5.0"),
+                    "US Quality Equities": Decimal("5.0"),
+                    "International Developed Equities": Decimal("15.0"),
+                    "International Emerging Equities": Decimal("5.0"),
+                    "US Treasuries - Short": Decimal("15.0"),
+                    "US Treasuries - Intermediate": Decimal("5.0"),
+                },
             },
             {
-                "asset_class": "International Developed Equities",
-                "TAXABLE": Decimal("25.0"),
-                "TRADITIONAL_IRA": Decimal("10.0"),
-                "ROTH_IRA": Decimal("15.0"),
-            },
-            {
-                "asset_class": "International Emerging Equities",
-                "TAXABLE": Decimal("10.0"),
-                "TRADITIONAL_IRA": Decimal("0.0"),
-                "ROTH_IRA": Decimal("5.0"),
-            },
-            {
-                "asset_class": "US Short-term Treasuries",
-                "TAXABLE": Decimal("10.0"),
-                "TRADITIONAL_IRA": Decimal("30.0"),
-                "ROTH_IRA": Decimal("15.0"),
-            },
-            {
-                "asset_class": "US Intermediate-term Treasuries",
-                "TAXABLE": Decimal("5.0"),
-                "TRADITIONAL_IRA": Decimal("5.0"),
-                "ROTH_IRA": Decimal("5.0"),
-            },
-            {
-                "asset_class": "Inflation Adjusted Bond",
-                "TAXABLE": Decimal("0.0"),
-                "TRADITIONAL_IRA": Decimal("0.0"),
-                "ROTH_IRA": Decimal("0.0"),
-                "DEPOSIT": Decimal("50.0"),
-            },
-            {
-                "asset_class": AssetClass.CASH_NAME,
-                "TAXABLE": Decimal("0.0"),
-                "TRADITIONAL_IRA": Decimal("0.0"),
-                "ROTH_IRA": Decimal("0.0"),
-                "DEPOSIT": Decimal("50.0"),
+                "name": "Deposit Strategy",
+                "account_type_code": "DEPOSIT",
+                "allocations": {
+                    "Inflation Adjusted Bond": Decimal("50.0"),
+                },
             },
         ]
 
         self.seed_user_portfolio(admin_user, admin_portfolio, main_accounts, type_objects)
-        self.seed_user_targets(admin_user, admin_portfolio, main_targets, type_objects)
+        self.seed_user_targets(admin_user, admin_portfolio, main_strategies, type_objects)
 
         self.stdout.write(self.style.SUCCESS("User Data seeded successfully!"))
 
@@ -318,59 +316,39 @@ class Command(BaseCommand):
         self,
         user: CustomUser,
         portfolio: Portfolio,
-        targets_data: list[dict],
+        strategies_data: list[dict],
         type_objects: dict,
     ) -> None:
-        allocations_by_type: dict[str, dict[str, Decimal]] = {}
+        ac_map = {ac.name: ac.id for ac in AssetClass.objects.all()}
 
-        for row in targets_data:
-            ac_name = row.get("asset_class")
-            if not ac_name:
-                continue
-
-            for key, val in row.items():
-                if key == "asset_class":
-                    continue
-                if key not in type_objects:
-                    continue
-
-                allocations_by_type.setdefault(key, {})[ac_name] = Decimal(str(val))
-
-        portfolio_default_strategy, _ = AllocationStrategy.objects.update_or_create(
-            user=user,
-            name="Portfolio Default",
-            defaults={"description": "Default strategy for the portfolio"},
-        )
-        portfolio.allocation_strategy = portfolio_default_strategy
-        portfolio.save(update_fields=["allocation_strategy"])
-
-        # Ensure the portfolio default strategy is at least defined (100% cash).
-        portfolio_default_strategy.save_allocations({})
-
-        for at_code, allocation_map in allocations_by_type.items():
-            account_type = type_objects[at_code]
+        for strategy_data in strategies_data:
+            name = strategy_data["name"]
+            allocations_dict = {}
+            for ac_name, pct in strategy_data["allocations"].items():
+                ac_id = ac_map.get(ac_name)
+                if ac_id:
+                    asset_class = AssetClass.objects.get(id=ac_id)
+                    if not asset_class.is_cash():
+                        allocations_dict[ac_id] = Decimal(str(pct))
 
             strategy, _ = AllocationStrategy.objects.update_or_create(
                 user=user,
-                name=f"{account_type.label} Strategy",
-                defaults={"description": f"Default strategy for {account_type.label}"},
+                name=name,
+                defaults={"description": f"Seeded strategy: {name}"},
             )
-
-            # Convert asset class names to IDs and exclude Cash
-            allocations_dict = {}
-            for ac_name, pct in allocation_map.items():
-                try:
-                    asset_class = AssetClass.objects.get(name=ac_name)
-                    if not asset_class.is_cash():  # Exclude cash - it's calculated
-                        allocations_dict[asset_class.id] = Decimal(str(pct))
-                except AssetClass.DoesNotExist:
-                    continue
-
-            # Use domain model - automatically handles cash remainder and persistence
+            # Domain model handles cash remainder and persistence
             strategy.save_allocations(allocations_dict)
 
-            AccountTypeStrategyAssignment.objects.update_or_create(
-                user=user,
-                account_type=account_type,
-                defaults={"allocation_strategy": strategy},
-            )
+            if strategy_data.get("is_portfolio_default"):
+                portfolio.allocation_strategy = strategy
+                portfolio.save(update_fields=["allocation_strategy"])
+
+            at_code = strategy_data.get("account_type_code")
+            if at_code:
+                account_type = type_objects.get(at_code)
+                if account_type:
+                    AccountTypeStrategyAssignment.objects.update_or_create(
+                        user=user,
+                        account_type=account_type,
+                        defaults={"allocation_strategy": strategy},
+                    )
