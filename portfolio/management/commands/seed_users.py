@@ -259,6 +259,13 @@ class Command(BaseCommand):
                     "Inflation Adjusted Bond": Decimal("100.0"),
                 },
             },
+            {
+                "name": "All US Equities",
+                "account_name": "WF S&P",
+                "allocations": {
+                    "US Equities": Decimal("100.0"),
+                },
+            },
         ]
 
         self.seed_user_portfolio(admin_user, admin_portfolio, main_accounts, type_objects)
