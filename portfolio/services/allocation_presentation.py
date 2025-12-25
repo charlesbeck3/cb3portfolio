@@ -264,6 +264,10 @@ class AllocationPresentationFormatter:
             "effective_variance": row.get("portfolio_effective_variance_fmt", ""),
             "effective_variance_raw": float(row.get("portfolio_effective_variance", 0.0)),
             "effective_variance_pct": float(row.get("portfolio_effective_variance_pct", 0.0)),
+            # Policy variance (vs explicit target)
+            "policy_variance": row.get("portfolio_policy_variance_fmt", ""),
+            "policy_variance_raw": float(row.get("portfolio_policy_variance", 0.0)),
+            "policy_variance_pct": float(row.get("portfolio_policy_variance_pct", 0.0)),
             # Explicit target for reference if needed
             "explicit_target": row.get("portfolio_explicit_target_fmt", ""),
         }

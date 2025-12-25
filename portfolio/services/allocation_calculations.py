@@ -850,6 +850,14 @@ class AllocationCalculationEngine:
             df["portfolio_explicit_target_pct"] / 100 * portfolio_total
         )
 
+        # Calculate policy variance (actual - explicit/policy target)
+        df["portfolio_policy_variance"] = (
+            df["portfolio_actual"] - df["portfolio_explicit_target"]
+        )
+        df["portfolio_policy_variance_pct"] = (
+            df["portfolio_actual_pct"] - df["portfolio_explicit_target_pct"]
+        )
+
         return df
 
     def aggregate_presentation_levels(

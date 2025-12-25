@@ -328,11 +328,51 @@ class TestCalculationAccuracy(TestCase):
 
         self.assertAlmostEqual(total_pct, 100.0, places=1)
 
-    def test_variance_calculation(self) -> None:
-        """Verify variance = current - target."""
-        # This would need more complete test data with targets
-        # Placeholder for now
-        pass
+class TestPortfolioCalculations(SimpleTestCase):
+    """Test portfolio-level specific calculations."""
+
+    def test_portfolio_policy_variance_calculation(self) -> None:
+        """Verify portfolio policy variance is calculated correctly (actual - explicit target)."""
+        engine = AllocationCalculationEngine()
+
+        # Mock data
+        df = pd.DataFrame(
+            {
+                "asset_class_id": [1, 2],
+                "asset_class_name": ["Stocks", "Bonds"],
+                "portfolio_actual": [1000.0, 500.0],
+                "portfolio_actual_pct": [66.7, 33.3],
+            }
+        )
+
+        target_strategies = {
+            "portfolio_explicit": {
+                1: Decimal("60.0"),  # 60% Stocks
+                2: Decimal("40.0"),  # 40% Bonds
+            }
+        }
+        portfolio_total = 1500.0
+
+        # Run calculation
+        result = engine._calculate_portfolio_explicit_targets(
+            df, target_strategies, portfolio_total
+        )
+
+        # Verify explicit targets
+        self.assertAlmostEqual(result.loc[0, "portfolio_explicit_target"], 900.0)  # 60% of 1500
+        self.assertAlmostEqual(result.loc[1, "portfolio_explicit_target"], 600.0)  # 40% of 1500
+
+        # Verify policy variance: actual - explicit target
+        # Stocks: 1000 - 900 = +100
+        # Bonds: 500 - 600 = -100
+        self.assertAlmostEqual(result.loc[0, "portfolio_policy_variance"], 100.0)
+        self.assertAlmostEqual(result.loc[1, "portfolio_policy_variance"], -100.0)
+
+        # Verify pct variance: actual_pct - target_pct
+        # Stocks: 66.7 - 60.0 = +6.7
+        # Bonds: 33.3 - 40.0 = -6.7
+        self.assertAlmostEqual(result.loc[0, "portfolio_policy_variance_pct"], 6.7, places=1)
+        self.assertAlmostEqual(result.loc[1, "portfolio_policy_variance_pct"], -6.7, places=1)
 
 
 class TestPerformance(SimpleTestCase):

@@ -122,7 +122,9 @@
             >{{ row.portfolio.effective|safe }}</td>
             <td class="text-end pe-2 table-active fw-bold variance-col"
                 data-effective-variance="{{ row.portfolio.effective_variance|safe }}"
+                data-policy-variance="{{ row.portfolio.policy_variance|safe }}"
                 data-effective-variance-pct="{{ row.portfolio.effective_variance_pct }}"
+                data-policy-variance-pct="{{ row.portfolio.policy_variance_pct }}"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-var"
                 {% elif row.is_subtotal %}id="sub-total-var-{{ row.category_code }}"
