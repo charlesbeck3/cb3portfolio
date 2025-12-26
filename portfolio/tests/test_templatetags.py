@@ -2,6 +2,8 @@ from decimal import Decimal
 
 from django.test import TestCase
 
+import pytest
+
 from portfolio.templatetags.portfolio_filters import (
     accounting_amount,
     accounting_number,
@@ -10,6 +12,7 @@ from portfolio.templatetags.portfolio_filters import (
 )
 
 
+@pytest.mark.unit
 class PortfolioExtrasTests(TestCase):
     def test_percentage_of(self) -> None:
         self.assertEqual(percentage_of(10, 100), Decimal("10"))

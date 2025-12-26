@@ -10,7 +10,7 @@ User = get_user_model()
 
 class AccountGroupTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
         # self.institution = Institution.objects.create(name='Test Bank')

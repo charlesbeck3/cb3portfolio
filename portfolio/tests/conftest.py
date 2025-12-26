@@ -5,7 +5,15 @@ Fixture Hierarchy:
 - base_system_data: System-wide seed data (account types, asset classes, etc.)
 - test_user: Standard test user
 - test_portfolio: Portfolio with user and system data
-- standard_test_portfolio: Complete portfolio with holdings (for E2E tests)
+- simple_holdings: Portfolio with $1000 VTI in Roth IRA
+- multi_account_holdings: Roth + Taxable accounts with holdings
+- standard_test_portfolio: Backward-compatible fixture for E2E tests
+
+Mock Fixtures (imported from fixtures/mocks.py):
+- mock_market_prices: Factory for custom price mocking
+- stable_test_prices: Pre-configured standard test prices
+- zero_prices: Empty prices for edge case testing
+- volatile_prices: Extreme prices for stress testing
 """
 
 from decimal import Decimal
@@ -28,8 +36,36 @@ from portfolio.models import (
 )
 
 # Import mock fixtures to make them available globally
+from portfolio.tests.fixtures.mocks import (
+    mock_market_prices,
+    stable_test_prices,
+    volatile_prices,
+    zero_prices,
+)
 
 User = get_user_model()
+
+# Export all fixtures for better IDE autocomplete and documentation
+__all__ = [
+    # System data
+    'base_system_data',
+    # Users
+    'test_user',
+    'test_user_with_name',
+    # Portfolios
+    'test_portfolio',
+    'roth_account',
+    'taxable_account',
+    # Holdings
+    'simple_holdings',
+    'multi_account_holdings',
+    'standard_test_portfolio',
+    # Mock fixtures
+    'mock_market_prices',
+    'stable_test_prices',
+    'zero_prices',
+    'volatile_prices',
+]
 
 
 # ============================================================================
@@ -37,7 +73,7 @@ User = get_user_model()
 # ============================================================================
 
 @pytest.fixture
-def base_system_data(db):
+def base_system_data(db: Any) -> Any:
     """
     Seed system-wide data and return mixin-like object for easy access.
 
@@ -105,7 +141,7 @@ def base_system_data(db):
 # ============================================================================
 
 @pytest.fixture
-def test_user(db):
+def test_user(db: Any) -> Any:
     """
     Standard test user - reusable across all tests.
 
@@ -116,9 +152,9 @@ def test_user(db):
 
 
 @pytest.fixture
-def test_user_with_name(db):
+def test_user_with_name(db: Any) -> Any:
     """Test user with custom username - for multi-user test scenarios."""
-    def _create_user(username: str, password: str = "password"):
+    def _create_user(username: str, password: str = "password") -> Any:
         return User.objects.create_user(username=username, password=password)
     return _create_user
 
@@ -128,7 +164,7 @@ def test_user_with_name(db):
 # ============================================================================
 
 @pytest.fixture
-def test_portfolio(db, test_user, base_system_data):
+def test_portfolio(db: Any, test_user: Any, base_system_data: Any) -> dict[str, Any]:
     """
     Standard portfolio with user and system data.
 
@@ -147,7 +183,7 @@ def test_portfolio(db, test_user, base_system_data):
 
 
 @pytest.fixture
-def roth_account(test_portfolio):
+def roth_account(test_portfolio: dict[str, Any]) -> Account:
     """
     Single Roth IRA account (no holdings).
 
@@ -164,7 +200,7 @@ def roth_account(test_portfolio):
 
 
 @pytest.fixture
-def taxable_account(test_portfolio):
+def taxable_account(test_portfolio: dict[str, Any]) -> Account:
     """
     Single taxable account (no holdings).
 
@@ -185,7 +221,7 @@ def taxable_account(test_portfolio):
 # ============================================================================
 
 @pytest.fixture
-def simple_holdings(test_portfolio, roth_account):
+def simple_holdings(test_portfolio: dict[str, Any], roth_account: Account) -> dict[str, Any]:
     """
     Simple portfolio with one Roth IRA holding $1000 VTI.
 
@@ -209,7 +245,9 @@ def simple_holdings(test_portfolio, roth_account):
 
 
 @pytest.fixture
-def multi_account_holdings(test_portfolio, roth_account, taxable_account):
+def multi_account_holdings(
+    test_portfolio: dict[str, Any], roth_account: Account, taxable_account: Account
+) -> dict[str, Any]:
     """
     Portfolio with holdings in both Roth and Taxable accounts.
 
@@ -248,7 +286,7 @@ def multi_account_holdings(test_portfolio, roth_account, taxable_account):
 # ============================================================================
 
 @pytest.fixture
-def standard_test_portfolio(simple_holdings):
+def standard_test_portfolio(simple_holdings: dict[str, Any]) -> dict[str, Any]:
     """
     Backward-compatible fixture for E2E tests.
 

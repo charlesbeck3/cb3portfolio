@@ -3,6 +3,8 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+import pytest
+
 from portfolio.domain.portfolio import Portfolio
 from portfolio.models import Account, AssetClass, Holding
 from portfolio.tests.base import PortfolioTestMixin
@@ -10,9 +12,11 @@ from portfolio.tests.base import PortfolioTestMixin
 User = get_user_model()
 
 
+@pytest.mark.domain
+@pytest.mark.integration
 class PortfolioTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
 

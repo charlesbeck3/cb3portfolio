@@ -4,6 +4,8 @@ from unittest.mock import MagicMock
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+import pytest
+
 from portfolio.models import Account, AssetClass, Holding, Institution
 from portfolio.services import PricingService
 
@@ -12,9 +14,11 @@ from ..base import PortfolioTestMixin
 User = get_user_model()
 
 
+@pytest.mark.services
+@pytest.mark.integration
 class PricingServiceTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
         self.institution = Institution.objects.create(name="Test Institution")

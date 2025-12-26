@@ -47,7 +47,7 @@ def standard_test_portfolio(db: Any) -> dict[str, Any]:
     from portfolio.tests.base import PortfolioTestMixin
 
     mixin = PortfolioTestMixin()
-    mixin.setup_portfolio_data()
+    mixin.setup_system_data()
 
     user_model = get_user_model()
     user = user_model.objects.create_user(username=TEST_USERNAME, password=TEST_PASSWORD)

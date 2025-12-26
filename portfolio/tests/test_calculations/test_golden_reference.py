@@ -26,6 +26,8 @@ from decimal import Decimal
 
 from django.test import TestCase
 
+import pytest
+
 from portfolio.domain.allocation import AssetAllocation
 from portfolio.domain.portfolio import Portfolio
 from portfolio.models import (
@@ -42,6 +44,9 @@ from portfolio.tests.base import PortfolioTestMixin
 from users.models import CustomUser
 
 
+@pytest.mark.golden
+@pytest.mark.integration
+@pytest.mark.slow
 class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
     """
     Golden Reference: Real-world portfolio with 4 accounts.

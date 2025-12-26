@@ -21,6 +21,7 @@ User = get_user_model()
 
 
 @pytest.mark.views
+@pytest.mark.integration
 class DashboardViewTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_system_data()
@@ -194,6 +195,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
 
 
 @pytest.mark.views
+@pytest.mark.integration
 class HoldingsViewTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
         self.setup_system_data()

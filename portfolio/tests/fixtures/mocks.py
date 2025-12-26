@@ -19,7 +19,7 @@ import pytest
 # ============================================================================
 
 @pytest.fixture
-def mock_market_prices(request) -> Callable[[dict[str, Decimal]], MagicMock]:
+def mock_market_prices(request: Any) -> Callable[[dict[str, Decimal]], MagicMock]:
     """
     Fixture that mocks MarketDataService.get_prices with custom prices.
 
@@ -140,13 +140,13 @@ class MockMarketPrices:
         self.patcher: Any = None
         self.mock: Any = None
 
-    def __enter__(self):
+    def __enter__(self) -> MagicMock:
         self.patcher = patch("portfolio.services.MarketDataService.get_prices")
         self.mock = self.patcher.start()
         self.mock.return_value = self.prices
         return self.mock
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self.patcher:
             self.patcher.stop()
 

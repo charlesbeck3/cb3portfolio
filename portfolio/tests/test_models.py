@@ -3,6 +3,8 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+import pytest
+
 from portfolio.models import (
     Account,
     AllocationStrategy,
@@ -19,9 +21,11 @@ from .base import PortfolioTestMixin
 User = get_user_model()
 
 
+@pytest.mark.models
+@pytest.mark.integration
 class AccountTypeTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create(username="testuser_type")
         self.portfolio = Portfolio.objects.create(name="Test Portfolio Type", user=self.user)
 
@@ -58,9 +62,11 @@ class AccountTypeTests(TestCase, PortfolioTestMixin):
         self.assertIn("Acc 2", account_names)
 
 
+@pytest.mark.models
+@pytest.mark.integration
 class PortfolioTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create(username="testuser_port")
         self.portfolio = Portfolio.objects.create(name="Test Portfolio", user=self.user)
         # Setup for dataframe tests
@@ -124,9 +130,11 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
         assert df.index.names == ["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
 
 
+@pytest.mark.models
+@pytest.mark.integration
 class AssetClassTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
 
     def test_create_asset_class(self) -> None:
         """Test creating an asset class."""
@@ -140,9 +148,11 @@ class AssetClassTests(TestCase, PortfolioTestMixin):
         self.assertEqual(str(ac), "US Stocks")
 
 
+@pytest.mark.models
+@pytest.mark.integration
 class AccountTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
         # self.institution = Institution.objects.create(name="Vanguard")
@@ -316,11 +326,13 @@ class AccountTests(TestCase, PortfolioTestMixin):
         self.assertEqual(val, 1000.0)
 
 
+@pytest.mark.models
+@pytest.mark.integration
 class SecurityTests(
     TestCase, PortfolioTestMixin
 ):  # Added mixin just in case, though not strictly needed if not using AccountType
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.asset_class = AssetClass.objects.create(
             name="US Stocks",
             category=self.cat_us_eq,
@@ -335,9 +347,11 @@ class SecurityTests(
         self.assertEqual(str(security), "VTI - Vanguard Total Stock Market ETF")
 
 
+@pytest.mark.models
+@pytest.mark.integration
 class HoldingTests(TestCase, PortfolioTestMixin):  # Inherit from PortfolioTestMixin
     def setUp(self) -> None:
-        self.setup_portfolio_data()  # Call setup_portfolio_data()
+        self.setup_system_data()  # Call setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
         # self.institution = Institution.objects.create(name="Vanguard") # Removed, as it's in mixin
@@ -431,9 +445,11 @@ class HoldingTests(TestCase, PortfolioTestMixin):  # Inherit from PortfolioTestM
         self.assertEqual(variance, Decimal("1000") - Decimal("2500"))
 
 
+@pytest.mark.models
+@pytest.mark.integration
 class TargetAllocationTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.strategy = AllocationStrategy.objects.create(user=self.user, name="Test Strategy")
         self.asset_class = AssetClass.objects.create(
@@ -521,9 +537,11 @@ class TargetAllocationTests(TestCase, PortfolioTestMixin):
         self.assertIn("110", msg)
 
 
+@pytest.mark.models
+@pytest.mark.integration
 class RebalancingRecommendationTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
         self.asset_class = AssetClass.objects.create(

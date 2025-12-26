@@ -13,7 +13,7 @@ User = get_user_model()
 
 class PortfolioAnalysisTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
 

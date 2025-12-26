@@ -13,7 +13,7 @@ class AllocationStrategyCashCalculationTests(TestCase, PortfolioTestMixin):
     """Test the extracted cash allocation calculation logic."""
 
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser")
         self.strategy = AllocationStrategy.objects.create(user=self.user, name="Test Strategy")
 
@@ -73,7 +73,7 @@ class AllocationStrategyValidationTests(TestCase, PortfolioTestMixin):
     """Test defensive validation in AllocationStrategy.save_allocations()."""
 
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser_validation")
         self.strategy = AllocationStrategy.objects.create(user=self.user, name="Test Strategy")
 
