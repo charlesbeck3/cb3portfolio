@@ -78,12 +78,13 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
 
         # Ensure US Real Estate is available (consistency patch)
         if not hasattr(self, "asset_class_us_real_estate"):
-             self.asset_class_us_real_estate = AssetClass.objects.get(name="US Real Estate")
+            self.asset_class_us_real_estate = AssetClass.objects.get(name="US Real Estate")
         if not hasattr(self, "asset_class_us_small_cap_value"):
-             self.asset_class_us_small_cap_value = AssetClass.objects.get(name="US Small Cap Value Equities")
+            self.asset_class_us_small_cap_value = AssetClass.objects.get(
+                name="US Small Cap Value Equities"
+            )
         if not hasattr(self, "asset_class_us_quality"):
-             self.asset_class_us_quality = AssetClass.objects.get(name="US Quality Equities")
-
+            self.asset_class_us_quality = AssetClass.objects.get(name="US Quality Equities")
 
         # The setup_system_data() call from PortfolioTestMixin already handles:
         # - Institutions
@@ -109,7 +110,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         self.sec_vwo = Security.objects.get(ticker="VWO")
         self.sec_vgsh = Security.objects.get(ticker="VGSH")
         self.sec_vgit = Security.objects.get(ticker="VGIT")
-        self.sec_cash = Security.objects.get(ticker="CASH")
+        self.cash = Security.objects.get(ticker="CASH")
 
         # ================================================================
         # ALLOCATION STRATEGIES SETUP
@@ -207,7 +208,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         )
         AccountTypeStrategyAssignment.objects.create(
             user=self.user,
-            account_type=self.type_traditional_ira,
+            account_type=self.type_trad,
             allocation_strategy=self.strategy_tax_deferred,
         )
 
@@ -313,7 +314,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         # Cash
         Holding.objects.create(
             account=self.acc_ml_brokerage,
-            security=self.sec_cash,
+            security=self.cash,
             shares=Decimal("5.00"),
             current_price=Decimal("1.00"),
         )
@@ -326,7 +327,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
             user=self.user,
             name="CB IRA",
             portfolio=self.portfolio,
-            account_type=self.type_traditional_ira,
+            account_type=self.type_trad,
             institution=self.institution,
             allocation_strategy=None,  # Uses type default
         )
@@ -368,7 +369,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         # Cash
         Holding.objects.create(
             account=self.acc_cb_ira,
-            security=self.sec_cash,
+            security=self.cash,
             shares=Decimal("11.00"),
             current_price=Decimal("1.00"),
         )
@@ -398,7 +399,8 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
 
         # Target should be 100% Inflation Adjusted Bond
         alloc = AssetAllocation(
-            asset_class_name="Inflation Adjusted Bond", target_pct=AllocationStrategy.TOTAL_ALLOCATION_PCT
+            asset_class_name="Inflation Adjusted Bond",
+            target_pct=AllocationStrategy.TOTAL_ALLOCATION_PCT,
         )
         target_value = alloc.target_value_for(self.acc_treasury.total_value())
         self.assertEqual(target_value, Decimal("108000.00"))
@@ -411,7 +413,8 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         total = self.acc_treasury.total_value()
 
         alloc = AssetAllocation(
-            asset_class_name="Inflation Adjusted Bond", target_pct=AllocationStrategy.TOTAL_ALLOCATION_PCT
+            asset_class_name="Inflation Adjusted Bond",
+            target_pct=AllocationStrategy.TOTAL_ALLOCATION_PCT,
         )
         variance = alloc.variance_for(holdings["Inflation Adjusted Bond"], total)
         self.assertEqual(variance, Decimal("0.00"))

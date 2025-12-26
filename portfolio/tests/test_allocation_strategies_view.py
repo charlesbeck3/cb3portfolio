@@ -20,7 +20,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
         # Asset Classes are already set up by mixin
         self.ac1 = self.asset_class_us_equities  # US Equities
         self.ac2 = self.asset_class_intl_developed  # Intl Dev
-        self.ac_cash = self.asset_class_cash
+        self.asset_class_cash = self.asset_class_cash
 
     def test_create_strategy_with_cash_remainder(self) -> None:
         """Verify cash is calculated as remainder."""
@@ -47,7 +47,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
         )
 
         # Verify cash was calculated correctly
-        cash_allocation = strategy.target_allocations.get(asset_class=self.ac_cash)
+        cash_allocation = strategy.target_allocations.get(asset_class=self.asset_class_cash)
         self.assertEqual(cash_allocation.target_percent, Decimal("10.00"))
 
         # Verify total is 100%
@@ -72,7 +72,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
         # if cash_percent > 0: create.
         # So let's check if it exists or not.
 
-        cash_exists = strategy.target_allocations.filter(asset_class=self.ac_cash).exists()
+        cash_exists = strategy.target_allocations.filter(asset_class=self.asset_class_cash).exists()
         self.assertFalse(cash_exists, "Cash allocation should not exist if remainder is 0")
 
         # Verify property returns 0.00
@@ -126,7 +126,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
             "name": "Explicit Cash Strategy",
             f"target_{self.ac1.id}": "60.00",
             f"target_{self.ac2.id}": "30.00",
-            f"target_{self.ac_cash.id}": "10.00",  # Explicit cash
+            f"target_{self.asset_class_cash.id}": "10.00",  # Explicit cash
         }
 
         response = self.client.post(url, data)
@@ -142,7 +142,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
             strategy.target_allocations.get(asset_class=self.ac2).target_percent, Decimal("30.00")
         )
         self.assertEqual(
-            strategy.target_allocations.get(asset_class=self.ac_cash).target_percent,
+            strategy.target_allocations.get(asset_class=self.asset_class_cash).target_percent,
             Decimal("10.00"),
         )
 
@@ -157,7 +157,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
             "name": "Wrong Sum Strategy",
             f"target_{self.ac1.id}": "60.00",
             f"target_{self.ac2.id}": "30.00",
-            f"target_{self.ac_cash.id}": "15.00",  # Total: 105%
+            f"target_{self.asset_class_cash.id}": "15.00",  # Total: 105%
         }
 
         response = self.client.post(url, data)
@@ -174,7 +174,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
             "name": "Under Sum Strategy",
             f"target_{self.ac1.id}": "60.00",
             f"target_{self.ac2.id}": "30.00",
-            f"target_{self.ac_cash.id}": "5.00",  # Total: 95%
+            f"target_{self.asset_class_cash.id}": "5.00",  # Total: 95%
         }
 
         response = self.client.post(url, data)
@@ -192,7 +192,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
             {
                 self.ac1.id: Decimal("60.00"),
                 self.ac2.id: Decimal("30.00"),
-                self.ac_cash.id: Decimal("10.00"),
+                self.asset_class_cash.id: Decimal("10.00"),
             }
         )
 
@@ -210,7 +210,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
                 {
                     self.ac1.id: Decimal("60.00"),
                     self.ac2.id: Decimal("30.00"),
-                    self.ac_cash.id: Decimal("15.00"),  # Total: 105%
+                    self.asset_class_cash.id: Decimal("15.00"),  # Total: 105%
                 }
             )
 

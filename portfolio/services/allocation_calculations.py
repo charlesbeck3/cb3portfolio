@@ -315,28 +315,28 @@ class AllocationCalculationEngine:
                 category_code = "UNC"
                 category_label = "Unclassified"
 
-            data.append({
-                "Account_ID": h.account_id,
-                "Account_Name": h.account.name,
-                "Account_Type": h.account.account_type.label,
-                "Asset_Class": ac.name if ac else "Unclassified",
-                "Asset_Category": category_label,
-                "Asset_Group": group_label,
-                "Group_Code": group_code,
-                "Category_Code": category_code,
-                "Ticker": h.security.ticker,
-                "Security_Name": h.security.name,
-                "Shares": float(h.shares),
-                "Price": float(h.current_price) if h.current_price else 0.0,
-                "Value": float(h.market_value),
-            })
+            data.append(
+                {
+                    "Account_ID": h.account_id,
+                    "Account_Name": h.account.name,
+                    "Account_Type": h.account.account_type.label,
+                    "Asset_Class": ac.name if ac else "Unclassified",
+                    "Asset_Category": category_label,
+                    "Asset_Group": group_label,
+                    "Group_Code": group_code,
+                    "Category_Code": category_code,
+                    "Ticker": h.security.ticker,
+                    "Security_Name": h.security.name,
+                    "Shares": float(h.shares),
+                    "Price": float(h.current_price) if h.current_price else 0.0,
+                    "Value": float(h.market_value),
+                }
+            )
 
         return pd.DataFrame(data)
 
     def calculate_holdings_with_targets(
-        self,
-        user: Any,
-        account_id: int | None = None
+        self, user: Any, account_id: int | None = None
     ) -> pd.DataFrame:
         """
         Calculate holdings with target allocations and variances.
@@ -374,7 +374,9 @@ class AllocationCalculationEngine:
         total_value = df_with_targets["Value"].sum()
         if total_value > 0:
             df_with_targets["Allocation_Pct"] = (df_with_targets["Value"] / total_value) * 100
-            df_with_targets["Target_Allocation_Pct"] = (df_with_targets["Target_Value"] / total_value) * 100
+            df_with_targets["Target_Allocation_Pct"] = (
+                df_with_targets["Target_Value"] / total_value
+            ) * 100
         else:
             df_with_targets["Allocation_Pct"] = 0.0
             df_with_targets["Target_Allocation_Pct"] = 0.0
@@ -385,7 +387,9 @@ class AllocationCalculationEngine:
         df_with_targets["Target_Shares"] = df_with_targets.apply(
             lambda r: r["Target_Value"] / r["Price"] if r["Price"] > 0 else 0, axis=1
         )
-        df_with_targets["Shares_Variance"] = df_with_targets["Shares"] - df_with_targets["Target_Shares"]
+        df_with_targets["Shares_Variance"] = (
+            df_with_targets["Shares"] - df_with_targets["Target_Shares"]
+        )
 
         return df_with_targets
 
@@ -820,9 +824,7 @@ class AllocationCalculationEngine:
         )
 
         # Calculate effective variance (actual - effective)
-        df["portfolio_effective_variance"] = (
-            df["portfolio_actual"] - df["portfolio_effective"]
-        )
+        df["portfolio_effective_variance"] = df["portfolio_actual"] - df["portfolio_effective"]
         df["portfolio_effective_variance_pct"] = (
             df["portfolio_actual_pct"] - df["portfolio_effective_pct"]
         )
@@ -851,9 +853,7 @@ class AllocationCalculationEngine:
         )
 
         # Calculate policy variance (actual - explicit/policy target)
-        df["portfolio_policy_variance"] = (
-            df["portfolio_actual"] - df["portfolio_explicit_target"]
-        )
+        df["portfolio_policy_variance"] = df["portfolio_actual"] - df["portfolio_explicit_target"]
         df["portfolio_policy_variance_pct"] = (
             df["portfolio_actual_pct"] - df["portfolio_explicit_target_pct"]
         )

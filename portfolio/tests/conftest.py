@@ -48,29 +48,30 @@ User = get_user_model()
 # Export all fixtures for better IDE autocomplete and documentation
 __all__ = [
     # System data
-    'base_system_data',
+    "base_system_data",
     # Users
-    'test_user',
-    'test_user_with_name',
+    "test_user",
+    "test_user_with_name",
     # Portfolios
-    'test_portfolio',
-    'roth_account',
-    'taxable_account',
+    "test_portfolio",
+    "roth_account",
+    "taxable_account",
     # Holdings
-    'simple_holdings',
-    'multi_account_holdings',
-    'standard_test_portfolio',
+    "simple_holdings",
+    "multi_account_holdings",
+    "standard_test_portfolio",
     # Mock fixtures
-    'mock_market_prices',
-    'stable_test_prices',
-    'zero_prices',
-    'volatile_prices',
+    "mock_market_prices",
+    "stable_test_prices",
+    "zero_prices",
+    "volatile_prices",
 ]
 
 
 # ============================================================================
 # SYSTEM DATA FIXTURES
 # ============================================================================
+
 
 @pytest.fixture
 def base_system_data(db: Any) -> Any:
@@ -119,7 +120,9 @@ def base_system_data(db: Any) -> Any:
 
     # Populate Asset Classes
     data.asset_class_us_equities = AssetClass.objects.get(name="US Equities")
-    data.asset_class_intl_developed = AssetClass.objects.get(name="International Developed Equities")
+    data.asset_class_intl_developed = AssetClass.objects.get(
+        name="International Developed Equities"
+    )
     data.asset_class_intl_emerging = AssetClass.objects.get(name="International Emerging Equities")
     data.asset_class_treasuries_short = AssetClass.objects.get(name="US Treasuries - Short")
     data.asset_class_treasuries_interm = AssetClass.objects.get(name="US Treasuries - Intermediate")
@@ -140,6 +143,7 @@ def base_system_data(db: Any) -> Any:
 # USER FIXTURES
 # ============================================================================
 
+
 @pytest.fixture
 def test_user(db: Any) -> Any:
     """
@@ -154,14 +158,17 @@ def test_user(db: Any) -> Any:
 @pytest.fixture
 def test_user_with_name(db: Any) -> Any:
     """Test user with custom username - for multi-user test scenarios."""
+
     def _create_user(username: str, password: str = "password") -> Any:
         return User.objects.create_user(username=username, password=password)
+
     return _create_user
 
 
 # ============================================================================
 # PORTFOLIO FIXTURES
 # ============================================================================
+
 
 @pytest.fixture
 def test_portfolio(db: Any, test_user: Any, base_system_data: Any) -> dict[str, Any]:
@@ -176,9 +183,9 @@ def test_portfolio(db: Any, test_user: Any, base_system_data: Any) -> dict[str, 
     portfolio = Portfolio.objects.create(user=test_user, name="Test Portfolio")
 
     return {
-        'user': test_user,
-        'portfolio': portfolio,
-        'system': base_system_data,
+        "user": test_user,
+        "portfolio": portfolio,
+        "system": base_system_data,
     }
 
 
@@ -189,11 +196,11 @@ def roth_account(test_portfolio: dict[str, Any]) -> Account:
 
     Requires: test_portfolio fixture
     """
-    system = test_portfolio['system']
+    system = test_portfolio["system"]
     return Account.objects.create(
-        user=test_portfolio['user'],
+        user=test_portfolio["user"],
         name="Roth IRA",
-        portfolio=test_portfolio['portfolio'],
+        portfolio=test_portfolio["portfolio"],
         account_type=system.type_roth,
         institution=system.institution,
     )
@@ -206,11 +213,11 @@ def taxable_account(test_portfolio: dict[str, Any]) -> Account:
 
     Requires: test_portfolio fixture
     """
-    system = test_portfolio['system']
+    system = test_portfolio["system"]
     return Account.objects.create(
-        user=test_portfolio['user'],
+        user=test_portfolio["user"],
         name="Taxable Brokerage",
-        portfolio=test_portfolio['portfolio'],
+        portfolio=test_portfolio["portfolio"],
         account_type=system.type_taxable,
         institution=system.institution,
     )
@@ -220,6 +227,7 @@ def taxable_account(test_portfolio: dict[str, Any]) -> Account:
 # HOLDINGS FIXTURES
 # ============================================================================
 
+
 @pytest.fixture
 def simple_holdings(test_portfolio: dict[str, Any], roth_account: Account) -> dict[str, Any]:
     """
@@ -227,7 +235,7 @@ def simple_holdings(test_portfolio: dict[str, Any], roth_account: Account) -> di
 
     Returns dict with all created objects.
     """
-    system = test_portfolio['system']
+    system = test_portfolio["system"]
 
     holding = Holding.objects.create(
         account=roth_account,
@@ -238,9 +246,9 @@ def simple_holdings(test_portfolio: dict[str, Any], roth_account: Account) -> di
 
     return {
         **test_portfolio,
-        'account': roth_account,
-        'holding': holding,
-        'system': system,
+        "account": roth_account,
+        "holding": holding,
+        "system": system,
     }
 
 
@@ -255,7 +263,7 @@ def multi_account_holdings(
     Taxable: $400 BND
     Total: $1000
     """
-    system = test_portfolio['system']
+    system = test_portfolio["system"]
 
     roth_holding = Holding.objects.create(
         account=roth_account,
@@ -273,17 +281,18 @@ def multi_account_holdings(
 
     return {
         **test_portfolio,
-        'roth_account': roth_account,
-        'taxable_account': taxable_account,
-        'roth_holding': roth_holding,
-        'taxable_holding': taxable_holding,
-        'system': system,
+        "roth_account": roth_account,
+        "taxable_account": taxable_account,
+        "roth_holding": roth_holding,
+        "taxable_holding": taxable_holding,
+        "system": system,
     }
 
 
 # ============================================================================
 # BACKWARD COMPATIBILITY (For E2E Tests)
 # ============================================================================
+
 
 @pytest.fixture
 def standard_test_portfolio(simple_holdings: dict[str, Any]) -> dict[str, Any]:
@@ -295,10 +304,10 @@ def standard_test_portfolio(simple_holdings: dict[str, Any]) -> dict[str, Any]:
     """
     # Transform simple_holdings format to match old structure
     return {
-        "mixin": simple_holdings['system'],  # system data acts like mixin
-        "user": simple_holdings['user'],
-        "portfolio": simple_holdings['portfolio'],
-        "us_stocks": simple_holdings['system'].asset_class_us_equities,
-        "account": simple_holdings['account'],
-        "holding": simple_holdings['holding'],
+        "mixin": simple_holdings["system"],  # system data acts like mixin
+        "user": simple_holdings["user"],
+        "portfolio": simple_holdings["portfolio"],
+        "us_stocks": simple_holdings["system"].asset_class_us_equities,
+        "account": simple_holdings["account"],
+        "holding": simple_holdings["holding"],
     }

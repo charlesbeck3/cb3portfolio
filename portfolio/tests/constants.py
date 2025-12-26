@@ -4,6 +4,7 @@ Standard test data constants.
 Using consistent values across tests makes test behavior predictable
 and makes it easier to spot calculation errors.
 """
+
 from decimal import Decimal
 
 # Standard Holdings Values

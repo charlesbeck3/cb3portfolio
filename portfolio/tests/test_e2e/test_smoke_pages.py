@@ -23,7 +23,9 @@ class TestSmokePages:
         authenticated_page.goto(f"{live_server_url}/targets/")
         expect(authenticated_page.get_by_role("heading", name="Allocations")).to_be_visible()
 
-    def test_account_holdings_page_loads(self, authenticated_page: Page, live_server_url: str) -> None:
+    def test_account_holdings_page_loads(
+        self, authenticated_page: Page, live_server_url: str
+    ) -> None:
         authenticated_page.goto(f"{live_server_url}/account/{self.account.id}/")
         expect(
             authenticated_page.get_by_role("heading", name=f"Holdings for {self.account.name}")

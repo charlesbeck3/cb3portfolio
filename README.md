@@ -304,6 +304,17 @@ uv run ruff format .
 
 # Run both
 uv run ruff check . && uv run ruff format .
+
+### Pre-Commit Hooks
+This project uses pre-commit to ensure code quality before committing.
+
+```bash
+# Install hooks (run once)
+uv run pre-commit install
+
+# Run hooks manually
+uv run pre-commit run --all-files
+```
 ```
 
 ### Database Operations

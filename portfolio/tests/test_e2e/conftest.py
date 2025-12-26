@@ -16,14 +16,17 @@ def live_server_url(live_server: Any) -> str:
     """Explicitly use live_server fixture for Playwright tests."""
     return live_server.url
 
+
 @pytest.fixture
 def login_user(page: Page, live_server_url: str) -> Callable[..., None]:
     """Fixture that provides a login function."""
+
     def _login(username: str = TEST_USERNAME, password: str = TEST_PASSWORD) -> None:
         page.goto(f"{live_server_url}/accounts/login/")
         page.fill('input[name="username"]', username)
         page.fill('input[name="password"]', password)
         page.click('button[type="submit"]')
+
     return _login
 
 

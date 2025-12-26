@@ -22,7 +22,9 @@ class PricingServiceTests(TestCase, PortfolioTestMixin):
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
         self.institution = Institution.objects.create(name="Test Institution")
-        self.asset_class = AssetClass.objects.create(name="US Stocks", category=self.cat_us_eq)
+        self.asset_class = AssetClass.objects.create(
+            name="US Stocks", category=self.category_us_equities
+        )
         self.account = Account.objects.create(
             user=self.user,
             name="Roth IRA",

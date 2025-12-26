@@ -176,7 +176,9 @@ class TestDataFrameAggregation(SimpleTestCase):
         self.assertAlmostEqual(us_subtotal, 150.0, places=1)
 
         # Variance should net out
-        us_variance = result["category_subtotals"].loc[("EQUITY", "US"), "portfolio_effective_variance"]
+        us_variance = result["category_subtotals"].loc[
+            ("EQUITY", "US"), "portfolio_effective_variance"
+        ]
         self.assertAlmostEqual(us_variance, 0.0, places=1)
 
     def test_empty_dataframe_aggregation(self) -> None:
@@ -336,6 +338,7 @@ class TestCalculationAccuracy(SimpleTestCase):
         total_pct = result.loc[1, pct_cols].sum()
 
         self.assertAlmostEqual(total_pct, 100.0, places=1)
+
 
 @pytest.mark.unit
 @pytest.mark.calculations

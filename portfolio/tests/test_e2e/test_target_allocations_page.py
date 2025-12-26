@@ -46,7 +46,9 @@ class TestFrontendAllocations:
         unique_select_selector = f'#allocations-table select[name="{select_name}"]'
 
         # Expand the account column
-        expand_btn = authenticated_page.locator(f'#allocations-table button[data-at-id="{self.type_roth.id}"]')
+        expand_btn = authenticated_page.locator(
+            f'#allocations-table button[data-at-id="{self.type_roth.id}"]'
+        )
         expand_btn.click()
 
         # Wait for select to be visible
@@ -67,13 +69,17 @@ class TestFrontendAllocations:
         row_var_selector = f"#allocations-table #row-var-{self.asset_class_us_equities.id}"
         expect(authenticated_page.locator(row_var_selector)).to_contain_text("0.0%")
 
-    def test_category_subtotal_updates(self, authenticated_page: Page, live_server_url: str) -> None:
+    def test_category_subtotal_updates(
+        self, authenticated_page: Page, live_server_url: str
+    ) -> None:
         """Verify Category Subtotals update correctly after save."""
         authenticated_page.goto(f"{live_server_url}/targets/")
 
         # ROTH Default Select
         select_name = f"strategy_at_{self.type_roth.id}"
-        select_locator = authenticated_page.locator(f'#allocations-table select[name="{select_name}"]')
+        select_locator = authenticated_page.locator(
+            f'#allocations-table select[name="{select_name}"]'
+        )
 
         # Category Subtotal Target ID: `sub-total-target-US_EQUITIES`
         sub_target_selector = "#allocations-table #sub-total-target-US_EQUITIES"
@@ -86,7 +92,9 @@ class TestFrontendAllocations:
         expect(authenticated_page.locator(sub_target_selector)).to_contain_text("100.0%")
 
         # Set Default to All Cash (0% Equities)
-        select_locator = authenticated_page.locator(f'#allocations-table select[name="{select_name}"]')
+        select_locator = authenticated_page.locator(
+            f'#allocations-table select[name="{select_name}"]'
+        )
         select_locator.select_option(label="All Cash")
         authenticated_page.click("#save-button-top")
 
@@ -98,7 +106,9 @@ class TestFrontendAllocations:
 
         # ROTH Default Select
         select_name = f"strategy_at_{self.type_roth.id}"
-        select_locator = authenticated_page.locator(f'#allocations-table select[name="{select_name}"]')
+        select_locator = authenticated_page.locator(
+            f'#allocations-table select[name="{select_name}"]'
+        )
 
         # Cash Total Target ID: `cash-total`
         cash_total_selector = "#allocations-table #cash-total"
@@ -110,12 +120,16 @@ class TestFrontendAllocations:
         expect(authenticated_page.locator(cash_total_selector)).to_contain_text("0.0%")
 
         # If All Cash = 100% Cash
-        select_locator = authenticated_page.locator(f'#allocations-table select[name="{select_name}"]')
+        select_locator = authenticated_page.locator(
+            f'#allocations-table select[name="{select_name}"]'
+        )
         select_locator.select_option(label="All Cash")
         authenticated_page.click("#save-button-top")
         expect(authenticated_page.locator(cash_total_selector)).to_contain_text("100.0%")
 
-    def test_variance_mode_column_toggle(self, authenticated_page: Page, live_server_url: str) -> None:
+    def test_variance_mode_column_toggle(
+        self, authenticated_page: Page, live_server_url: str
+    ) -> None:
         """Verify allocating table columns toggle based on variance mode."""
         authenticated_page.goto(f"{live_server_url}/targets/")
 
@@ -137,7 +151,9 @@ class TestFrontendAllocations:
         expect(policy_cols.first).to_be_visible()
         expect(effective_cols.first).not_to_be_visible()
 
-    def test_portfolio_variance_toggle(self, authenticated_page: Page, live_server_url: str) -> None:
+    def test_portfolio_variance_toggle(
+        self, authenticated_page: Page, live_server_url: str
+    ) -> None:
         """Verify portfolio variance column toggles between effective and policy."""
         # 1. Setup a portfolio explicit target that differs from effective
         strategy_portfolio = AllocationStrategy.objects.create(

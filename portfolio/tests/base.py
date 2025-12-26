@@ -13,42 +13,31 @@ from portfolio.models import (
 
 class PortfolioTestMixin:
     """
-    Mixin to provide standard setup for Django TestCase tests.
+    Mixin to provide standard setup for legacy Django TestCase tests.
 
     For pytest tests, use the fixtures in conftest.py instead.
-    This mixin is kept for backward compatibility with TestCase-based tests.
+    This mixin is kept for backward compatibility with:
+    - test_calculations/test_golden_reference.py
+    - test_e2e/conftest.py
     """
 
     def create_portfolio(self, *, user: Any, name: str = "Test Portfolio") -> None:
         """Create a portfolio for the given user."""
         self.portfolio = Portfolio.objects.create(user=user, name=name)
 
-    def setup_portfolio_data(self) -> None:
-        """
-        Shortcut that calls setup_system_data().
-
-        DEPRECATED: This method name is confusing. Use setup_system_data() directly.
-        Kept for backward compatibility.
-        """
-        self.setup_system_data()
-
     def setup_system_data(self) -> None:
         """
         Seed system data and populate mixin attributes for use in tests.
 
         This method seeds:
-        - Institutions (Vanguard, etc.)
-        - Account Groups (Retirement, Investments, Deposits)
-        - Account Types (Roth, Traditional, 401k, Taxable, Deposit)
-        - Asset Class Categories (Equities, Fixed Income, Cash, etc.)
-        - Asset Classes (US Equities, Bonds, etc.)
-        - Securities (VTI, BND, VXUS, etc.)
+        - Institutions
+        - Account Groups
+        - Account Types
+        - Asset Class Categories
+        - Asset Classes
+        - Securities
 
-        All seeded objects are accessible as instance attributes:
-        - self.institution
-        - self.type_roth, self.type_401k, etc.
-        - self.asset_class_us_equities, etc.
-        - self.vti, self.bnd, etc.
+        All seeded objects are accessible as instance attributes.
         """
         from portfolio.services.seeder import SystemSeederService
 
@@ -71,10 +60,6 @@ class PortfolioTestMixin:
         self.type_401k = AccountType.objects.get(code="401K")
         self.type_deposit = AccountType.objects.get(code="DEPOSIT")
 
-        # Aliases for backward compatibility
-        self.type_roth_ira = self.type_roth
-        self.type_traditional_ira = self.type_trad
-
         # Populate Asset Categories
         self.category_equities = AssetClassCategory.objects.get(code="EQUITIES")
         self.category_fixed_income = AssetClassCategory.objects.get(code="FIXED_INCOME")
@@ -84,28 +69,25 @@ class PortfolioTestMixin:
             code="INTERNATIONAL_EQUITIES"
         )
 
-        # Aliases for backward compatibility
-        self.cat_equities = self.category_equities
-        self.cat_fixed_income = self.category_fixed_income
-        self.cat_cash = self.category_cash
-        self.cat_us_eq = self.category_us_equities
-        self.cat_intl_eq = self.category_international_equities
-        self.cat_fi = self.category_fixed_income
-
         # Populate Asset Classes
         self.asset_class_us_equities = AssetClass.objects.get(name="US Equities")
-        self.asset_class_intl_developed = AssetClass.objects.get(name="International Developed Equities")
-        self.asset_class_intl_emerging = AssetClass.objects.get(name="International Emerging Equities")
+        self.asset_class_intl_developed = AssetClass.objects.get(
+            name="International Developed Equities"
+        )
+        self.asset_class_intl_emerging = AssetClass.objects.get(
+            name="International Emerging Equities"
+        )
         self.asset_class_treasuries_short = AssetClass.objects.get(name="US Treasuries - Short")
-        self.asset_class_treasuries_interm = AssetClass.objects.get(name="US Treasuries - Intermediate")
+        self.asset_class_treasuries_interm = AssetClass.objects.get(
+            name="US Treasuries - Intermediate"
+        )
         self.asset_class_tips = AssetClass.objects.get(name="Inflation Adjusted Bond")
         self.asset_class_cash = AssetClass.objects.get(name=AssetClass.CASH_NAME)
         self.asset_class_us_real_estate = AssetClass.objects.get(name="US Real Estate")
-        self.asset_class_us_small_cap_value = AssetClass.objects.get(name="US Small Cap Value Equities")
+        self.asset_class_us_small_cap_value = AssetClass.objects.get(
+            name="US Small Cap Value Equities"
+        )
         self.asset_class_us_quality = AssetClass.objects.get(name="US Quality Equities")
-
-        # Aliases for common securities
-        self.ac_cash = self.asset_class_cash
 
         # Populate Securities
         self.vti = Security.objects.get(ticker="VTI")
@@ -113,4 +95,3 @@ class PortfolioTestMixin:
         self.bnd = Security.objects.get(ticker="BND")
         self.vgsh = Security.objects.get(ticker="VGSH")
         self.cash = Security.objects.get(ticker="CASH")
-        self.sec_cash = self.cash  # Alias

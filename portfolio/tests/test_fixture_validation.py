@@ -28,17 +28,17 @@ class TestFixtureSystem:
 
     def test_test_portfolio_fixture(self, test_portfolio: dict[str, Any]) -> None:
         """Verify test_portfolio contains expected keys."""
-        assert 'user' in test_portfolio
-        assert 'portfolio' in test_portfolio
-        assert 'system' in test_portfolio
-        assert test_portfolio['portfolio'].user == test_portfolio['user']
+        assert "user" in test_portfolio
+        assert "portfolio" in test_portfolio
+        assert "system" in test_portfolio
+        assert test_portfolio["portfolio"].user == test_portfolio["user"]
 
     def test_simple_holdings_fixture(self, simple_holdings: dict[str, Any]) -> None:
         """Verify simple_holdings creates holdings correctly."""
-        assert simple_holdings['holding'] is not None
+        assert simple_holdings["holding"] is not None
         # shares=10.00 * price=100.00 = 1000.00
         # Check market_value as Decimal
-        assert simple_holdings['holding'].market_value == Decimal("1000")
+        assert simple_holdings["holding"].market_value == Decimal("1000")
 
     def test_stable_prices_fixture(self, stable_test_prices: Any) -> None:
         """Verify stable_test_prices mocks MarketDataService."""
@@ -54,6 +54,7 @@ class TestFixtureSystem:
         mock = mock_market_prices(custom_prices)
 
         from portfolio.services import MarketDataService
+
         result = MarketDataService.get_prices(["TEST"])
 
         assert result == custom_prices

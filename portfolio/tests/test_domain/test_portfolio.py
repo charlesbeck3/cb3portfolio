@@ -20,8 +20,10 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
 
-        self.us_stocks = AssetClass.objects.create(name="US Stocks", category=self.cat_us_eq)
-        self.bonds = AssetClass.objects.create(name="Bonds", category=self.cat_fi)
+        self.us_stocks = AssetClass.objects.create(
+            name="US Stocks", category=self.category_us_equities
+        )
+        self.bonds = AssetClass.objects.create(name="Bonds", category=self.category_fixed_income)
 
         # Update seeded securities to use the test-specific asset classes
         self.vti.asset_class = self.us_stocks

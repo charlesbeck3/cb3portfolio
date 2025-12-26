@@ -26,10 +26,9 @@ class TestPortfolioExplicitTarget:
         self.strategy_balanced = AllocationStrategy.objects.create(
             user=self.user, name="60/40 Balanced"
         )
-        self.strategy_balanced.save_allocations({
-            self.ac_us_eq.id: Decimal("60.00"),
-            self.ac_treasuries_short.id: Decimal("40.00")
-        })
+        self.strategy_balanced.save_allocations(
+            {self.ac_us_eq.id: Decimal("60.00"), self.ac_treasuries_short.id: Decimal("40.00")}
+        )
         self.portfolio.allocation_strategy = self.strategy_balanced
         self.portfolio.save()
 
@@ -37,22 +36,28 @@ class TestPortfolioExplicitTarget:
         self.strategy_all_stocks = AllocationStrategy.objects.create(
             user=self.user, name="All Stocks"
         )
-        self.strategy_all_stocks.save_allocations({
-            self.ac_us_eq.id: Decimal("100.00")
-        })
+        self.strategy_all_stocks.save_allocations({self.ac_us_eq.id: Decimal("100.00")})
         self.acc_roth.allocation_strategy = self.strategy_all_stocks
         self.acc_roth.save()
 
-    def test_portfolio_target_columns_presence(self, authenticated_page: Page, live_server_url: str) -> None:
+    def test_portfolio_target_columns_presence(
+        self, authenticated_page: Page, live_server_url: str
+    ) -> None:
         """Verify that Total Portfolio columns include basic and variance columns."""
         authenticated_page.goto(f"{live_server_url}/targets/")
 
         # Check "Total Portfolio" header
-        portfolio_header = authenticated_page.locator('#allocations-table th').filter(has_text=re.compile(r"Total Portfolio"))
+        portfolio_header = authenticated_page.locator("#allocations-table th").filter(
+            has_text=re.compile(r"Total Portfolio")
+        )
         expect(portfolio_header).to_be_visible()
 
         # Sub-headers for Total Portfolio section (Actual, Policy, Effective, Variance)
-        sub_headers = authenticated_page.locator('#allocations-table thead tr').nth(1).locator('th.table-active')
+        sub_headers = (
+            authenticated_page.locator("#allocations-table thead tr")
+            .nth(1)
+            .locator("th.table-active")
+        )
 
         # New behavior: Actual, Policy, Effective, Variance (4 columns)
         expect(sub_headers).to_have_count(4)
@@ -68,12 +73,12 @@ class TestPortfolioExplicitTarget:
         authenticated_page.goto(f"{live_server_url}/targets/")
 
         # Find the row specifically for "US Equities"
-        us_eq_row = authenticated_page.locator('#allocations-table tbody tr').filter(
-            has=authenticated_page.locator('td').first.filter(has_text=re.compile(r'^US Equities$'))
+        us_eq_row = authenticated_page.locator("#allocations-table tbody tr").filter(
+            has=authenticated_page.locator("td").first.filter(has_text=re.compile(r"^US Equities$"))
         )
 
         # Expect 4 cells in the table-active (portfolio) section
-        portfolio_cells = us_eq_row.locator('td.table-active')
+        portfolio_cells = us_eq_row.locator("td.table-active")
         expect(portfolio_cells).to_have_count(4)
 
         # Actual: 100.0%

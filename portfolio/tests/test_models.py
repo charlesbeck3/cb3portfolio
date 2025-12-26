@@ -1,7 +1,7 @@
 from decimal import Decimal
+from typing import Any
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
 
 import pytest
 
@@ -16,115 +16,114 @@ from portfolio.models import (
     TargetAllocation,
 )
 
-from .base import PortfolioTestMixin
-
 User = get_user_model()
 
 
 @pytest.mark.models
 @pytest.mark.integration
-class AccountTypeTests(TestCase, PortfolioTestMixin):
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create(username="testuser_type")
-        self.portfolio = Portfolio.objects.create(name="Test Portfolio Type", user=self.user)
+def test_account_type_to_dataframe(test_portfolio: dict[str, Any]) -> None:
+    """AccountType DataFrame aggregates multiple accounts."""
+    system = test_portfolio["system"]
+    portfolio = test_portfolio["portfolio"]
+    user = test_portfolio["user"]
+    institution = system.institution
+    type_obj = system.type_taxable
 
-    def test_to_dataframe(self) -> None:
-        """AccountType DataFrame aggregates multiple accounts."""
-        type_obj = self.type_taxable
-        ac_us = AssetClass.objects.create(name="US Stk Ty", category=self.cat_us_eq)
-        sec = Security.objects.create(ticker="VTI_TY", asset_class=ac_us)
+    # Use system asset class
+    ac_us = system.cat_us_eq.asset_classes.create(name="US Stk Ty")
+    sec = Security.objects.create(ticker="VTI_TY", asset_class=ac_us)
 
-        acc1 = Account.objects.create(
-            name="Acc 1",
-            account_type=type_obj,
-            portfolio=self.portfolio,
-            user=self.user,
-            institution=self.institution,
-        )
-        acc2 = Account.objects.create(
-            name="Acc 2",
-            account_type=type_obj,
-            portfolio=self.portfolio,
-            user=self.user,
-            institution=self.institution,
-        )
+    acc1 = Account.objects.create(
+        name="Acc 1",
+        account_type=type_obj,
+        portfolio=portfolio,
+        user=user,
+        institution=institution,
+    )
+    acc2 = Account.objects.create(
+        name="Acc 2",
+        account_type=type_obj,
+        portfolio=portfolio,
+        user=user,
+        institution=institution,
+    )
 
-        Holding.objects.create(account=acc1, security=sec, shares=10, current_price=100)
-        Holding.objects.create(account=acc2, security=sec, shares=20, current_price=100)
+    Holding.objects.create(account=acc1, security=sec, shares=10, current_price=100)
+    Holding.objects.create(account=acc2, security=sec, shares=20, current_price=100)
 
-        df = type_obj.to_dataframe()
-        self.assertEqual(len(df), 2)
-        # Index is now MultiIndex with (Type, Category, Name, ID)
-        # Check that account names appear in the index
-        account_names = [idx[2] for idx in df.index]  # Name is at position 2
-        self.assertIn("Acc 1", account_names)
-        self.assertIn("Acc 2", account_names)
+    df = type_obj.to_dataframe()
+    assert len(df) == 2
+    # Index is now MultiIndex with (Type, Category, Name, ID)
+    # Check that account names appear in the index
+    account_names = [idx[2] for idx in df.index]  # Name is at position 2
+    assert "Acc 1" in account_names
+    assert "Acc 2" in account_names
 
 
 @pytest.mark.models
 @pytest.mark.integration
-class PortfolioTests(TestCase, PortfolioTestMixin):
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create(username="testuser_port")
-        self.portfolio = Portfolio.objects.create(name="Test Portfolio", user=self.user)
-        # Setup for dataframe tests
-        self.us_stocks = AssetClass.objects.create(name="US Stk", category=self.cat_us_eq)
-        self.bonds = AssetClass.objects.create(name="Bonds", category=self.cat_fi)
-        # Update seeded securities
-        self.vti.name = "Vanguard Stock"
-        self.vti.asset_class = self.us_stocks
-        self.vti.save()
+class TestPortfolio:
+    def test_to_dataframe_structure(self, test_portfolio: dict[str, Any]) -> None:
+        """Portfolio DataFrame has correct MultiIndex structure."""
+        portfolio = test_portfolio["portfolio"]
+        df = portfolio.to_dataframe()
+        assert df.index.names == ["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
+        assert df.columns.names == ["Asset_Class", "Asset_Category", "Security"]
+        # Empty because no holdings yet in basic fixture
+        # But let's verify structure even if empty
+        assert df.empty
 
-        self.bnd.name = "Vanguard Bond"
-        self.bnd.asset_class = self.bonds
-        self.bnd.save()
+    def test_to_dataframe_values(self, test_portfolio: dict[str, Any]) -> None:
+        """Portfolio DataFrame has correct values."""
+        system = test_portfolio["system"]
+        portfolio = test_portfolio["portfolio"]
+        user = test_portfolio["user"]
 
-        self.account = Account.objects.create(
+        # Setup specific data for this test
+        us_stocks = AssetClass.objects.create(name="US Stk", category=system.cat_us_eq)
+        bonds = AssetClass.objects.create(name="Bonds", category=system.cat_fi)
+
+        vti = Security.objects.create(
+            ticker="VTI_TEST", name="Vanguard Stock", asset_class=us_stocks
+        )
+        bnd = Security.objects.create(ticker="BND_TEST", name="Vanguard Bond", asset_class=bonds)
+
+        account = Account.objects.create(
             name="Test Account",
-            account_type=self.type_taxable,
-            portfolio=self.portfolio,
-            user=self.user,
-            institution=self.institution,
+            account_type=system.type_taxable,
+            portfolio=portfolio,
+            user=user,
+            institution=system.institution,
         )
         Holding.objects.create(
-            account=self.account,
-            security=self.vti,
+            account=account,
+            security=vti,
             shares=Decimal("50"),
             current_price=Decimal("100.00"),
         )
         Holding.objects.create(
-            account=self.account,
-            security=self.bnd,
+            account=account,
+            security=bnd,
             shares=Decimal("100"),
             current_price=Decimal("50.00"),
         )
 
-    def test_to_dataframe_structure(self) -> None:
-        """Portfolio DataFrame has correct MultiIndex structure."""
-        df = self.portfolio.to_dataframe()
-        assert df.index.names == ["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
-        assert df.columns.names == ["Asset_Class", "Asset_Category", "Security"]
+        df = portfolio.to_dataframe()
         assert not df.empty
-
-    def test_to_dataframe_values(self) -> None:
-        """Portfolio DataFrame has correct values."""
-        df = self.portfolio.to_dataframe()
-        assert ("US Stk", "US Equities", "VTI") in df.columns
-        assert ("Bonds", "Fixed Income", "BND") in df.columns
+        assert ("US Stk", "US Equities", "VTI_TEST") in df.columns
+        assert ("Bonds", "Fixed Income", "BND_TEST") in df.columns
 
         # Value check: 50 * 100 = 5000
         # Index now includes Account_ID, so we need to match on all 4 levels
         val = df.loc[
-            ("Taxable", "Investments", "Test Account", self.account.id),
-            ("US Stk", "US Equities", "VTI"),
+            ("Taxable", "Investments", "Test Account", account.id),
+            ("US Stk", "US Equities", "VTI_TEST"),
         ]
-        self.assertEqual(val, 5000.0)
+        assert val == 5000.0
 
-    def test_empty_portfolio_dataframe(self) -> None:
+    def test_empty_portfolio_dataframe(self, test_user: Any) -> None:
         """Empty portfolio returns empty DataFrame with correct structure."""
-        empty = Portfolio.objects.create(name="Empty", user=self.user)
+        empty = Portfolio.objects.create(name="Empty", user=test_user)
         df = empty.to_dataframe()
         assert df.empty
         assert df.index.names == ["Account_Type", "Account_Category", "Account_Name", "Account_ID"]
@@ -132,79 +131,63 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
 
 @pytest.mark.models
 @pytest.mark.integration
-class AssetClassTests(TestCase, PortfolioTestMixin):
-    def setUp(self) -> None:
-        self.setup_system_data()
-
-    def test_create_asset_class(self) -> None:
-        """Test creating an asset class."""
-        # Use category created in mixin
-        us_equities = self.cat_us_eq
-        ac = AssetClass.objects.create(
-            name="US Stocks", category=us_equities, expected_return=Decimal("0.08")
-        )
-        self.assertEqual(ac.name, "US Stocks")
-        self.assertEqual(ac.expected_return, Decimal("0.08"))
-        self.assertEqual(str(ac), "US Stocks")
+def test_create_asset_class(base_system_data: Any) -> None:
+    """Test creating an asset class."""
+    us_equities = base_system_data.cat_us_eq
+    ac = AssetClass.objects.create(
+        name="US Stocks Test", category=us_equities, expected_return=Decimal("0.08")
+    )
+    assert ac.name == "US Stocks Test"
+    assert ac.expected_return == Decimal("0.08")
+    assert str(ac) == "US Stocks Test"
 
 
 @pytest.mark.models
 @pytest.mark.integration
-class AccountTests(TestCase, PortfolioTestMixin):
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.create_portfolio(user=self.user)
-        # self.institution = Institution.objects.create(name="Vanguard")
-
-    def test_create_account(self) -> None:
+class TestAccount:
+    def test_create_account(self, test_portfolio: dict[str, Any]) -> None:
         """Test creating an account."""
+        system = test_portfolio["system"]
         account = Account.objects.create(
-            user=self.user,
+            user=test_portfolio["user"],
             name="Roth IRA",
-            portfolio=self.portfolio,
-            account_type=self.type_roth,
-            institution=self.institution,
+            portfolio=test_portfolio["portfolio"],
+            account_type=system.type_roth,
+            institution=system.institution,
         )
-        self.assertEqual(account.name, "Roth IRA")
-        self.assertEqual(str(account), "Roth IRA (testuser)")
+        assert account.name == "Roth IRA"
+        assert str(account) == "Roth IRA (testuser)"
 
-    def test_tax_treatment_property(self) -> None:
+    def test_tax_treatment_property(self, base_system_data: Any) -> None:
         """Test tax_treatment property derivation."""
-        # Note: We need to provide required fields even if testing a property,
-        # but since we are just instantiating the model (not saving), we can skip institution if not accessed.
-        # However, to be safe and consistent, let's just use simple instantiation if possible,
-        # or if we save, we need institution.
-        # The original test instantiated without saving: roth = Account(account_type='ROTH_IRA')
-        # This is fine as long as we don't save.
+        system = base_system_data
 
-        roth = Account(account_type=self.type_roth)
-        self.assertEqual(roth.tax_treatment, "TAX_FREE")
+        roth = Account(account_type=system.type_roth)
+        assert roth.tax_treatment == "TAX_FREE"
 
-        trad = Account(account_type=self.type_trad)
-        self.assertEqual(trad.tax_treatment, "TAX_DEFERRED")
+        trad = Account(account_type=system.type_trad)
+        assert trad.tax_treatment == "TAX_DEFERRED"
 
-        k401 = Account(account_type=self.type_401k)
-        self.assertEqual(k401.tax_treatment, "TAX_DEFERRED")
+        k401 = Account(account_type=system.type_401k)
+        assert k401.tax_treatment == "TAX_DEFERRED"
 
-        taxable = Account(account_type=self.type_taxable)
-        self.assertEqual(taxable.tax_treatment, "TAXABLE")
+        taxable = Account(account_type=system.type_taxable)
+        assert taxable.tax_treatment == "TAXABLE"
 
-    def test_total_value(self) -> None:
+    def test_total_value(self, test_portfolio: dict[str, Any]) -> None:
+        system = test_portfolio["system"]
         account = Account.objects.create(
-            user=self.user,
+            user=test_portfolio["user"],
             name="Roth IRA",
-            portfolio=self.portfolio,
-            account_type=self.type_roth,
-            institution=self.institution,
+            portfolio=test_portfolio["portfolio"],
+            account_type=system.type_roth,
+            institution=system.institution,
         )
         asset_class = AssetClass.objects.create(
-            name="US Stocks",
-            category=self.cat_us_eq,
+            name="US Stocks Val",
+            category=system.cat_us_eq,
         )
-        self.vti.asset_class = asset_class
-        self.vti.save()
-        security = self.vti
+        security = Security.objects.create(ticker="VTI_VAL", asset_class=asset_class)
 
         Holding.objects.create(
             account=account,
@@ -213,31 +196,27 @@ class AccountTests(TestCase, PortfolioTestMixin):
             current_price=Decimal("100"),
         )
         # 10 * 100 = 1000
-        self.assertEqual(account.total_value(), Decimal("1000"))
+        assert account.total_value() == Decimal("1000")
 
-    def test_holdings_by_asset_class(self) -> None:
+    def test_holdings_by_asset_class(self, test_portfolio: dict[str, Any]) -> None:
+        system = test_portfolio["system"]
         account = Account.objects.create(
-            user=self.user,
+            user=test_portfolio["user"],
             name="Roth IRA",
-            portfolio=self.portfolio,
-            account_type=self.type_roth,
-            institution=self.institution,
+            portfolio=test_portfolio["portfolio"],
+            account_type=system.type_roth,
+            institution=system.institution,
         )
         us_stocks = AssetClass.objects.create(
-            name="US Stocks",
-            category=self.cat_us_eq,
+            name="US Stocks HAC",
+            category=system.cat_us_eq,
         )
         bonds = AssetClass.objects.create(
-            name="Bonds",
-            category=self.cat_us_eq,
+            name="Bonds HAC",
+            category=system.cat_us_eq,
         )
-        self.vti.asset_class = us_stocks
-        self.vti.save()
-        vti = self.vti
-
-        self.bnd.asset_class = bonds
-        self.bnd.save()
-        bnd = self.bnd
+        vti = Security.objects.create(ticker="VTI_HAC", asset_class=us_stocks)
+        bnd = Security.objects.create(ticker="BND_HAC", asset_class=bonds)
 
         Holding.objects.create(
             account=account,
@@ -253,32 +232,28 @@ class AccountTests(TestCase, PortfolioTestMixin):
         )
 
         by_ac = account.holdings_by_asset_class()
-        self.assertEqual(by_ac["US Stocks"], Decimal("200"))
-        self.assertEqual(by_ac["Bonds"], Decimal("200"))
+        assert by_ac["US Stocks HAC"] == Decimal("200")
+        assert by_ac["Bonds HAC"] == Decimal("200")
 
-    def test_calculate_deviation(self) -> None:
+    def test_calculate_deviation(self, test_portfolio: dict[str, Any]) -> None:
+        system = test_portfolio["system"]
         account = Account.objects.create(
-            user=self.user,
+            user=test_portfolio["user"],
             name="Roth IRA",
-            portfolio=self.portfolio,
-            account_type=self.type_roth,
-            institution=self.institution,
+            portfolio=test_portfolio["portfolio"],
+            account_type=system.type_roth,
+            institution=system.institution,
         )
         us_stocks = AssetClass.objects.create(
-            name="US Stocks",
-            category=self.cat_us_eq,
+            name="US Stocks Dev",
+            category=system.cat_us_eq,
         )
         bonds = AssetClass.objects.create(
-            name="Bonds",
-            category=self.cat_us_eq,
+            name="Bonds Dev",
+            category=system.cat_us_eq,
         )
-        self.vti.asset_class = us_stocks
-        self.vti.save()
-        vti = self.vti
-
-        self.bnd.asset_class = bonds
-        self.bnd.save()
-        bnd = self.bnd
+        vti = Security.objects.create(ticker="VTI_DEV", asset_class=us_stocks)
+        bnd = Security.objects.create(ticker="BND_DEV", asset_class=bonds)
 
         # Current: 600 stocks, 400 bonds, total 1000
         Holding.objects.create(
@@ -295,142 +270,135 @@ class AccountTests(TestCase, PortfolioTestMixin):
         )
 
         # Target: 50/50 -> 500 each
-        targets = {"US Stocks": Decimal("50"), "Bonds": Decimal("50")}
+        targets = {"US Stocks Dev": Decimal("50"), "Bonds Dev": Decimal("50")}
         deviation = account.calculate_deviation(targets)
         # |600-500| + |400-500| = 200
-        self.assertEqual(deviation, Decimal("200"))
+        assert deviation == Decimal("200")
 
-    def test_to_dataframe(self) -> None:
+    def test_to_dataframe(self, test_portfolio: dict[str, Any]) -> None:
         """Account DataFrame has single row."""
-        # Setup specific to this test to ensure isolation
-        ac_us = AssetClass.objects.create(name="US Stk Ac", category=self.cat_us_eq)
+        system = test_portfolio["system"]
+
+        ac_us = AssetClass.objects.create(name="US Stk Ac", category=system.cat_us_eq)
         sec = Security.objects.create(ticker="VTI_AC", asset_class=ac_us)
-        # Create a new account to avoid side effects from mixin setup if any
+
         account = Account.objects.create(
-            user=self.user,
+            user=test_portfolio["user"],
             name="My Solitary Account",
-            portfolio=self.portfolio,
-            account_type=self.type_roth,
-            institution=self.institution,
+            portfolio=test_portfolio["portfolio"],
+            account_type=system.type_roth,
+            institution=system.institution,
         )
         Holding.objects.create(
             account=account, security=sec, shares=Decimal("10"), current_price=Decimal("100")
         )
 
         df = account.to_dataframe()
-        self.assertEqual(len(df), 1)
+        assert len(df) == 1
         # Index is now MultiIndex with (Type, Category, Name, ID)
         expected_index = ("Roth IRA", "Retirement", "My Solitary Account", account.id)
-        self.assertEqual(df.index[0], expected_index)
+        assert df.index[0] == expected_index
         val = df.loc[expected_index, ("US Stk Ac", "US Equities", "VTI_AC")]
-        self.assertEqual(val, 1000.0)
+        assert val == 1000.0
 
 
 @pytest.mark.models
 @pytest.mark.integration
-class SecurityTests(
-    TestCase, PortfolioTestMixin
-):  # Added mixin just in case, though not strictly needed if not using AccountType
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.asset_class = AssetClass.objects.create(
-            name="US Stocks",
-            category=self.cat_us_eq,
-        )
-
-    def test_create_security(self) -> None:
-        """Test creating a security."""
-        self.vti.asset_class = self.asset_class
-        self.vti.save()
-        security = self.vti
-        self.assertEqual(security.ticker, "VTI")
-        self.assertEqual(str(security), "VTI - Vanguard Total Stock Market ETF")
+def test_create_security(base_system_data: Any) -> None:
+    """Test creating a security."""
+    system = base_system_data
+    asset_class = AssetClass.objects.create(
+        name="US Stocks Sec",
+        category=system.cat_us_eq,
+    )
+    security = Security.objects.create(
+        ticker="VTI_SEC", asset_class=asset_class, name="Vanguard Stock"
+    )
+    assert security.ticker == "VTI_SEC"
+    assert str(security) == "VTI_SEC - Vanguard Stock"
 
 
 @pytest.mark.models
 @pytest.mark.integration
-class HoldingTests(TestCase, PortfolioTestMixin):  # Inherit from PortfolioTestMixin
-    def setUp(self) -> None:
-        self.setup_system_data()  # Call setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.create_portfolio(user=self.user)
-        # self.institution = Institution.objects.create(name="Vanguard") # Removed, as it's in mixin
-        self.asset_class = AssetClass.objects.create(
-            name="US Stocks",
-            category=self.cat_us_eq,
-        )
-        self.account = Account.objects.create(
-            user=self.user,
-            name="Roth IRA",
-            portfolio=self.portfolio,
-            account_type=self.type_roth,  # Replaced string with model instance
-            institution=self.institution,
-        )
-        self.vti.asset_class = self.asset_class
-        self.vti.save()
-        self.security = self.vti
-
-    def test_create_holding(self) -> None:
+class TestHolding:
+    def test_create_holding(self, simple_holdings: dict[str, Any]) -> None:
         """Test creating a holding."""
+        account = simple_holdings["account"]
+        system = simple_holdings["system"]
+
+        # Create a new holding
         holding = Holding.objects.create(
-            account=self.account,
-            security=self.security,
+            account=account,
+            security=system.vxus,  # Use different security
             shares=Decimal("10.5000"),
             current_price=Decimal("210.00"),
         )
-        self.assertEqual(holding.shares, Decimal("10.5000"))
-        self.assertEqual(str(holding), "VTI in Roth IRA (10.5000 shares)")
+        assert holding.shares == Decimal("10.5000")
+        assert str(holding) == f"VXUS in {account.name} (10.5000 shares)"
 
-    def test_market_value_with_price(self) -> None:
+    def test_market_value_with_price(self, simple_holdings: dict[str, Any]) -> None:
+        account = simple_holdings["account"]
+        system = simple_holdings["system"]
         holding = Holding(
-            account=self.account,
-            security=self.security,
+            account=account,
+            security=system.vti,
             shares=Decimal("10"),
             current_price=Decimal("100"),
         )
-        self.assertEqual(holding.market_value, Decimal("1000"))
+        assert holding.market_value == Decimal("1000")
 
-    def test_market_value_without_price(self) -> None:
+    def test_market_value_without_price(self, simple_holdings: dict[str, Any]) -> None:
+        account = simple_holdings["account"]
+        system = simple_holdings["system"]
         holding = Holding(
-            account=self.account,
-            security=self.security,
+            account=account,
+            security=system.vti,
             shares=Decimal("10"),
             current_price=None,
         )
-        self.assertEqual(holding.market_value, Decimal("0.00"))
+        assert holding.market_value == Decimal("0.00")
 
-    def test_has_price_property(self) -> None:
+    def test_has_price_property(self, simple_holdings: dict[str, Any]) -> None:
+        account = simple_holdings["account"]
+        system = simple_holdings["system"]
+
         holding_with_price = Holding(
-            account=self.account,
-            security=self.security,
+            account=account,
+            security=system.vti,
             shares=Decimal("1"),
             current_price=Decimal("50"),
         )
-        self.assertTrue(holding_with_price.has_price)
+        assert holding_with_price.has_price
 
         holding_without_price = Holding(
-            account=self.account,
-            security=self.security,
+            account=account,
+            security=system.vti,
             shares=Decimal("1"),
             current_price=None,
         )
-        self.assertFalse(holding_without_price.has_price)
+        assert not holding_without_price.has_price
 
-    def test_update_price(self) -> None:
+    def test_update_price(self, simple_holdings: dict[str, Any]) -> None:
+        account = simple_holdings["account"]
+        system = simple_holdings["system"]
+
         holding = Holding.objects.create(
-            account=self.account,
-            security=self.security,
+            account=account,
+            security=system.vxus,
             shares=Decimal("5"),
             current_price=Decimal("10"),
         )
         holding.update_price(Decimal("20"))
         holding.refresh_from_db()
-        self.assertEqual(holding.current_price, Decimal("20"))
+        assert holding.current_price == Decimal("20")
 
-    def test_calculate_target_value_and_variance(self) -> None:
+    def test_calculate_target_value_and_variance(self, simple_holdings: dict[str, Any]) -> None:
+        account = simple_holdings["account"]
+        system = simple_holdings["system"]
+
         holding = Holding(
-            account=self.account,
-            security=self.security,
+            account=account,
+            security=system.vti,
             shares=Decimal("10"),
             current_price=Decimal("100"),
         )
@@ -438,136 +406,136 @@ class HoldingTests(TestCase, PortfolioTestMixin):  # Inherit from PortfolioTestM
         account_total = Decimal("10000")
         target_pct = Decimal("25")
         target_value = holding.calculate_target_value(account_total, target_pct)
-        self.assertEqual(target_value, Decimal("2500"))
+        assert target_value == Decimal("2500")
 
         # Current value: 1000, Target: 2500 -> variance: -1500 (underweight)
         variance = holding.calculate_variance(target_value)
-        self.assertEqual(variance, Decimal("1000") - Decimal("2500"))
+        assert variance == Decimal("1000") - Decimal("2500")
 
 
 @pytest.mark.models
 @pytest.mark.integration
-class TargetAllocationTests(TestCase, PortfolioTestMixin):
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.strategy = AllocationStrategy.objects.create(user=self.user, name="Test Strategy")
-        self.asset_class = AssetClass.objects.create(
-            name="US Stocks",
-            category=self.cat_us_eq,
+class TestTargetAllocation:
+    def test_create_target_allocation(self, test_user: Any, base_system_data: Any) -> None:
+        """Test creating a target allocation."""
+        system = base_system_data
+        strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy")
+        asset_class = AssetClass.objects.create(
+            name="US Stocks TA",
+            category=system.cat_us_eq,
         )
 
-    def test_create_target_allocation(self) -> None:
-        """Test creating a target allocation."""
         target = TargetAllocation.objects.create(
-            strategy=self.strategy,
-            asset_class=self.asset_class,
+            strategy=strategy,
+            asset_class=asset_class,
             target_percent=Decimal("40.00"),
         )
-        self.assertEqual(target.target_percent, Decimal("40.00"))
-        self.assertEqual(str(target), f"{self.strategy.name}: {self.asset_class.name} - 40.00%")
+        assert target.target_percent == Decimal("40.00")
+        assert str(target) == f"{strategy.name}: {asset_class.name} - 40.00%"
 
-    def test_target_allocation_isolation(self) -> None:
+    def test_target_allocation_isolation(self, test_user: Any, base_system_data: Any) -> None:
         """Test that different users can have their own allocations."""
+        system = base_system_data
+        strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy 1")
+        asset_class = AssetClass.objects.create(
+            name="US Stocks Iso",
+            category=system.cat_us_eq,
+        )
+
         # User 1 allocation
         TargetAllocation.objects.create(
-            strategy=self.strategy,
-            asset_class=self.asset_class,
+            strategy=strategy,
+            asset_class=asset_class,
             target_percent=Decimal("40.00"),
         )
 
-        # User 2 allocation (same account type/asset class, different user)
+        # User 2 allocation
         user2 = User.objects.create_user(username="otheruser", password="password")
-        strategy2 = AllocationStrategy.objects.create(user=user2, name="Test Strategy")
+        strategy2 = AllocationStrategy.objects.create(user=user2, name="Test Strategy 2")
         target2 = TargetAllocation.objects.create(
             strategy=strategy2,
-            asset_class=self.asset_class,
+            asset_class=asset_class,
             target_percent=Decimal("60.00"),
         )
 
-        self.assertEqual(TargetAllocation.objects.count(), 2)
-        self.assertEqual(target2.strategy.user.username, "otheruser")
-        self.assertEqual(target2.target_percent, Decimal("60.00"))
+        # Count total
+        assert TargetAllocation.objects.filter(asset_class=asset_class).count() == 2
+        assert target2.strategy.user.username == "otheruser"
+        assert target2.target_percent == Decimal("60.00")
 
-    def test_target_value_for(self) -> None:
+    def test_target_value_for(self, test_user: Any, base_system_data: Any) -> None:
+        system = base_system_data
+        strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy")
+        asset_class = AssetClass.objects.create(name="US Stocks ValFor", category=system.cat_us_eq)
+
         allocation = TargetAllocation(
-            strategy=self.strategy,
-            asset_class=self.asset_class,
+            strategy=strategy,
+            asset_class=asset_class,
             target_percent=Decimal("25"),
         )
-        self.assertEqual(allocation.target_value_for(Decimal("10000")), Decimal("2500"))
+        assert allocation.target_value_for(Decimal("10000")) == Decimal("2500")
 
-    def test_variance_for(self) -> None:
-        # variance_for no longer exists on TargetAllocation after strategy refactor.
-        # Keep coverage focused on TargetAllocation model methods that still exist.
-        self.assertTrue(True)
+    def test_validate_allocation_set_valid(self, test_user: Any, base_system_data: Any) -> None:
+        system = base_system_data
+        strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy")
+        ac1 = AssetClass.objects.create(name="AC1", category=system.cat_us_eq)
+        ac2 = AssetClass.objects.create(name="AC2", category=system.cat_us_eq)
 
-    def test_validate_allocation_set_valid(self) -> None:
         allocations = [
             TargetAllocation(
-                strategy=self.strategy,
-                asset_class=self.asset_class,
+                strategy=strategy,
+                asset_class=ac1,
                 target_percent=Decimal("60"),
             ),
             TargetAllocation(
-                strategy=self.strategy,
-                asset_class=self.asset_class,
+                strategy=strategy,
+                asset_class=ac2,
                 target_percent=Decimal("40"),
             ),
         ]
         ok, msg = TargetAllocation.validate_allocation_set(allocations)
-        self.assertTrue(ok)
-        self.assertEqual(msg, "")
+        assert ok
+        assert msg == ""
 
-    def test_validate_allocation_set_exceeds_100(self) -> None:
+    def test_validate_allocation_set_exceeds_100(
+        self, test_user: Any, base_system_data: Any
+    ) -> None:
+        system = base_system_data
+        strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy")
+        ac1 = AssetClass.objects.create(name="AC1", category=system.cat_us_eq)
+
         allocations = [
             TargetAllocation(
-                strategy=self.strategy,
-                asset_class=self.asset_class,
+                strategy=strategy,
+                asset_class=ac1,
                 target_percent=Decimal("60"),
             ),
             TargetAllocation(
-                strategy=self.strategy,
-                asset_class=self.asset_class,
+                strategy=strategy,
+                asset_class=ac1,  # Same or diff doesn't matter for this test logic usually, but let's assume same strategy list
                 target_percent=Decimal("50"),
             ),
         ]
         ok, msg = TargetAllocation.validate_allocation_set(allocations)
-        self.assertFalse(ok)
-        self.assertIn("110", msg)
+        assert not ok
+        assert "110" in msg
 
 
 @pytest.mark.models
 @pytest.mark.integration
-class RebalancingRecommendationTests(TestCase, PortfolioTestMixin):
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.create_portfolio(user=self.user)
-        self.asset_class = AssetClass.objects.create(
-            name="US Stocks",
-            category=self.cat_us_eq,
-        )
-        self.account = Account.objects.create(
-            user=self.user,
-            name="Roth IRA",
-            portfolio=self.portfolio,
-            account_type=self.type_roth,
-            institution=self.institution,
-        )
-        self.vti.asset_class = self.asset_class
-        self.vti.save()
-        self.security = self.vti
+def test_create_recommendation(simple_holdings: dict[str, Any]) -> None:
+    """Test creating a rebalancing recommendation."""
+    account = simple_holdings["account"]
+    system = simple_holdings["system"]
+    security = system.vti
 
-    def test_create_recommendation(self) -> None:
-        """Test creating a rebalancing recommendation."""
-        rec = RebalancingRecommendation.objects.create(
-            account=self.account,
-            security=self.security,
-            action="BUY",
-            shares=Decimal("10.00"),
-            estimated_amount=Decimal("1600.00"),
-            reason="Underweight",
-        )
-        self.assertEqual(rec.action, "BUY")
-        self.assertEqual(str(rec), "BUY 10.00 VTI in Roth IRA")
+    rec = RebalancingRecommendation.objects.create(
+        account=account,
+        security=security,
+        action="BUY",
+        shares=Decimal("10.00"),
+        estimated_amount=Decimal("1600.00"),
+        reason="Underweight",
+    )
+    assert rec.action == "BUY"
+    assert str(rec) == f"BUY 10.00 VTI in {account.name}"

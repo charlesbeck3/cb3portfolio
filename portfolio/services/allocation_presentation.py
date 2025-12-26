@@ -126,9 +126,7 @@ class AllocationPresentationFormatter:
                 lambda x: f"{x:.1f}%"
             )
         elif exp_tgt_col in df.columns:
-            df[f"{col_prefix}_explicit_target_fmt"] = df[exp_tgt_col].apply(
-                lambda x: f"${x:,.0f}"
-            )
+            df[f"{col_prefix}_explicit_target_fmt"] = df[exp_tgt_col].apply(lambda x: f"${x:,.0f}")
 
         # Format policy variance
         policy_var_pct_col = f"{col_prefix}_policy_variance_pct"
@@ -322,8 +320,12 @@ class AllocationPresentationFormatter:
                     "policy_variance_raw": float(row.get(f"{type_code}_policy_variance", 0.0)),
                     "policy_variance_pct": float(row.get(f"{type_code}_policy_variance_pct", 0.0)),
                     "effective_variance": row.get(f"{type_code}_effective_variance_fmt", ""),
-                    "effective_variance_raw": float(row.get(f"{type_code}_effective_variance", 0.0)),
-                    "effective_variance_pct": float(row.get(f"{type_code}_effective_variance_pct", 0.0)),
+                    "effective_variance_raw": float(
+                        row.get(f"{type_code}_effective_variance", 0.0)
+                    ),
+                    "effective_variance_pct": float(
+                        row.get(f"{type_code}_effective_variance_pct", 0.0)
+                    ),
                     "active_strategy_id": target_strategies.get("at_strategy_map", {}).get(type_id),
                     "active_accounts": account_columns,
                     "accounts": account_columns,
@@ -506,44 +508,43 @@ class AllocationPresentationFormatter:
             # Build parent_id for collapse functionality
             parent_id = f"cat-{row['Category_Code']}"
 
-            rows.append({
-                "row_type": "holding",
-                "ticker": row["Ticker"],
-                "security_name": row["Security_Name"],
-                "asset_class": row["Asset_Class"],
-                "asset_category": row["Asset_Category"],
-                "asset_group": row["Asset_Group"],
-                "group_code": row["Group_Code"],
-                "category_code": row["Category_Code"],
-
-                # Display values (formatted strings)
-                "price": row["price_display"],
-                "shares": row["shares_display"],
-                "shares_input": row["shares_input"],
-                "target_shares": row["target_shares_display"],
-                "shares_variance": row["shares_variance_display"],
-                "value": row["value_display"],
-                "target_value": row["target_value_display"],
-                "value_variance": row["value_variance_display"],
-                "allocation": row["allocation_display"],
-                "target_allocation": row["target_allocation_display"],
-                "allocation_variance": row["allocation_variance_display"],
-
-                # Raw values (for sorting/calculations in template if needed)
-                "price_raw": row["Price"],
-                "shares_raw": row["Shares"],
-                "value_raw": row["Value"],
-                "allocation_raw": row["Allocation_Pct"],
-                "variance_raw": row["Value_Variance"],
-
-                # UI metadata
-                "is_holding": True,
-                "is_subtotal": False,
-                "is_group_total": False,
-                "is_grand_total": False,
-                "parent_id": parent_id,
-                "row_class": f"{parent_id}-rows collapse show",
-            })
+            rows.append(
+                {
+                    "row_type": "holding",
+                    "ticker": row["Ticker"],
+                    "security_name": row["Security_Name"],
+                    "asset_class": row["Asset_Class"],
+                    "asset_category": row["Asset_Category"],
+                    "asset_group": row["Asset_Group"],
+                    "group_code": row["Group_Code"],
+                    "category_code": row["Category_Code"],
+                    # Display values (formatted strings)
+                    "price": row["price_display"],
+                    "shares": row["shares_display"],
+                    "shares_input": row["shares_input"],
+                    "target_shares": row["target_shares_display"],
+                    "shares_variance": row["shares_variance_display"],
+                    "value": row["value_display"],
+                    "target_value": row["target_value_display"],
+                    "value_variance": row["value_variance_display"],
+                    "allocation": row["allocation_display"],
+                    "target_allocation": row["target_allocation_display"],
+                    "allocation_variance": row["allocation_variance_display"],
+                    # Raw values (for sorting/calculations in template if needed)
+                    "price_raw": row["Price"],
+                    "shares_raw": row["Shares"],
+                    "value_raw": row["Value"],
+                    "allocation_raw": row["Allocation_Pct"],
+                    "variance_raw": row["Value_Variance"],
+                    # UI metadata
+                    "is_holding": True,
+                    "is_subtotal": False,
+                    "is_group_total": False,
+                    "is_grand_total": False,
+                    "parent_id": parent_id,
+                    "row_class": f"{parent_id}-rows collapse show",
+                }
+            )
 
         return rows
 
@@ -557,65 +558,74 @@ class AllocationPresentationFormatter:
             return []
 
         # Group by asset category
-        grouped = df.groupby(["Group_Code", "Category_Code", "Asset_Category"], sort=False).agg({
-            "Value": "sum",
-            "Target_Value": "sum",
-            "Allocation_Pct": "sum",
-            "Target_Allocation_Pct": "sum",
-        }).reset_index()
+        grouped = (
+            df.groupby(["Group_Code", "Category_Code", "Asset_Category"], sort=False)
+            .agg(
+                {
+                    "Value": "sum",
+                    "Target_Value": "sum",
+                    "Allocation_Pct": "sum",
+                    "Target_Allocation_Pct": "sum",
+                }
+            )
+            .reset_index()
+        )
 
         # Filter out single-holding categories (subtotal would be redundant)
         category_counts = df.groupby(["Group_Code", "Category_Code"]).size()
         multi_holding_categories = category_counts[category_counts > 1].index
-        grouped = grouped[grouped.set_index(["Group_Code", "Category_Code"]).index.isin(multi_holding_categories)]
+        grouped = grouped[
+            grouped.set_index(["Group_Code", "Category_Code"]).index.isin(multi_holding_categories)
+        ]
 
         if grouped.empty:
             return []
 
         # Calculate variances
         grouped["Value_Variance"] = grouped["Value"] - grouped["Target_Value"]
-        grouped["Allocation_Variance"] = grouped["Allocation_Pct"] - grouped["Target_Allocation_Pct"]
+        grouped["Allocation_Variance"] = (
+            grouped["Allocation_Pct"] - grouped["Target_Allocation_Pct"]
+        )
 
         rows = []
         for _, row in grouped.iterrows():
             category_id = f"cat-{row['Category_Code']}"
             parent_id = f"grp-{row['Group_Code']}"
 
-            rows.append({
-                "row_type": "subtotal",
-                "name": f"{row['Asset_Category']} Total",
-                "category_code": row["Category_Code"],
-                "group_code": row["Group_Code"],
-
-                # Formatted display values
-                "value": f"${row['Value']:,.0f}",
-                "target_value": f"${row['Target_Value']:,.0f}",
-                "value_variance": (
-                    f"${row['Value_Variance']:+,.0f}"
-                    if abs(row['Value_Variance']) > 0.5
-                    else "—"
-                ),
-                "allocation": f"{row['Allocation_Pct']:.2f}%",
-                "target_allocation": f"{row['Target_Allocation_Pct']:.2f}%",
-                "allocation_variance": (
-                    f"{row['Allocation_Variance']:+.2f}%"
-                    if abs(row['Allocation_Variance']) > 0.01
-                    else "—"
-                ),
-
-                # Raw values
-                "value_raw": row["Value"],
-                "variance_raw": row["Value_Variance"],
-
-                # UI metadata
-                "is_holding": False,
-                "is_subtotal": True,
-                "is_group_total": False,
-                "is_grand_total": False,
-                "row_id": category_id,
-                "parent_id": parent_id,
-                "row_class": f"table-secondary fw-bold {parent_id}-rows collapse show",
-            })
+            rows.append(
+                {
+                    "row_type": "subtotal",
+                    "name": f"{row['Asset_Category']} Total",
+                    "category_code": row["Category_Code"],
+                    "group_code": row["Group_Code"],
+                    # Formatted display values
+                    "value": f"${row['Value']:,.0f}",
+                    "target_value": f"${row['Target_Value']:,.0f}",
+                    "value_variance": (
+                        f"${row['Value_Variance']:+,.0f}"
+                        if abs(row["Value_Variance"]) > 0.5
+                        else "—"
+                    ),
+                    "allocation": f"{row['Allocation_Pct']:.2f}%",
+                    "target_allocation": f"{row['Target_Allocation_Pct']:.2f}%",
+                    "allocation_variance": (
+                        f"{row['Allocation_Variance']:+.2f}%"
+                        if abs(row["Allocation_Variance"]) > 0.01
+                        else "—"
+                    ),
+                    # Raw values
+                    "value_raw": row["Value"],
+                    "variance_raw": row["Value_Variance"],
+                    # UI metadata
+                    "is_holding": False,
+                    "is_subtotal": True,
+                    "is_group_total": False,
+                    "is_grand_total": False,
+                    "row_id": category_id,
+                    "parent_id": parent_id,
+                    "row_class": f"table-secondary fw-bold {parent_id}-rows collapse show",
+                }
+            )
 
         return rows
 
@@ -629,12 +639,18 @@ class AllocationPresentationFormatter:
             return []
 
         # Group by asset group
-        grouped = df.groupby(["Group_Code", "Asset_Group"], sort=False).agg({
-            "Value": "sum",
-            "Target_Value": "sum",
-            "Allocation_Pct": "sum",
-            "Target_Allocation_Pct": "sum",
-        }).reset_index()
+        grouped = (
+            df.groupby(["Group_Code", "Asset_Group"], sort=False)
+            .agg(
+                {
+                    "Value": "sum",
+                    "Target_Value": "sum",
+                    "Allocation_Pct": "sum",
+                    "Target_Allocation_Pct": "sum",
+                }
+            )
+            .reset_index()
+        )
 
         # Filter out single-category groups (total would be redundant)
         group_counts = df.groupby("Group_Code")["Category_Code"].nunique()
@@ -646,46 +662,47 @@ class AllocationPresentationFormatter:
 
         # Calculate variances
         grouped["Value_Variance"] = grouped["Value"] - grouped["Target_Value"]
-        grouped["Allocation_Variance"] = grouped["Allocation_Pct"] - grouped["Target_Allocation_Pct"]
+        grouped["Allocation_Variance"] = (
+            grouped["Allocation_Pct"] - grouped["Target_Allocation_Pct"]
+        )
 
         rows = []
         for _, row in grouped.iterrows():
             group_id = f"grp-{row['Group_Code']}"
 
-            rows.append({
-                "row_type": "group_total",
-                "name": f"{row['Asset_Group']} Total",
-                "group_code": row["Group_Code"],
-
-                # Formatted display values
-                "value": f"${row['Value']:,.0f}",
-                "target_value": f"${row['Target_Value']:,.0f}",
-                "value_variance": (
-                    f"${row['Value_Variance']:+,.0f}"
-                    if abs(row['Value_Variance']) > 0.5
-                    else "—"
-                ),
-                "allocation": f"{row['Allocation_Pct']:.2f}%",
-                "target_allocation": f"{row['Target_Allocation_Pct']:.2f}%",
-                "allocation_variance": (
-                    f"{row['Allocation_Variance']:+.2f}%"
-                    if abs(row['Allocation_Variance']) > 0.01
-                    else "—"
-                ),
-
-                # Raw values
-                "value_raw": row["Value"],
-                "variance_raw": row["Value_Variance"],
-
-                # UI metadata
-                "is_holding": False,
-                "is_subtotal": False,
-                "is_group_total": True,
-                "is_grand_total": False,
-                "row_id": group_id,
-                "parent_id": "",
-                "row_class": "table-primary fw-bold border-top group-toggle",
-            })
+            rows.append(
+                {
+                    "row_type": "group_total",
+                    "name": f"{row['Asset_Group']} Total",
+                    "group_code": row["Group_Code"],
+                    # Formatted display values
+                    "value": f"${row['Value']:,.0f}",
+                    "target_value": f"${row['Target_Value']:,.0f}",
+                    "value_variance": (
+                        f"${row['Value_Variance']:+,.0f}"
+                        if abs(row["Value_Variance"]) > 0.5
+                        else "—"
+                    ),
+                    "allocation": f"{row['Allocation_Pct']:.2f}%",
+                    "target_allocation": f"{row['Target_Allocation_Pct']:.2f}%",
+                    "allocation_variance": (
+                        f"{row['Allocation_Variance']:+.2f}%"
+                        if abs(row["Allocation_Variance"]) > 0.01
+                        else "—"
+                    ),
+                    # Raw values
+                    "value_raw": row["Value"],
+                    "variance_raw": row["Value_Variance"],
+                    # UI metadata
+                    "is_holding": False,
+                    "is_subtotal": False,
+                    "is_group_total": True,
+                    "is_grand_total": False,
+                    "row_id": group_id,
+                    "parent_id": "",
+                    "row_class": "table-primary fw-bold border-top group-toggle",
+                }
+            )
 
         return rows
 
@@ -706,33 +723,30 @@ class AllocationPresentationFormatter:
         total_alloc = 100.0
         total_target_alloc = 100.0
 
-        return [{
-            "row_type": "grand_total",
-            "name": "Grand Total",
-
-            # Formatted display values
-            "value": f"${total_value:,.0f}",
-            "target_value": f"${total_target:,.0f}",
-            "value_variance": (
-                f"${total_variance:+,.0f}"
-                if abs(total_variance) > 0.5
-                else "—"
-            ),
-            "allocation": f"{total_alloc:.2f}%",
-            "target_allocation": f"{total_target_alloc:.2f}%",
-            "allocation_variance": "—",
-
-            # Raw values
-            "value_raw": total_value,
-            "variance_raw": total_variance,
-
-            # UI metadata
-            "is_holding": False,
-            "is_subtotal": False,
-            "is_group_total": False,
-            "is_grand_total": True,
-            "row_class": "table-dark fw-bold border-top-3",
-        }]
+        return [
+            {
+                "row_type": "grand_total",
+                "name": "Grand Total",
+                # Formatted display values
+                "value": f"${total_value:,.0f}",
+                "target_value": f"${total_target:,.0f}",
+                "value_variance": (
+                    f"${total_variance:+,.0f}" if abs(total_variance) > 0.5 else "—"
+                ),
+                "allocation": f"{total_alloc:.2f}%",
+                "target_allocation": f"{total_target_alloc:.2f}%",
+                "allocation_variance": "—",
+                # Raw values
+                "value_raw": total_value,
+                "variance_raw": total_variance,
+                # UI metadata
+                "is_holding": False,
+                "is_subtotal": False,
+                "is_group_total": False,
+                "is_grand_total": True,
+                "row_class": "table-dark fw-bold border-top-3",
+            }
+        ]
 
     def _interleave_holdings_hierarchical(
         self,
@@ -750,18 +764,15 @@ class AllocationPresentationFormatter:
         result = []
 
         # Build lookup maps for efficient access
-        subtotals_by_category = {
-            row["category_code"]: row
-            for row in subtotal_rows
-        }
-        groups_by_code = {
-            row["group_code"]: row
-            for row in group_rows
-        }
+        subtotals_by_category = {row["category_code"]: row for row in subtotal_rows}
+        groups_by_code = {row["group_code"]: row for row in group_rows}
 
         # Group holdings by group_code and category_code
         from collections import defaultdict
-        holdings_by_group: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
+
+        holdings_by_group: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
 
         for holding in holding_rows:
             holdings_by_group[holding["group_code"]][holding["category_code"]].append(holding)

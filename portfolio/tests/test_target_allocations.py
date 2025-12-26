@@ -39,14 +39,14 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             ticker="VTI", defaults={"name": "VTI", "asset_class": self.ac_us}
         )
 
-        self.cat_cash, _ = AssetClassCategory.objects.get_or_create(
+        self.category_cash, _ = AssetClassCategory.objects.get_or_create(
             code="CASH", defaults={"label": "Cash", "sort_order": 10}
         )
-        self.ac_cash, _ = AssetClass.objects.get_or_create(
-            name=AssetClass.CASH_NAME, defaults={"category": self.cat_cash}
+        self.asset_class_cash, _ = AssetClass.objects.get_or_create(
+            name=AssetClass.CASH_NAME, defaults={"category": self.category_cash}
         )
-        self.sec_cash, _ = Security.objects.get_or_create(
-            ticker="CASH", defaults={"name": "Cash", "asset_class": self.ac_cash}
+        self.cash, _ = Security.objects.get_or_create(
+            ticker="CASH", defaults={"name": "Cash", "asset_class": self.asset_class_cash}
         )
 
         # Setup Accounts
@@ -73,7 +73,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             account=self.acc_tax, security=self.sec_vti, shares=20, current_price=100
         )
         Holding.objects.create(
-            account=self.acc_tax, security=self.sec_cash, shares=2000, current_price=1
+            account=self.acc_tax, security=self.cash, shares=2000, current_price=1
         )
 
         # Setup Strategies
@@ -84,7 +84,9 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             strategy=self.strategy_conservative, asset_class=self.ac_us, target_percent=40
         )
         TargetAllocation.objects.create(
-            strategy=self.strategy_conservative, asset_class=self.ac_cash, target_percent=60
+            strategy=self.strategy_conservative,
+            asset_class=self.asset_class_cash,
+            target_percent=60,
         )
 
         self.strategy_aggressive = AllocationStrategy.objects.create(
@@ -94,7 +96,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             strategy=self.strategy_aggressive, asset_class=self.ac_us, target_percent=90
         )
         TargetAllocation.objects.create(
-            strategy=self.strategy_aggressive, asset_class=self.ac_cash, target_percent=10
+            strategy=self.strategy_aggressive, asset_class=self.asset_class_cash, target_percent=10
         )
 
     def test_initial_calculation(self) -> None:
@@ -222,7 +224,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         # 100% to Cash Asset Class
         TargetAllocation.objects.create(
             strategy=strategy_cash,
-            asset_class=self.ac_cash,
+            asset_class=self.asset_class_cash,
             target_percent=AllocationStrategy.TOTAL_ALLOCATION_PCT,
         )
 
@@ -238,12 +240,11 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
 
         # Add Value to account (via holding)
         Holding.objects.create(
-            account=acc_cash, security=self.sec_cash, shares=Decimal("150000"), current_price=1
+            account=acc_cash, security=self.cash, shares=Decimal("150000"), current_price=1
         )
 
         # Mock prices (needed for view/service)
         with MockMarketPrices({"VTI": Decimal("100.00"), "CASH": Decimal("1.00")}):
-
             # We can test via the Service directly (as per repro) OR via the View.
             # Testing via View is more integration-testy.
             # Let's inspect the Context from the view.
@@ -295,7 +296,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         )
 
         # Create reusable 'Cash' asset/category if needed (already in setUp? yes ac_cash)
-        # Using self.ac_cash from setUp
+        # Using self.asset_class_cash from setUp
 
         # Create dedicated Account Type to isolate calculation
         type_fi, _ = AssetClassCategory.objects.get_or_create(
@@ -327,7 +328,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         # Add Cash Holding to give account value
         # 150k value
         Holding.objects.create(
-            account=acc_fi, security=self.sec_cash, shares=Decimal("150000"), current_price=1
+            account=acc_fi, security=self.cash, shares=Decimal("150000"), current_price=1
         )
 
         # Create Strategy: 50% TIPS, 50% Cash
@@ -336,7 +337,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             strategy=strategy_fi, asset_class=ac_tips, target_percent=Decimal("50.00")
         )
         TargetAllocation.objects.create(
-            strategy=strategy_fi, asset_class=self.ac_cash, target_percent=Decimal("50.00")
+            strategy=strategy_fi, asset_class=self.asset_class_cash, target_percent=Decimal("50.00")
         )
 
         # Assign Strategy
@@ -344,11 +345,12 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         acc_fi.save()
 
         # Mock Prices
-        with MockMarketPrices({
-            "CASH": Decimal("1.00"),
-            "VTI": Decimal("100.00"),
-        }):  # VTI needed for other accounts in setUp?
-
+        with MockMarketPrices(
+            {
+                "CASH": Decimal("1.00"),
+                "VTI": Decimal("100.00"),
+            }
+        ):  # VTI needed for other accounts in setUp?
             # Get Context (Percent Mode)
             response = self.client.get(reverse("portfolio:target_allocations") + "?mode=percent")
 

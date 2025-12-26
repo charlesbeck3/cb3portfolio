@@ -53,7 +53,7 @@ packages = ["portfolio", "config"]
 line-length = 100
 
 # Python version
-target-version = "py314"
+target-version = "py312"
 
 # Exclude directories
 exclude = [

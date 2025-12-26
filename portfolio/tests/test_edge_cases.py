@@ -1,207 +1,206 @@
 from decimal import Decimal
+from typing import Any
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.urls import reverse
 
 import pytest
 
-from portfolio.models import Account, AllocationStrategy, Holding, TargetAllocation
-from portfolio.tests.fixtures.mocks import MockMarketPrices
-
-from .base import PortfolioTestMixin
+from portfolio.models import (
+    Account,
+    AccountTypeStrategyAssignment,
+    AllocationStrategy,
+    Holding,
+    TargetAllocation,
+)
+from portfolio.services.allocation_calculations import AllocationCalculationEngine
 
 User = get_user_model()
 
+
 @pytest.mark.edge_cases
-class TestEmptyPortfolio(TestCase, PortfolioTestMixin):
-    """Test behavior when portfolio has no holdings."""
+@pytest.mark.integration
+def test_empty_portfolio_allocations(test_portfolio: dict[str, Any]) -> None:
+    """Empty portfolio should return zeros, not crash."""
+    user = test_portfolio["user"]
+    engine = AllocationCalculationEngine()
+    df = engine.build_presentation_dataframe(user=user)
 
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.create_portfolio(user=self.user)
-        self.client.force_login(self.user)
+    # If empty, df should be empty
+    assert df.empty
 
-    def test_empty_portfolio_allocations(self) -> None:
-        """Empty portfolio should return zeros, not crash."""
-        from portfolio.services.allocation_calculations import AllocationCalculationEngine
-        engine = AllocationCalculationEngine()
-        df = engine.build_presentation_dataframe(user=self.user)
-
-        # If empty, df should be empty
-        self.assertTrue(df.empty)
-
-        # Check aggregation on empty df
-        aggregated = engine.aggregate_presentation_levels(df)
-        self.assertTrue(aggregated["grand_total"].empty)
-
-    def test_empty_portfolio_dashboard(self) -> None:
-        """Dashboard should render cleanly with no holdings."""
-        from django.urls import reverse
-        with MockMarketPrices({}):
-            response = self.client.get(reverse("portfolio:dashboard"))
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("Dashboard", response.content.decode())
+    # Check aggregation on empty df
+    aggregated = engine.aggregate_presentation_levels(df)
+    assert aggregated["grand_total"].empty
 
 
 @pytest.mark.edge_cases
-class TestDecimalPrecision(TestCase, PortfolioTestMixin):
-    """Test handling of decimal precision edge cases."""
+@pytest.mark.integration
+def test_empty_portfolio_dashboard(
+    client: Any, test_portfolio: dict[str, Any], zero_prices: Any
+) -> None:
+    """Dashboard should render cleanly with no holdings."""
+    user = test_portfolio["user"]
+    client.force_login(user)
 
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.create_portfolio(user=self.user)
+    # zero_prices fixture mocks empty prices
+    response = client.get(reverse("portfolio:dashboard"))
 
-    def test_allocations_sum_to_99_99(self) -> None:
-        """Allocations summing to 99.99% should be handled by cash remainder."""
-        strategy = AllocationStrategy.objects.create(user=self.user, name="99.99 Strategy")
-        # Asset classes
-        ac_us = self.asset_class_us_equities
-        TargetAllocation.objects.create(strategy=strategy, asset_class=ac_us, target_percent=Decimal("99.99"))
-
-        # Cash should be 0.01%
-        # AllocationStrategy model now has logic to handle cash remainder if used via save_allocations
-        strategy.save_allocations({ac_us.id: Decimal("99.99")})
-
-        cash_alloc = strategy.target_allocations.get(asset_class=self.asset_class_cash)
-        self.assertEqual(cash_alloc.target_percent, Decimal("0.01"))
+    assert response.status_code == 200
+    assert "Dashboard" in response.content.decode()
 
 
 @pytest.mark.edge_cases
-class TestLargeValues(TestCase, PortfolioTestMixin):
-    """Test handling of very large portfolio values."""
+@pytest.mark.integration
+def test_allocations_sum_to_99_99(test_portfolio: dict[str, Any]) -> None:
+    """Allocations summing to 99.99% should be handled by cash remainder."""
+    user = test_portfolio["user"]
+    system = test_portfolio["system"]
 
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.create_portfolio(user=self.user)
+    strategy = AllocationStrategy.objects.create(user=user, name="99.99 Strategy")
+    # Asset classes
+    ac_us = system.asset_class_us_equities
+    TargetAllocation.objects.create(
+        strategy=strategy, asset_class=ac_us, target_percent=Decimal("99.99")
+    )
 
-        self.account = Account.objects.create(
-            user=self.user,
-            name="Whale Account",
-            portfolio=self.portfolio,
-            account_type=self.type_taxable,
-            institution=self.institution,
-        )
+    # Cash should be 0.01%
+    # AllocationStrategy model now has logic to handle cash remainder if used via save_allocations
+    strategy.save_allocations({ac_us.id: Decimal("99.99")})
 
-    def test_billion_dollar_portfolio(self) -> None:
-        """Calculations should work for $1B+ portfolios."""
-        # 10,000,000 shares @ $100 = $1B
-        Holding.objects.create(
-            account=self.account,
-            security=self.vti,
-            shares=Decimal("10000000"),
-            current_price=Decimal("100")
-        )
-
-        from portfolio.services.allocation_calculations import AllocationCalculationEngine
-        engine = AllocationCalculationEngine()
-        df = engine.build_presentation_dataframe(user=self.user)
-        aggregated = engine.aggregate_presentation_levels(df)
-
-        grand_total = aggregated["grand_total"]
-        # Columns in grand_total include 'portfolio_actual'
-        self.assertEqual(grand_total["portfolio_actual"].iloc[0], 1000000000.0)
+    cash_alloc = strategy.target_allocations.get(asset_class=system.asset_class_cash)
+    assert cash_alloc.target_percent == Decimal("0.01")
 
 
 @pytest.mark.edge_cases
-class TestAccountWithNoHoldings(TestCase, PortfolioTestMixin):
+@pytest.mark.integration
+def test_billion_dollar_portfolio(test_portfolio: dict[str, Any]) -> None:
+    """Calculations should work for $1B+ portfolios."""
+    user = test_portfolio["user"]
+    system = test_portfolio["system"]
+    portfolio = test_portfolio["portfolio"]
+
+    account = Account.objects.create(
+        user=user,
+        name="Whale Account",
+        portfolio=portfolio,
+        account_type=system.type_taxable,
+        institution=system.institution,
+    )
+
+    # 10,000,000 shares @ $100 = $1B
+    Holding.objects.create(
+        account=account,
+        security=system.vti,
+        shares=Decimal("10000000"),
+        current_price=Decimal("100"),
+    )
+
+    engine = AllocationCalculationEngine()
+    df = engine.build_presentation_dataframe(user=user)
+    aggregated = engine.aggregate_presentation_levels(df)
+
+    grand_total = aggregated["grand_total"]
+    # Columns in grand_total include 'portfolio_actual'
+    assert grand_total["portfolio_actual"].iloc[0] == 1000000000.0
+
+
+@pytest.mark.edge_cases
+@pytest.mark.integration
+def test_account_with_no_holdings(test_portfolio: dict[str, Any]) -> None:
     """Account exists but has zero holdings - should appear with $0."""
+    user = test_portfolio["user"]
+    system = test_portfolio["system"]
+    portfolio = test_portfolio["portfolio"]
 
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.create_portfolio(user=self.user)
-        self.account = Account.objects.create(
-            user=self.user,
-            name="Empty Account",
-            portfolio=self.portfolio,
-            account_type=self.type_taxable,
-            institution=self.institution,
-        )
-
-    def test_account_valuation(self) -> None:
-        self.assertEqual(self.account.total_value(), Decimal("0.00"))
+    account = Account.objects.create(
+        user=user,
+        name="Empty Account",
+        portfolio=portfolio,
+        account_type=system.type_taxable,
+        institution=system.institution,
+    )
+    assert account.total_value() == Decimal("0.00")
 
 
 @pytest.mark.edge_cases
-class TestPartialAllocations(TestCase, PortfolioTestMixin):
+@pytest.mark.integration
+def test_partial_allocations_auto_fill_cash(test_portfolio: dict[str, Any]) -> None:
     """Allocations that don't sum to 100% - auto-allocate to cash."""
+    user = test_portfolio["user"]
+    system = test_portfolio["system"]
 
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.strategy = AllocationStrategy.objects.create(user=self.user, name="Partial Strategy")
+    strategy = AllocationStrategy.objects.create(user=user, name="Partial Strategy")
 
-    def test_auto_fill_cash(self) -> None:
-        # 80% to US Equities
-        self.strategy.save_allocations({
-            self.asset_class_us_equities.id: Decimal("80.00")
-        })
+    # 80% to US Equities
+    strategy.save_allocations({system.asset_class_us_equities.id: Decimal("80.00")})
 
-        # Should have created a cash allocation of 20%
-        cash_alloc = self.strategy.target_allocations.get(asset_class=self.asset_class_cash)
-        self.assertEqual(cash_alloc.target_percent, Decimal("20.00"))
+    # Should have created a cash allocation of 20%
+    cash_alloc = strategy.target_allocations.get(asset_class=system.asset_class_cash)
+    assert cash_alloc.target_percent == Decimal("20.00")
 
 
 @pytest.mark.edge_cases
-class TestMultipleAccountsSameType(TestCase, PortfolioTestMixin):
+@pytest.mark.integration
+def test_strategy_inheritance(test_portfolio: dict[str, Any]) -> None:
     """Type-level allocation applies to all accounts of that type."""
+    user = test_portfolio["user"]
+    system = test_portfolio["system"]
+    portfolio = test_portfolio["portfolio"]
 
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.create_portfolio(user=self.user)
+    # Create two taxable accounts
+    acc1 = Account.objects.create(
+        user=user,
+        name="Taxable 1",
+        portfolio=portfolio,
+        account_type=system.type_taxable,
+        institution=system.institution,
+    )
+    acc2 = Account.objects.create(
+        user=user,
+        name="Taxable 2",
+        portfolio=portfolio,
+        account_type=system.type_taxable,
+        institution=system.institution,
+    )
 
-        # Create two taxable accounts
-        self.acc1 = Account.objects.create(
-            user=self.user, name="Taxable 1", portfolio=self.portfolio,
-            account_type=self.type_taxable, institution=self.institution
-        )
-        self.acc2 = Account.objects.create(
-            user=self.user, name="Taxable 2", portfolio=self.portfolio,
-            account_type=self.type_taxable, institution=self.institution
-        )
+    # Create strategy
+    strategy = AllocationStrategy.objects.create(user=user, name="Taxable Strategy")
 
-        # Create strategy
-        self.strategy = AllocationStrategy.objects.create(user=self.user, name="Taxable Strategy")
+    # Assign to TYPE
+    AccountTypeStrategyAssignment.objects.create(
+        user=user, account_type=system.type_taxable, allocation_strategy=strategy
+    )
 
-        # Assign to TYPE
-        from portfolio.models import AccountTypeStrategyAssignment
-        AccountTypeStrategyAssignment.objects.create(
-            user=self.user, account_type=self.type_taxable, allocation_strategy=self.strategy
-        )
-
-    def test_strategy_inheritance(self) -> None:
-        # Both accounts should inherit the strategy
-        self.assertEqual(self.acc1.get_effective_allocation_strategy(), self.strategy)
-        self.assertEqual(self.acc2.get_effective_allocation_strategy(), self.strategy)
+    # Both accounts should inherit the strategy
+    assert acc1.get_effective_allocation_strategy() == strategy
+    assert acc2.get_effective_allocation_strategy() == strategy
 
 
 @pytest.mark.edge_cases
-class TestZeroPriceSecurities(TestCase, PortfolioTestMixin):
+@pytest.mark.integration
+def test_zero_price_valuation(test_portfolio: dict[str, Any]) -> None:
     """Holdings with missing or zero prices."""
+    user = test_portfolio["user"]
+    system = test_portfolio["system"]
+    portfolio = test_portfolio["portfolio"]
 
-    def setUp(self) -> None:
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.create_portfolio(user=self.user)
-        self.account = Account.objects.create(
-            user=self.user, name="Acc", portfolio=self.portfolio,
-            account_type=self.type_taxable, institution=self.institution
-        )
+    account = Account.objects.create(
+        user=user,
+        name="Acc",
+        portfolio=portfolio,
+        account_type=system.type_taxable,
+        institution=system.institution,
+    )
 
-    def test_zero_price_valuation(self) -> None:
-        # Holding with 0 price explicitly
-        h = Holding.objects.create(
-            account=self.account, security=self.vti, shares=100, current_price=Decimal("0.00")
-        )
-        self.assertEqual(h.market_value, Decimal("0.00"))
+    # Holding with 0 price explicitly
+    h1 = Holding.objects.create(
+        account=account, security=system.vti, shares=100, current_price=Decimal("0.00")
+    )
+    assert h1.market_value == Decimal("0.00")
 
-    def test_null_price_valuation(self) -> None:
-        # Holding with noprice
-        h = Holding.objects.create(
-            account=self.account, security=self.vxus, shares=100, current_price=None
-        )
-        self.assertEqual(h.market_value, Decimal("0.00"))
+    # Holding with noprice
+    h2 = Holding.objects.create(
+        account=account, security=system.vxus, shares=100, current_price=None
+    )
+    assert h2.market_value == Decimal("0.00")

@@ -180,7 +180,7 @@ class Command(BaseCommand, PortfolioTestMixin):
         )
         AccountTypeStrategyAssignment.objects.create(
             user=self.user,
-            account_type=self.type_traditional_ira,
+            account_type=self.type_trad,
             allocation_strategy=self.strategy_tax_deferred,
         )
 
@@ -279,7 +279,7 @@ class Command(BaseCommand, PortfolioTestMixin):
             user=self.user,
             name="CB IRA",
             portfolio=self.portfolio,
-            account_type=self.type_traditional_ira,
+            account_type=self.type_trad,
             institution=self.institution,
         )
         Holding.objects.create(

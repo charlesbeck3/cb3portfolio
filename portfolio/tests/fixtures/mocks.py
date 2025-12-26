@@ -18,6 +18,7 @@ import pytest
 # MARKET DATA MOCKS
 # ============================================================================
 
+
 @pytest.fixture
 def mock_market_prices(request: Any) -> Callable[[dict[str, Decimal]], MagicMock]:
     """
@@ -38,6 +39,7 @@ def mock_market_prices(request: Any) -> Callable[[dict[str, Decimal]], MagicMock
 
     Note: Patches are automatically cleaned up between tests.
     """
+
     def _mock_prices(prices: dict[str, Decimal]) -> MagicMock:
         patcher = patch("portfolio.services.MarketDataService.get_prices")
         mock = patcher.start()
@@ -121,6 +123,7 @@ def volatile_prices() -> Generator[MagicMock]:
 # CONTEXT MANAGERS FOR DJANGO TESTCASE
 # ============================================================================
 
+
 class MockMarketPrices:
     """
     Context manager for mocking market prices in Django TestCase tests.
@@ -154,6 +157,7 @@ class MockMarketPrices:
 # ============================================================================
 # HELPER UTILITIES
 # ============================================================================
+
 
 def get_standard_prices() -> dict[str, Decimal]:
     """
