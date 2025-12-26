@@ -127,19 +127,12 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
 
     def test_dashboard_calculated_values(self) -> None:
         """
-        Verify that dashboard tables contain calculated values for:
-        1. Category Subtotals
-        2. Group Totals
-        3. Grand Totals
-        4. Cash Row
+        Verify that dashboard tables contain calculated values.
         """
         # Setup Data
-        # Group "Investments"
-        # Use seeded objects
         ac_us = self.asset_class_us_equities
         sec_us = self.vti
 
-        # Account
         acc_tax = Account.objects.create(
             user=self.user,
             name="My Taxable",
@@ -148,10 +141,8 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
             institution=self.institution,
         )
 
-        # Holding: $1000 VTI
         Holding.objects.create(account=acc_tax, security=sec_us, shares=10, current_price=100)
 
-        # Targets: Set US Equities to 50% for Taxable
         strategy, _ = AllocationStrategy.objects.update_or_create(
             user=self.user,
             name=f"{acc_tax.account_type.label} Strategy",
@@ -167,87 +158,34 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
             defaults={"allocation_strategy": strategy},
         )
 
-        # Force pricing update (mock or ensure service called)
-        # Service is called in view.
-        # But we need MarketDataService to return stable prices if view calls it.
-        # Or just trust DB if logic skips update? Service usually calls update_prices.
-        # Let's mock it to be safe.
-        from unittest.mock import patch
+        ac_intl = self.asset_class_intl_developed
+        sec_intl = self.vxus
 
+        Holding.objects.create(account=acc_tax, security=sec_intl, shares=10, current_price=50)
+        TargetAllocation.objects.create(
+            strategy=strategy, asset_class=ac_intl, target_percent=Decimal("40.00")
+        )
+
+        from unittest.mock import patch
         with patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
-            mock_prices.return_value = {"VTI": Decimal("100.00")}
+            mock_prices.return_value = {"VTI": Decimal("100.00"), "VXUS": Decimal("50.00")}
             response = self.client.get(reverse("portfolio:dashboard"))
 
         self.assertEqual(response.status_code, 200)
         content = response.content.decode("utf-8")
 
-        # Calculate Expected Values
-        # Total Value: $1000
-        # Target US Stocks: 50% of $1000 = $500
-        # Variance US Stocks: $1000 - $500 = $500
-
-        # We look for these formatted strings in the HTML.
-        # Note: formatting might include commas, parentheses for negative. $1,000.00 or 1,000 etc.
-        # The template uses accounting_amount:0 or similar.
-        # Assuming accounting_amount:0 formats as "1,000" (int) or "1,000.00"?
-        # Current logic usually is `|accounting_amount:0` -> check `portfolio_extras`.
-        # Assuming it produces "1,000" or "$1,000".
-        # Let's check for "500" and "1,000" in relevant context if possible, or just presence.
-
-        # Specific Checks:
-        # 1. Category Subtotal for 'Equities': Should match Asset Class total since only 1 AC.
-        # Wait, if only 1 AC, Subtotal is HIDDEN? Yes (test_redundant_totals).
-        # So we need 2 ACs to test Subtotal Row values.
-        ac_intl = self.asset_class_intl_developed
-        sec_intl = self.vxus
-
-        Holding.objects.create(account=acc_tax, security=sec_intl, shares=10, current_price=50)
-        # Add target for Intl: 40%
-        TargetAllocation.objects.create(
-            strategy=strategy, asset_class=ac_intl, target_percent=Decimal("40.00")
-        )
-
-        # New Totals:
-        # VTI: $1000. Target (50% of $1500? No, 50% of Account Total).
-        # Account Total = $1000 + $500 = $1500.
-        # US Target: 50% * 1500 = $750. Var: 1000 - 750 = 250.
-        # Intl Target: 40% * 1500 = $600. Var: 500 - 600 = -100.
-
-        # Category Total (Equities):
-        # Current: 1500
-        # Target: 750 + 600 = 1350 (90%)
-        # Variance: 1500 - 1350 = 150.
-
-        # Re-fetch with new data
-        with patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
-            mock_prices.return_value = {"VTI": Decimal("100.00"), "VXUS": Decimal("50.00")}
-            response = self.client.get(reverse("portfolio:dashboard"))
-        content = response.content.decode("utf-8")
-
-        # Search for Strings
-        # New engine returns formatted strings with $ and commas.
-
         # US Row - Current $1,000, Target $750, Variance $250
         self.assertIn("1,000", content)
         self.assertIn("750", content)
-        self.assertIn("250", content)  # Variance might be +250 or $250
+        self.assertIn("250", content)
 
         # Intl Row - Current $500, Target $600, Variance -$100
         self.assertIn("500", content)
         self.assertIn("600", content)
-        # Negative variance might be ($100) or -$100 depending on implementation
-        # Engine _format_money uses parentheses for negative
-        self.assertIn("(", content)  # Check for parentheses formatting
+        self.assertIn("(", content)  # Check for parentheses formatting for negatives
 
         # Category Subtotal 'Equities Total'
         self.assertIn("Equities Total", content)
-        self.assertIn("1,500", content)  # Current
-        self.assertIn("1,350", content)  # Target
-        self.assertIn("150", content)  # Variance
-
-        # Grand Total Row
-        self.assertIn("Total", content)
-        # Should match sums
         self.assertIn("1,500", content)
         self.assertIn("1,350", content)
         self.assertIn("150", content)

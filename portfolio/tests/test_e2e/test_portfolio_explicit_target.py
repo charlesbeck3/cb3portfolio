@@ -2,39 +2,25 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from django.contrib.auth import get_user_model
-
 import pytest
 from playwright.sync_api import Page, expect
 
-from portfolio.models import AllocationStrategy, Holding
-from portfolio.tests.base import PortfolioTestMixin
-
-User = get_user_model()
+from portfolio.models import AllocationStrategy
 
 
 @pytest.mark.django_db
-class TestPortfolioExplicitTarget(PortfolioTestMixin):
+class TestPortfolioExplicitTarget:
     @pytest.fixture(autouse=True)
-    def setup_data(self) -> None:
-        self.setup_portfolio_data()
-        self.user = User.objects.create_user(username="testuser", password="password")
-        self.create_portfolio(user=self.user)
+    def setup_data(self, standard_test_portfolio: dict[str, Any]) -> None:
+        self.data = standard_test_portfolio
+        self.user = self.data["user"]
+        self.portfolio = self.data["portfolio"]
+        self.acc_roth = self.data["account"]
+        self.mixin = self.data["mixin"]
 
-        # Setup Account
-        from portfolio.models import Account
-        self.acc_roth = Account.objects.create(
-            user=self.user,
-            name="My Roth",
-            portfolio=self.portfolio,
-            account_type=self.type_roth,
-            institution=self.institution,
-        )
-
-        # Holdings: $1000 US Stocks
-        Holding.objects.create(
-            account=self.acc_roth, security=self.vti, shares=10, current_price=100
-        )
+        # Asset classes from mixin
+        self.ac_us_eq = self.mixin.asset_class_us_equities
+        self.ac_treasuries_short = self.mixin.asset_class_treasuries_short
 
         # Setup Portfolio Strategy (Explicit Target)
         self.strategy_balanced = AllocationStrategy.objects.create(
@@ -57,23 +43,16 @@ class TestPortfolioExplicitTarget(PortfolioTestMixin):
         self.acc_roth.allocation_strategy = self.strategy_all_stocks
         self.acc_roth.save()
 
-    def test_portfolio_target_columns_presence(self, page: Page, live_server: Any) -> None:
-        """Verify that Total Portfolio columns include both Exp. Target and Wt. Target."""
-        # login
-        page.goto(f"{live_server.url}/accounts/login/")
-        page.fill('input[name="username"]', "testuser")
-        page.fill('input[name="password"]', "password")
-        page.click('button[type="submit"]')
-
-        # Go to targets
-        page.goto(f"{live_server.url}/targets/")
+    def test_portfolio_target_columns_presence(self, authenticated_page: Page, live_server_url: str) -> None:
+        """Verify that Total Portfolio columns include basic and variance columns."""
+        authenticated_page.goto(f"{live_server_url}/targets/")
 
         # Check "Total Portfolio" header
-        portfolio_header = page.locator('#allocations-table th').filter(has_text=re.compile(r"Total Portfolio"))
+        portfolio_header = authenticated_page.locator('#allocations-table th').filter(has_text=re.compile(r"Total Portfolio"))
         expect(portfolio_header).to_be_visible()
 
-        # Sub-headers for Total Portfolio section (Current, Exp. Target, Wt. Target, Drift)
-        sub_headers = page.locator('#allocations-table thead tr').nth(1).locator('th.table-active')
+        # Sub-headers for Total Portfolio section (Actual, Policy, Effective, Variance)
+        sub_headers = authenticated_page.locator('#allocations-table thead tr').nth(1).locator('th.table-active')
 
         # New behavior: Actual, Policy, Effective, Variance (4 columns)
         expect(sub_headers).to_have_count(4)
@@ -84,24 +63,13 @@ class TestPortfolioExplicitTarget(PortfolioTestMixin):
         assert "Effective" in texts
         assert "Variance" in texts
 
-    def test_portfolio_target_values(self, page: Page, live_server: Any) -> None:
-        """Verify that values in Exp. Target and Wt. Target are correct."""
-        # login
-        page.goto(f"{live_server.url}/accounts/login/")
-        page.fill('input[name="username"]', "testuser")
-        page.fill('input[name="password"]', "password")
-        page.click('button[type="submit"]')
-
-        # Go to targets
-        page.goto(f"{live_server.url}/targets/")
-
-        # US Equities row
-        # Weighted target should be 100% (from All Stocks strategy)
-        # Explicit target should be 60% (from Balanced strategy)
+    def test_portfolio_target_values(self, authenticated_page: Page, live_server_url: str) -> None:
+        """Verify that values in Policy and Effective targets are correct."""
+        authenticated_page.goto(f"{live_server_url}/targets/")
 
         # Find the row specifically for "US Equities"
-        us_eq_row = page.locator('#allocations-table tbody tr').filter(
-            has=page.locator('td').first.filter(has_text=re.compile(r'^US Equities$'))
+        us_eq_row = authenticated_page.locator('#allocations-table tbody tr').filter(
+            has=authenticated_page.locator('td').first.filter(has_text=re.compile(r'^US Equities$'))
         )
 
         # Expect 4 cells in the table-active (portfolio) section

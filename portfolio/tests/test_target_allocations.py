@@ -278,9 +278,9 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
 
             # Assert Target == Current (150k)
             # target_raw is Decimal
-            self.assertEqual(target_col["target_raw"], Decimal("150000.00"))
-            self.assertEqual(target_col["target_raw"], Decimal("150000.00"))
-            self.assertGreater(target_col["current_raw"], 0)
+            self.assertEqual(target_col["policy_raw"], Decimal("150000.00"))
+            self.assertEqual(target_col["policy_raw"], Decimal("150000.00"))
+            self.assertGreater(target_col["actual_raw"], 0)
 
     def test_fixed_income_subtotal_and_display(self) -> None:
         """Verify subtotal aggregation and percent display format (repro for partial subtotal & dollar sign bug)."""
@@ -377,7 +377,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             if group_fi:
                 # Should be "50.0" raw (percent value)
                 self.assertAlmostEqual(
-                    Decimal(str(group_fi["weighted_target_pct"])), Decimal("50.0"), places=1
+                    Decimal(str(group_fi["effective_pct"])), Decimal("50.0"), places=1
                 )
 
         # 2. Verify Individual Account Display (No Dollar Signs)
@@ -394,10 +394,10 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
                 self.assertIsNotNone(acc_col)
                 if acc_col:
                     # Check display string
-                    self.assertIn("%", acc_col["target"])
+                    self.assertIn("%", acc_col["policy"])
                     # Check display string
-                    self.assertIn("%", acc_col["target"])
-                    self.assertNotIn("$", acc_col["target"])
+                    self.assertIn("%", acc_col["policy"])
+                    self.assertNotIn("$", acc_col["policy"])
 
     def test_assign_account_strategy_persists_and_renders(self) -> None:
         """Verify individual account strategy assignment persists and renders in select box (repro for display bug)."""
@@ -526,7 +526,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         self.assertIsNotNone(group)
         assert group is not None
         # "2,500" or "2500"
-        self.assertEqual(self._strip_html(group["current"]), "2500")
+        self.assertEqual(self._strip_html(group["actual"]), "2500")
 
         # Group Total Row "Global Equities" (Sum of 2500 + 1000 = 3500)
         group_row = next(
@@ -541,4 +541,4 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         )
         self.assertIsNotNone(group)
         assert group is not None
-        self.assertEqual(self._strip_html(group["current"]), "3500")
+        self.assertEqual(self._strip_html(group["actual"]), "3500")
