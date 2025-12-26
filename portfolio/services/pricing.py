@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from portfolio.market_data import MarketDataService
 from portfolio.models import Holding
+from portfolio.services.market_data import MarketDataService
 from users.models import CustomUser
 
 

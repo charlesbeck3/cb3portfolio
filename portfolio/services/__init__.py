@@ -1,5 +1,4 @@
-from portfolio.market_data import MarketDataService
-
+from .market_data import MarketDataService
 from .pricing import PricingService
 
 __all__ = [

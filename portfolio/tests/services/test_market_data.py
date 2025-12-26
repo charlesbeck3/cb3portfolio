@@ -3,11 +3,11 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
-from portfolio.market_data import MarketDataService
+from portfolio.services.market_data import MarketDataService
 
 
 class MarketDataServiceTests(TestCase):
-    @patch("portfolio.market_data.yf.download")
+    @patch("portfolio.services.market_data.yf.download")
     def test_get_prices(self, mock_download: MagicMock) -> None:
         # Mock yfinance response
         mock_data = MagicMock()
