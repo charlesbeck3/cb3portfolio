@@ -32,6 +32,7 @@ from portfolio.models import (
     Account,
     AccountTypeStrategyAssignment,
     AllocationStrategy,
+    AssetClass,
     Holding,
     Security,
     TargetAllocation,
@@ -70,6 +71,15 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         self.create_portfolio(user=self.user)
         self.setup_system_data()
 
+        # Ensure US Real Estate is available (consistency patch)
+        if not hasattr(self, "asset_class_us_real_estate"):
+             self.asset_class_us_real_estate = AssetClass.objects.get(name="US Real Estate")
+        if not hasattr(self, "asset_class_us_small_cap_value"):
+             self.asset_class_us_small_cap_value = AssetClass.objects.get(name="US Small Cap Value Equities")
+        if not hasattr(self, "asset_class_us_quality"):
+             self.asset_class_us_quality = AssetClass.objects.get(name="US Quality Equities")
+
+
         # The setup_system_data() call from PortfolioTestMixin already handles:
         # - Institutions
         # - AccountGroups (Retirement, Investments, Deposits)
@@ -106,7 +116,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         )
         TargetAllocation.objects.create(
             strategy=self.strategy_inflation_only,
-            asset_class=self.asset_class_inflation_bond,
+            asset_class=self.asset_class_tips,
             target_percent=AllocationStrategy.TOTAL_ALLOCATION_PCT,
         )
 
@@ -144,7 +154,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         )
         TargetAllocation.objects.create(
             strategy=self.strategy_taxable,
-            asset_class=self.asset_class_treasuries_intermediate,
+            asset_class=self.asset_class_treasuries_interm,
             target_percent=Decimal("5.00"),
         )
         TargetAllocation.objects.create(
@@ -180,7 +190,7 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
         )
         TargetAllocation.objects.create(
             strategy=self.strategy_tax_deferred,
-            asset_class=self.asset_class_treasuries_intermediate,
+            asset_class=self.asset_class_treasuries_interm,
             target_percent=Decimal("5.00"),
         )
 

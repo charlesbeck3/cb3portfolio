@@ -99,7 +99,7 @@ class Command(BaseCommand, PortfolioTestMixin):
         )
         TargetAllocation.objects.create(
             strategy=self.strategy_inflation_only,
-            asset_class=self.asset_class_inflation_bond,
+            asset_class=self.asset_class_tips,
             target_percent=Decimal("100.00"),
         )
 
@@ -135,7 +135,7 @@ class Command(BaseCommand, PortfolioTestMixin):
         )
         TargetAllocation.objects.create(
             strategy=self.strategy_taxable,
-            asset_class=self.asset_class_treasuries_intermediate,
+            asset_class=self.asset_class_treasuries_interm,
             target_percent=Decimal("5.00"),
         )
         TargetAllocation.objects.create(
@@ -169,7 +169,7 @@ class Command(BaseCommand, PortfolioTestMixin):
         )
         TargetAllocation.objects.create(
             strategy=self.strategy_tax_deferred,
-            asset_class=self.asset_class_treasuries_intermediate,
+            asset_class=self.asset_class_treasuries_interm,
             target_percent=Decimal("5.00"),
         )
 

@@ -11,14 +11,17 @@ Tests are organized into layers:
 from decimal import Decimal
 from typing import Any
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase
 
 import pandas as pd
+import pytest
 
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
 from portfolio.services.allocation_presentation import AllocationPresentationFormatter
 
 
+@pytest.mark.unit
+@pytest.mark.calculations
 class TestPureCalculations(SimpleTestCase):
     """
     Test pure calculation methods with mock DataFrames.
@@ -103,6 +106,8 @@ class TestPureCalculations(SimpleTestCase):
         self.assertTrue(result["by_asset_class"].empty)
 
 
+@pytest.mark.unit
+@pytest.mark.calculations
 class TestDataFrameAggregation(SimpleTestCase):
     """
     Test pandas aggregation logic.
@@ -185,6 +190,8 @@ class TestDataFrameAggregation(SimpleTestCase):
         self.assertTrue(result["category_subtotals"].empty)
 
 
+@pytest.mark.unit
+@pytest.mark.calculations
 class TestFormatting(SimpleTestCase):
     """
     Test presentation formatting logic.
@@ -292,7 +299,9 @@ class TestFormatting(SimpleTestCase):
         self.assertIn("%", row["portfolio"]["actual"])
 
 
-class TestCalculationAccuracy(TestCase):
+@pytest.mark.unit
+@pytest.mark.calculations
+class TestCalculationAccuracy(SimpleTestCase):
     """
     Test calculation accuracy with known values.
 
@@ -328,6 +337,8 @@ class TestCalculationAccuracy(TestCase):
 
         self.assertAlmostEqual(total_pct, 100.0, places=1)
 
+@pytest.mark.unit
+@pytest.mark.calculations
 class TestPortfolioCalculations(SimpleTestCase):
     """Test portfolio-level specific calculations."""
 
@@ -375,6 +386,8 @@ class TestPortfolioCalculations(SimpleTestCase):
         self.assertAlmostEqual(result.loc[1, "portfolio_policy_variance_pct"], -6.7, places=1)
 
 
+@pytest.mark.unit
+@pytest.mark.performance
 class TestPerformance(SimpleTestCase):
     """
     Performance tests to verify refactoring improved efficiency.

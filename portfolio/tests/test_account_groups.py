@@ -52,7 +52,7 @@ class AccountGroupTests(TestCase, PortfolioTestMixin):
 
         # Create a Savings account type and account for Deposit group
         self.type_savings = AccountType.objects.create(
-            code="SAVINGS", label="Savings", group=self.group_dep, tax_treatment="TAXABLE"
+            code="SAVINGS", label="Savings", group=self.group_deposits, tax_treatment="TAXABLE"
         )
         Account.objects.create(
             user=self.user,

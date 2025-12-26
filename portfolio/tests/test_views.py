@@ -4,6 +4,8 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+import pytest
+
 from portfolio.models import (
     Account,
     AccountTypeStrategyAssignment,
@@ -11,15 +13,17 @@ from portfolio.models import (
     Holding,
     TargetAllocation,
 )
+from portfolio.tests.fixtures.mocks import MockMarketPrices
 
 from .base import PortfolioTestMixin
 
 User = get_user_model()
 
 
+@pytest.mark.views
 class DashboardViewTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
         self.client.force_login(self.user)
@@ -96,7 +100,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         sec_us = self.vti
         Holding.objects.create(account=acc_dep, security=sec_us, shares=10, current_price=100)
 
-        sec_intl = self.vea
+        sec_intl = self.vxus
         Holding.objects.create(account=acc_dep, security=sec_intl, shares=10, current_price=50)
 
         # --- Execute ---
@@ -166,9 +170,7 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
             strategy=strategy, asset_class=ac_intl, target_percent=Decimal("40.00")
         )
 
-        from unittest.mock import patch
-        with patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
-            mock_prices.return_value = {"VTI": Decimal("100.00"), "VXUS": Decimal("50.00")}
+        with MockMarketPrices({"VTI": Decimal("100.00"), "VXUS": Decimal("50.00")}):
             response = self.client.get(reverse("portfolio:dashboard"))
 
         self.assertEqual(response.status_code, 200)
@@ -191,9 +193,10 @@ class DashboardViewTests(TestCase, PortfolioTestMixin):
         self.assertIn("150", content)
 
 
+@pytest.mark.views
 class HoldingsViewTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
         self.client.force_login(self.user)

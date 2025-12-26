@@ -1,4 +1,3 @@
-import unittest.mock
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -15,6 +14,7 @@ from portfolio.models import (
     Security,
     TargetAllocation,
 )
+from portfolio.tests.fixtures.mocks import MockMarketPrices
 
 from .base import PortfolioTestMixin
 
@@ -23,7 +23,7 @@ User = get_user_model()
 
 class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
     def setUp(self) -> None:
-        self.setup_portfolio_data()
+        self.setup_system_data()
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
         self.client.force_login(self.user)
@@ -101,8 +101,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         """Verify context data includes strategies and totals."""
         url = reverse("portfolio:target_allocations")
 
-        with unittest.mock.patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
-            mock_prices.return_value = {"VTI": Decimal("100.00"), "CASH": Decimal("1.00")}
+        with MockMarketPrices({"VTI": Decimal("100.00"), "CASH": Decimal("1.00")}):
             response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
@@ -196,8 +195,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         self.cat_eq.save()
         AssetClass.objects.create(name="Intl Stock", category=self.cat_eq)
 
-        with unittest.mock.patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
-            mock_prices.return_value = {}
+        with MockMarketPrices({}):
             response = self.client.get(reverse("portfolio:target_allocations"))
 
         self.assertEqual(response.status_code, 200)
@@ -244,8 +242,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         )
 
         # Mock prices (needed for view/service)
-        with unittest.mock.patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
-            mock_prices.return_value = {"VTI": Decimal("100.00"), "CASH": Decimal("1.00")}
+        with MockMarketPrices({"VTI": Decimal("100.00"), "CASH": Decimal("1.00")}):
 
             # We can test via the Service directly (as per repro) OR via the View.
             # Testing via View is more integration-testy.
@@ -313,7 +310,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             code="FI_TEST_TYPE",
             defaults={
                 "label": "FI Test Accounts",
-                "group": self.group_dep,  # Use existing group from mixin
+                "group": self.group_deposits,  # Use existing group from mixin
                 "tax_treatment": "TAXABLE",
             },
         )
@@ -347,11 +344,10 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         acc_fi.save()
 
         # Mock Prices
-        with unittest.mock.patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
-            mock_prices.return_value = {
-                "CASH": Decimal("1.00"),
-                "VTI": Decimal("100.00"),
-            }  # VTI needed for other accounts in setUp?
+        with MockMarketPrices({
+            "CASH": Decimal("1.00"),
+            "VTI": Decimal("100.00"),
+        }):  # VTI needed for other accounts in setUp?
 
             # Get Context (Percent Mode)
             response = self.client.get(reverse("portfolio:target_allocations") + "?mode=percent")
@@ -416,8 +412,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         self.assertEqual(self.acc_roth.allocation_strategy, self.strategy_conservative)
 
         # 3. Verify rendering in GET response
-        with unittest.mock.patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
-            mock_prices.return_value = {"VTI": Decimal("100.00"), "CASH": Decimal("1.00")}
+        with MockMarketPrices({"VTI": Decimal("100.00"), "CASH": Decimal("1.00")}):
             response = self.client.get(url)  # Default mode is percent, which has the select box
 
         content = response.content.decode()
@@ -497,13 +492,12 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
 
         # Use simple Pricing Mock that returns values such that View uses Current Prices from Holdings if Mock returns nothing?
         # Or better, just mock VTI/CASH and our new tickers.
-        with unittest.mock.patch("portfolio.services.MarketDataService.get_prices") as mock_prices:
+        with MockMarketPrices({}):
             # Logic in `calculate_allocations` might rely on current_price in Holding if not in map?
             # `Portfolio.to_dataframe` uses `holding.current_price`.
             # We set `current_price` on creation.
             # So we don't strictly need `get_prices` if we trust the DB values.
             # But View might trigger a pricing update? Current `TargetAllocationViewService` does not trigger update.
-            mock_prices.return_value = {}
 
             response = self.client.get(reverse("portfolio:target_allocations") + "?mode=dollar")
 

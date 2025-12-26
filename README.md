@@ -451,33 +451,116 @@ if total != AllocationStrategy.TOTAL_ALLOCATION_PCT:
 - Tax-loss harvesting automation
 - Broker integrations for data import
 
-## Testing Strategy
+## Testing
+
+### Test Organization
+
+Tests are organized by type and complexity:
+
+**Unit Tests** - Pure logic, no database
+- `test_allocation_refactored.py`: Pandas calculation engine
+- Run with: `uv run pytest -m unit`
+
+**Integration Tests** - Database required
+- `test_models.py`: Model validation and ORM
+- `test_views.py`: View logic and HTTP responses
+- `test_domain/`: Domain model business logic
+- Run with: `uv run pytest -m integration`
+
+**E2E Tests** - Browser automation
+- `test_e2e/`: Playwright browser tests
+- Run with: `uv run pytest -m e2e`
+
+**Golden Reference Tests** - Known expected values
+- `test_calculations/test_golden_reference.py`: Real portfolio scenarios
+- Run with: `uv run pytest -m golden`
+
+### Test Fixtures
+
+#### Available Fixtures (pytest)
+
+**System Data:**
+- `base_system_data`: All seeded data (account types, asset classes, securities)
+
+**Users & Portfolios:**
+- `test_user`: Standard test user
+- `test_portfolio`: Empty portfolio with user
+- `simple_holdings`: Portfolio with $1000 VTI in Roth IRA
+- `multi_account_holdings`: Roth + Taxable accounts
+
+**Price Mocks:**
+- `stable_test_prices`: Standard prices (VTI: $100, BND: $80, etc.)
+- `mock_market_prices`: Factory for custom prices
+- `zero_prices`: Empty prices for edge cases
+- `volatile_prices`: Extreme prices for stress testing
+
+#### Writing New Tests
+
+**Pytest Style (Preferred):**
+```python
+import pytest
+from decimal import Decimal
+
+@pytest.mark.django_db
+@pytest.mark.views
+def test_dashboard(client, simple_holdings, stable_test_prices):
+    client.force_login(simple_holdings['user'])
+    response = client.get('/dashboard/')
+    assert response.status_code == 200
+```
+
+**Django TestCase Style:**
+```python
+from django.test import TestCase
+from portfolio.tests.base import PortfolioTestMixin
+from portfolio.tests.fixtures.mocks import MockMarketPrices, get_standard_prices
+
+class MyTest(TestCase, PortfolioTestMixin):
+    def setUp(self):
+        self.setup_system_data()
+        self.user = User.objects.create_user(username="testuser")
+        self.create_portfolio(user=self.user)
+    
+    def test_something(self):
+        with MockMarketPrices(get_standard_prices()):
+            # test code
+```
+
+### Running Tests
+
+```bash
+# All tests
+uv run pytest
+
+# By marker
+uv run pytest -m unit              # Unit tests only
+uv run pytest -m calculations      # Calculation tests
+uv run pytest -m "not slow"        # Skip slow tests
+uv run pytest -m "views or models" # Multiple markers
+
+# Specific file or test
+uv run pytest portfolio/tests/test_views.py
+uv run pytest portfolio/tests/test_models.py::AccountTests
+
+# With coverage
+uv run pytest --cov=portfolio --cov-report=html
+```
 
 ### Test Coverage Goals
 - Models: 100% (validation, computed properties)
-- Services: >80% (optimization, rebalancing logic)
-- Views: >60% (basic rendering, form handling)
+- Services: >80% (optimization, calculation logic)
+- Views: >60% (HTTP responses, form handling)
 
-### Test Types
-- Unit tests for business logic (services/)
-- Integration tests for database operations
-- View tests for HTTP responses
-- Model tests for validation
+### Troubleshooting Tests
 
-### Running Tests
-```bash
-# All tests
-uv run python manage.py test
+**"setup_portfolio_data not found"**
+- Fix: Change to `self.setup_system_data()`
 
-# Specific app
-uv run python manage.py test portfolio
+**"MockMarketPrices not defined"**
+- Fix: Add `from portfolio.tests.fixtures.mocks import MockMarketPrices`
 
-# With verbosity
-uv run python manage.py test --verbosity=2
-
-# Keep test database
-uv run python manage.py test --keepdb
-```
+**Prices not mocked correctly**
+- Fix: Ensure `with MockMarketPrices(...):` wraps the view call
 
 ## Troubleshooting
 

@@ -82,8 +82,8 @@ class AllocationStrategyValidationTests(TestCase, PortfolioTestMixin):
         # This should work (implicit cash)
         self.strategy.save_allocations(
             {
-                self.ac_us_eq.id: Decimal("60.00"),
-                self.ac_intl_dev.id: Decimal("40.00"),
+                self.asset_class_us_equities.id: Decimal("60.00"),
+                self.asset_class_intl_developed.id: Decimal("40.00"),
             }
         )
 
@@ -96,9 +96,9 @@ class AllocationStrategyValidationTests(TestCase, PortfolioTestMixin):
         # Manually create invalid allocations that don't sum to 100%
         # This simulates a bug in calculation logic or explicit bad input with cash
         invalid_allocations = {
-            self.ac_us_eq.id: Decimal("60.00"),
-            self.ac_intl_dev.id: Decimal("30.00"),
-            self.ac_cash.id: Decimal("5.00"),  # Sums to 95%
+            self.asset_class_us_equities.id: Decimal("60.00"),
+            self.asset_class_intl_developed.id: Decimal("30.00"),
+            self.asset_class_cash.id: Decimal("5.00"),  # Sums to 95%
         }
 
         with self.assertRaises(ValueError) as ctx:
@@ -110,9 +110,9 @@ class AllocationStrategyValidationTests(TestCase, PortfolioTestMixin):
         """Test validate_allocations() helper method."""
         # Valid allocations
         valid = {
-            self.ac_us_eq.id: Decimal("60.00"),
-            self.ac_intl_dev.id: Decimal("30.00"),
-            self.ac_cash.id: Decimal("10.00"),
+            self.asset_class_us_equities.id: Decimal("60.00"),
+            self.asset_class_intl_developed.id: Decimal("30.00"),
+            self.asset_class_cash.id: Decimal("10.00"),
         }
         is_valid, error = self.strategy.validate_allocations(valid)
         self.assertTrue(is_valid)
@@ -120,9 +120,9 @@ class AllocationStrategyValidationTests(TestCase, PortfolioTestMixin):
 
         # Invalid - sum to 95%
         invalid = {
-            self.ac_us_eq.id: Decimal("60.00"),
-            self.ac_intl_dev.id: Decimal("30.00"),
-            self.ac_cash.id: Decimal("5.00"),
+            self.asset_class_us_equities.id: Decimal("60.00"),
+            self.asset_class_intl_developed.id: Decimal("30.00"),
+            self.asset_class_cash.id: Decimal("5.00"),
         }
         is_valid, error = self.strategy.validate_allocations(invalid)
         self.assertFalse(is_valid)
@@ -131,9 +131,9 @@ class AllocationStrategyValidationTests(TestCase, PortfolioTestMixin):
 
         # Invalid - sum to 105%
         over = {
-            self.ac_us_eq.id: Decimal("60.00"),
-            self.ac_intl_dev.id: Decimal("30.00"),
-            self.ac_cash.id: Decimal("15.00"),
+            self.asset_class_us_equities.id: Decimal("60.00"),
+            self.asset_class_intl_developed.id: Decimal("30.00"),
+            self.asset_class_cash.id: Decimal("15.00"),
         }
         is_valid, error = self.strategy.validate_allocations(over)
         self.assertFalse(is_valid)
@@ -144,9 +144,9 @@ class AllocationStrategyValidationTests(TestCase, PortfolioTestMixin):
         # Allocations with tiny rounding error (100.0001%)
         # Should be accepted within tolerance (0.001%)
         nearly_100 = {
-            self.ac_us_eq.id: Decimal("33.3333"),
-            self.ac_intl_dev.id: Decimal("33.3333"),
-            self.ac_cash.id: Decimal("33.3334"),
+            self.asset_class_us_equities.id: Decimal("33.3333"),
+            self.asset_class_intl_developed.id: Decimal("33.3333"),
+            self.asset_class_cash.id: Decimal("33.3334"),
         }
 
         # Should not raise (within 0.001% tolerance)
