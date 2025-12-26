@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from portfolio.domain.allocation import AssetAllocation
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.db.models.signals import post_delete, post_save
+from django.dispatch import receiver
 
 from portfolio.managers import AccountManager, HoldingManager, TargetAllocationManager
 
@@ -156,6 +158,27 @@ class Portfolio(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.user.username})"
+
+    def clean(self) -> None:  # noqa: DJ012
+        """Validate portfolio invariants."""
+        from django.core.exceptions import ValidationError
+
+        super().clean()
+
+        # Only validate allocation strategy if one is assigned
+        if self.allocation_strategy_id:
+            strategy = self.allocation_strategy
+            if strategy is not None:
+                is_valid, error_msg = strategy.validate_allocations()
+                if not is_valid:
+                    raise ValidationError({"allocation_strategy": error_msg})
+
+    def save(self, *args: Any, **kwargs: Any) -> None:  # noqa: DJ012
+        """Save portfolio with validation."""
+        # Only validate on updates (when pk exists)
+        if self.pk:
+            self.full_clean()
+        super().save(*args, **kwargs)
 
     def to_dataframe(self) -> pd.DataFrame:
         """
@@ -598,7 +621,21 @@ class AccountType(models.Model):
     CODE_ROTH_IRA = "ROTH_IRA"
     CODE_TRADITIONAL_IRA = "TRADITIONAL_IRA"
     CODE_401K = "401K"
+    CODE_ROTH_401K = "ROTH_401K"
     CODE_TAXABLE = "TAXABLE"
+    CODE_DEPOSIT = "DEPOSIT"
+    CODE_HSA = "HSA"
+
+    # Valid account type codes for validation
+    VALID_CODES = {
+        CODE_ROTH_IRA,
+        CODE_TRADITIONAL_IRA,
+        CODE_401K,
+        CODE_ROTH_401K,
+        CODE_TAXABLE,
+        CODE_DEPOSIT,
+        CODE_HSA,
+    }
 
     code = models.CharField(max_length=50, unique=True)
     label = models.CharField(max_length=100)
@@ -607,6 +644,20 @@ class AccountType(models.Model):
 
     def __str__(self) -> str:
         return self.label
+
+    def clean(self) -> None:
+        """Validate account type constraints."""
+        from django.core.exceptions import ValidationError
+
+        super().clean()
+
+        if self.code and self.code not in self.VALID_CODES:
+            raise ValidationError(
+                {
+                    "code": f"Invalid account type code '{self.code}'. "
+                    f"Must be one of: {', '.join(sorted(self.VALID_CODES))}"
+                }
+            )
 
     # ============================================================================
     # Instance Methods
@@ -741,6 +792,11 @@ class Account(models.Model):
         return df
 
     @property
+    def is_tax_advantaged(self) -> bool:
+        """Returns True if account has tax-advantaged treatment."""
+        return self.account_type.is_tax_advantaged()
+
+    @property
     def tax_treatment(self) -> str:
         return self.account_type.tax_treatment
 
@@ -860,6 +916,18 @@ class TargetAllocation(models.Model):
 
     def __str__(self) -> str:
         return f"{self.strategy.name}: {self.asset_class.name} - {self.target_percent}%"
+
+    def clean(self) -> None:
+        """Validate allocation constraints."""
+        from django.core.exceptions import ValidationError
+
+        super().clean()
+
+        if self.target_percent < 0:
+            raise ValidationError({"target_percent": "Target percentage cannot be negative"})
+
+        if self.target_percent > 100:
+            raise ValidationError({"target_percent": "Target percentage cannot exceed 100%"})
 
     # ===== Domain Methods =====
 
@@ -990,3 +1058,24 @@ class RebalancingRecommendation(models.Model):
 
     def __str__(self) -> str:
         return f"{self.action} {self.shares} {self.security.ticker} in {self.account.name}"
+
+
+@receiver([post_save, post_delete], sender=TargetAllocation)
+def validate_strategy_allocations_on_change(
+    sender: type[TargetAllocation], instance: TargetAllocation, **kwargs: Any
+) -> None:
+    """Validate strategy allocations after any allocation change."""
+    if kwargs.get("raw", False):
+        # Skip validation during fixture loading
+        return
+
+    # Validate the strategy's allocations
+    strategy = instance.strategy
+    is_valid, error_msg = strategy.validate_allocations()
+    if not is_valid:
+        # Log warning but don't raise - this allows gradual fixes
+        # In production, you might want to raise ValidationError instead
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Strategy '{strategy.name}' has invalid allocations: {error_msg}")

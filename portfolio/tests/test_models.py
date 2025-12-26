@@ -2,11 +2,13 @@ from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 
 import pytest
 
 from portfolio.models import (
     Account,
+    AccountType,
     AllocationStrategy,
     AssetClass,
     Holding,
@@ -58,6 +60,39 @@ def test_account_type_to_dataframe(test_portfolio: dict[str, Any]) -> None:
     account_names = [idx[2] for idx in df.index]  # Name is at position 2
     assert "Acc 1" in account_names
     assert "Acc 2" in account_names
+
+
+@pytest.mark.models
+@pytest.mark.integration
+def test_account_type_code_validation(base_system_data: Any) -> None:
+    """Test that only valid account type codes can be created."""
+    system = base_system_data
+
+    # Valid account type should work (using HSA which may not exist yet)
+    valid_type = AccountType(
+        code=AccountType.CODE_HSA,
+        label="Test HSA",
+        group=system.group_retirement,
+        tax_treatment=AccountType.TAX_FREE,
+    )
+    # Check if it already exists
+    if not AccountType.objects.filter(code=AccountType.CODE_HSA).exists():
+        valid_type.full_clean()  # Should not raise
+        valid_type.save()
+        assert valid_type.code == AccountType.CODE_HSA
+
+    # Invalid account type should raise ValidationError
+    with pytest.raises(ValidationError) as exc_info:
+        invalid_type = AccountType(
+            code="INVALID_CODE",
+            label="Invalid Type",
+            group=system.group_retirement,
+            tax_treatment=AccountType.TAXABLE,
+        )
+        invalid_type.full_clean()
+
+    assert "code" in exc_info.value.message_dict
+    assert "INVALID_CODE" in str(exc_info.value)
 
 
 @pytest.mark.models
@@ -173,6 +208,19 @@ class TestAccount:
 
         taxable = Account(account_type=system.type_taxable)
         assert taxable.tax_treatment == "TAXABLE"
+
+    def test_is_tax_advantaged_property(self, base_system_data: Any) -> None:
+        """Test is_tax_advantaged property."""
+        system = base_system_data
+
+        roth = Account(account_type=system.type_roth)
+        assert roth.is_tax_advantaged is True
+
+        trad = Account(account_type=system.type_trad)
+        assert trad.is_tax_advantaged is True
+
+        taxable = Account(account_type=system.type_taxable)
+        assert taxable.is_tax_advantaged is False
 
     def test_total_value(self, test_portfolio: dict[str, Any]) -> None:
         system = test_portfolio["system"]
@@ -539,3 +587,81 @@ def test_create_recommendation(simple_holdings: dict[str, Any]) -> None:
     )
     assert rec.action == "BUY"
     assert str(rec) == f"BUY 10.00 VTI in {account.name}"
+
+
+# ============================================================================
+# Phase 2: Target Allocation Validation Tests
+# ============================================================================
+
+
+@pytest.mark.models
+@pytest.mark.integration
+def test_target_allocation_negative_validation(test_user: Any, base_system_data: Any) -> None:
+    """Test that negative allocations are rejected."""
+    system = base_system_data
+    strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy")
+    asset_class = AssetClass.objects.create(name="US Stocks", category=system.cat_us_eq)
+
+    allocation = TargetAllocation(
+        strategy=strategy,
+        asset_class=asset_class,
+        target_percent=Decimal("-10.00"),
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        allocation.full_clean()
+
+    assert "target_percent" in exc_info.value.message_dict
+    assert "negative" in str(exc_info.value).lower()
+
+
+@pytest.mark.models
+@pytest.mark.integration
+def test_target_allocation_over_100_validation(test_user: Any, base_system_data: Any) -> None:
+    """Test that allocations over 100% are rejected."""
+    system = base_system_data
+    strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy")
+    asset_class = AssetClass.objects.create(name="US Stocks", category=system.cat_us_eq)
+
+    allocation = TargetAllocation(
+        strategy=strategy,
+        asset_class=asset_class,
+        target_percent=Decimal("150.00"),
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        allocation.full_clean()
+
+    assert "target_percent" in exc_info.value.message_dict
+    assert "100" in str(exc_info.value)
+
+
+@pytest.mark.models
+@pytest.mark.integration
+def test_portfolio_with_invalid_strategy_validation(test_user: Any, base_system_data: Any) -> None:
+    """Test that portfolio validates its assigned strategy."""
+    system = base_system_data
+
+    # Create a strategy with allocations that don't sum to 100%
+    strategy = AllocationStrategy.objects.create(user=test_user, name="Invalid Strategy")
+    asset_class = AssetClass.objects.create(name="US Stocks", category=system.cat_us_eq)
+
+    # Manually create allocations that sum to 90% (bypassing save_allocations)
+    TargetAllocation.objects.create(
+        strategy=strategy,
+        asset_class=asset_class,
+        target_percent=Decimal("90.00"),
+    )
+
+    # Create portfolio
+    portfolio = Portfolio.objects.create(user=test_user, name="Test Portfolio")
+
+    # Assign the invalid strategy
+    portfolio.allocation_strategy = strategy
+
+    # Saving should raise validation error
+    with pytest.raises(ValidationError) as exc_info:
+        portfolio.save()
+
+    assert "allocation_strategy" in exc_info.value.message_dict
+    assert "100" in str(exc_info.value)
