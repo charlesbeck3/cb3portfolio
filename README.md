@@ -449,6 +449,19 @@ if total != AllocationStrategy.TOTAL_ALLOCATION_PCT:
     raise ValidationError(...)
 ```
 
+### Numeric Precision Strategy
+
+The application uses a hybrid approach for numeric precision to balance accuracy and performance:
+
+1.  **Domain Models & Database**: Use `Decimal` for all financial values to ensure exact precision for storage and validation.
+    -   Currency fields: `DecimalField(max_digits=20, decimal_places=2)` for standard values, up to 8 places for shares/crypto.
+    -   Percentage fields: `DecimalField` for exact target representation.
+
+2.  **Calculation Service**: Uses `float` (via Pandas `float64`) for heavy portfolio aggregations and analysis.
+    -   **Reasoning**: Pandas offers significantly higher performance and richer vectorization support with native floats compared to Python `Decimal` objects.
+    -   **Trade-off**: Acceptable micro-variance (e.g., `1e-9`) in intermediate calculations is tolerated.
+    -   **Mitigation**: Final presentation values are rounded/formatted for display, masking floating-point artifacts. Tests verify that error margins remain negligible.
+
 ## Future Enhancements
 
 **Not in MVP - Add Later:**
