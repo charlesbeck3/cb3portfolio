@@ -9,6 +9,7 @@ from django.http import HttpResponseRedirect
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, UpdateView
 
+from portfolio.exceptions import AllocationError
 from portfolio.forms.strategies import AllocationStrategyForm
 from portfolio.models import AllocationStrategy, AssetClass
 from portfolio.views.mixins import PortfolioContextMixin
@@ -57,7 +58,7 @@ class AllocationStrategyCreateView(LoginRequiredMixin, PortfolioContextMixin, Cr
             # This also has its own defensive validation as a last resort
             try:
                 self.object.save_allocations(allocations)
-            except ValueError as e:
+            except (AllocationError, ValueError) as e:
                 form.add_error(None, str(e))
                 return self.form_invalid(form)
 
@@ -116,7 +117,7 @@ class AllocationStrategyUpdateView(LoginRequiredMixin, PortfolioContextMixin, Up
             # 4. Save allocations (automatically calculates cash if not provided)
             try:
                 self.object.save_allocations(allocations)
-            except ValueError as e:
+            except (AllocationError, ValueError) as e:
                 form.add_error(None, str(e))
                 return self.form_invalid(form)
 

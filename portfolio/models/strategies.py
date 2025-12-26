@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models, transaction
 
+from portfolio.exceptions import AllocationError
 from portfolio.managers import TargetAllocationManager
 from portfolio.models.assets import AssetClass
 
@@ -79,7 +80,7 @@ class AllocationStrategy(models.Model):
                         May include or exclude Cash asset class
 
         Raises:
-            ValueError: If allocations sum to != 100% (when cash provided)
+            AllocationError: If allocations sum to != 100% (when cash provided)
                         If allocations sum to > 100% (when cash omitted)
                         If final allocations don't sum to exactly 100% (data integrity)
 
@@ -101,7 +102,7 @@ class AllocationStrategy(models.Model):
         # Get Cash asset class
         cash_ac = AssetClass.get_cash()
         if not cash_ac:
-            raise ValueError("Cash asset class must exist")
+            raise AllocationError("Cash asset class must exist")
 
         cash_id = cash_ac.id
 
@@ -117,7 +118,7 @@ class AllocationStrategy(models.Model):
         if cash_provided:
             # User specified cash explicitly - must sum to exactly 100%
             if abs(total - self.TOTAL_ALLOCATION_PCT) > self.ALLOCATION_TOLERANCE:
-                raise ValueError(
+                raise AllocationError(
                     f"Allocations sum to {total}%, expected exactly {self.TOTAL_ALLOCATION_PCT}% "
                     f"when Cash is explicitly provided"
                 )
@@ -126,7 +127,7 @@ class AllocationStrategy(models.Model):
         else:
             # User omitted cash - calculate as plug using dedicated method
             if total > self.TOTAL_ALLOCATION_PCT + self.ALLOCATION_TOLERANCE:
-                raise ValueError(f"Non-cash allocations sum to {total}%, which exceeds 100%")
+                raise AllocationError(f"Non-cash allocations sum to {total}%, which exceeds 100%")
 
             # Calculate cash using dedicated method
             cash_percent = self.calculate_cash_allocation(allocations)
@@ -143,7 +144,7 @@ class AllocationStrategy(models.Model):
         if not is_valid:
             # This should never happen if logic is correct
             # If it does, it indicates a bug that must be fixed
-            raise ValueError(
+            raise AllocationError(
                 f"Data integrity error: {error_msg}. "
                 f"This indicates a bug in allocation calculation logic. "
                 f"Allocations: {final_allocations}"

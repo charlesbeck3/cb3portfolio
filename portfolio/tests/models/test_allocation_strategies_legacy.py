@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 
 import pytest
 
+from portfolio.exceptions import AllocationError
 from portfolio.models import AllocationStrategy
 
 User = get_user_model()
@@ -98,7 +99,7 @@ class TestAllocationStrategyValidation:
             system.asset_class_cash.id: Decimal("5.00"),  # Sums to 95%
         }
 
-        with pytest.raises(ValueError, match="expected exactly 100.00%"):
+        with pytest.raises(AllocationError, match="expected exactly 100.00%"):
             strategy.save_allocations(invalid_allocations)
 
     def test_validate_allocations_helper(

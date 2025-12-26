@@ -9,10 +9,13 @@ DESIGN PHILOSOPHY:
 - Formatting happens in views/templates, not here
 """
 
+import logging
 from decimal import Decimal
 from typing import Any
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 class AllocationCalculationEngine:
@@ -44,8 +47,10 @@ class AllocationCalculationEngine:
             - 'portfolio_summary': Overall portfolio summary
         """
         if holdings_df.empty:
+            logger.debug("calculate_allocations: holdings_df is empty")
             return self._empty_allocations()
 
+        logger.info(f"calculate_allocations: processing {len(holdings_df)} holdings")
         total_value = float(holdings_df.sum().sum())
 
         return {
@@ -427,11 +432,17 @@ class AllocationCalculationEngine:
         # Get holdings DataFrame
         portfolio = Portfolio.objects.filter(user=user).first()
         if not portfolio:
+            logger.info(
+                f"build_presentation_dataframe: No portfolio found for user {user.username}"
+            )
             return pd.DataFrame()
 
         holdings_df = portfolio.to_dataframe()
         if holdings_df.empty:
+            logger.info("build_presentation_dataframe: Empty holdings DataFrame")
             return pd.DataFrame()
+
+        logger.info(f"build_presentation_dataframe: Building presentation for user {user.username}")
 
         # Step 1: Calculate actual allocations
         allocations = self.calculate_allocations(holdings_df)

@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
+from portfolio.exceptions import AllocationError
 from portfolio.models import AllocationStrategy
 from portfolio.tests.base import PortfolioTestMixin
 
@@ -205,7 +206,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
         strategy = AllocationStrategy.objects.create(user=self.user, name="Direct Test Error")
 
         # Explicit cash that doesn't sum to 100%
-        with self.assertRaises(ValueError) as ctx:
+        with self.assertRaises(AllocationError) as ctx:
             strategy.save_allocations(
                 {
                     self.ac1.id: Decimal("60.00"),
@@ -231,7 +232,7 @@ class AllocationStrategyViewTests(TestCase, PortfolioTestMixin):
         strategy = AllocationStrategy.objects.create(user=self.user, name="Direct Over 100")
 
         # No cash, but allocations exceed 100%
-        with self.assertRaises(ValueError) as ctx:
+        with self.assertRaises(AllocationError) as ctx:
             strategy.save_allocations(
                 {
                     self.ac1.id: Decimal("60.00"),
