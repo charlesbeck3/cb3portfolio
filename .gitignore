@@ -24,3 +24,5 @@ htmlcov/
 
 # Coverage
 .coverage
+.secrets.baseline
+logs/
