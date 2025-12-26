@@ -40,7 +40,7 @@ You are helping build a Django-based portfolio management platform for tax-optim
 - Models: PascalCase (e.g., `AssetClass`, `TargetAllocationByAccount`)
 - Functions/methods: snake_case (e.g., `calculate_allocation`, `optimize_location`)
 - Constants: UPPER_SNAKE_CASE (e.g., `TAX_DEFERRED`, `MAX_ALLOCATION_PCT`)
-- File names: snake_case (e.g., `optimization.py`, `test_rebalancing.py`)
+- File names: snake_case (e.g., `optimization.py`, `test_strategies.py`)
 
 ## Project Structure
 
@@ -55,7 +55,13 @@ portfolio_management/
 │   ├── urls.py
 │   └── wsgi.py
 ├── portfolio/             # Main Django app
-│   ├── models.py          # Data models
+│   ├── models/            # Domain models package
+│   │   ├── __init__.py
+│   │   ├── assets.py
+│   │   ├── accounts.py
+│   │   ├── securities.py
+│   │   ├── strategies.py
+│   │   └── portfolio.py
 │   ├── admin.py           # Admin customizations (minimal)
 │   ├── views.py           # Web views
 │   ├── urls.py
@@ -63,13 +69,17 @@ portfolio_management/
 │   │   ├── optimization.py    # CVXPY asset location
 │   │   └── rebalancing.py     # Rebalancing calculations
 │   ├── templates/portfolio/   # HTML templates
-│   └── tests/             # Django tests
+│   └── tests/             # Test suite
+│       ├── models/
+│       ├── views/
+│       ├── services/
+│       └── e2e/
 └── static/                # CSS, JS (minimal)
 ```
 
 ## Data Models
 
-### Core Models (models.py)
+### Core Models (models/)
 1. **AssetClass** - Investment categories (US Stocks, Bonds, etc.)
    - name, category, target_allocation_pct, expected_return, risk_volatility
    

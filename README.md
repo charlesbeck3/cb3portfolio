@@ -178,7 +178,13 @@ portfolio_management/
 │   ├── urls.py                # URL routing
 │   └── wsgi.py                # WSGI configuration
 ├── portfolio/                  # Main Django app
-│   ├── models.py              # Data models (AssetClass, Security, Account, etc.)
+│   ├── models/                # Domain models package
+│   │   ├── __init__.py        # Exports all models
+│   │   ├── accounts.py        # Account-related models
+│   │   ├── assets.py          # Asset class models
+│   │   ├── portfolio.py       # Portfolio container
+│   │   ├── securities.py      # Security and Holding models
+│   │   └── strategies.py      # Allocation strategies
 │   ├── admin.py               # Django admin configuration
 │   ├── views.py               # Web views
 │   ├── urls.py                # App-specific URLs
@@ -193,9 +199,11 @@ portfolio_management/
 │   │   └── rebalancing.html
 │   └── tests/                 # Test suite
 │       ├── __init__.py
-│       ├── test_models.py
-│       ├── test_optimization.py
-│       └── test_rebalancing.py
+│       ├── models/            # Model tests
+│       ├── views/             # View tests
+│       ├── services/          # Service tests
+│       ├── calculations/      # Financial math tests
+│       └── e2e/               # Browser tests
 ├── static/                     # Static files (CSS, JS)
 │   └── css/
 └── db.sqlite3                  # SQLite database (created on first run)
@@ -482,21 +490,21 @@ The application uses a hybrid approach for numeric precision to balance accuracy
 Tests are organized by type and complexity:
 
 **Unit Tests** - Pure logic, no database
-- `test_allocation_refactored.py`: Pandas calculation engine
+- `services/test_allocations.py`: Pandas calculation engine
 - Run with: `uv run pytest -m unit`
 
 **Integration Tests** - Database required
-- `test_models.py`: Model validation and ORM
-- `test_views.py`: View logic and HTTP responses
-- `test_domain/`: Domain model business logic
+- `models/`: Model validation and ORM
+- `views/`: View logic and HTTP responses
+- `services/`: Domain model business logic & services
 - Run with: `uv run pytest -m integration`
 
 **E2E Tests** - Browser automation
-- `test_e2e/`: Playwright browser tests
+- `e2e/`: Playwright browser tests
 - Run with: `uv run pytest -m e2e`
 
 **Golden Reference Tests** - Known expected values
-- `test_calculations/test_golden_reference.py`: Real portfolio scenarios
+- `calculations/test_golden_reference.py`: Real portfolio scenarios
 - Run with: `uv run pytest -m golden`
 
 ### Test Fixtures
@@ -563,8 +571,8 @@ uv run pytest -m "not slow"        # Skip slow tests
 uv run pytest -m "views or models" # Multiple markers
 
 # Specific file or test
-uv run pytest portfolio/tests/test_views.py
-uv run pytest portfolio/tests/test_models.py::AccountTests
+uv run pytest portfolio/tests/views/test_dashboard.py
+uv run pytest portfolio/tests/models/test_accounts.py::TestAccount
 
 # With coverage
 uv run pytest --cov=portfolio --cov-report=html

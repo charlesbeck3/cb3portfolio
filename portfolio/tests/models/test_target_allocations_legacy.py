@@ -14,9 +14,8 @@ from portfolio.models import (
     Security,
     TargetAllocation,
 )
+from portfolio.tests.base import PortfolioTestMixin
 from portfolio.tests.fixtures.mocks import MockMarketPrices
-
-from .base import PortfolioTestMixin
 
 User = get_user_model()
 
