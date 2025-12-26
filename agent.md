@@ -82,19 +82,19 @@ portfolio_management/
 ### Core Models (models/)
 1. **AssetClass** - Investment categories (US Stocks, Bonds, etc.)
    - name, category, target_allocation_pct, expected_return, risk_volatility
-   
+
 2. **Security** - Individual investments (ETFs, mutual funds)
    - ticker, name, security_type, asset_class (FK), expense_ratio, tax_efficiency
-   
+
 3. **Account** - Investment accounts (IRA, 401k, Taxable)
    - name, account_type, institution, tax_treatment
-   
+
 4. **Holding** - Current positions
    - account (FK), security (FK), shares, cost_basis, as_of_date, current_price
-   
+
 5. **TargetAllocationByAccount** - Tax-optimized allocations
    - account (FK), asset_class (FK), target_allocation_pct
-   
+
 6. **RebalancingRecommendation** - Trade recommendations
    - account (FK), security (FK), action, shares, estimated_amount, reason
 
@@ -234,7 +234,7 @@ class OptimizationTestCase(TestCase):
             name="US Stocks",
             target_allocation_pct=60.0
         )
-        
+
     def test_optimization_hits_target(self):
         result = optimize_asset_location(accounts, targets)
         self.assertAlmostEqual(result['total_stocks_pct'], 60.0, places=1)
@@ -401,7 +401,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 
 class AssetClass(models.Model):
     """Investment asset class (e.g., US Stocks, Bonds)."""
-    
+
     name = models.CharField(
         max_length=100,
         unique=True,
@@ -420,11 +420,11 @@ class AssetClass(models.Model):
         blank=True,
         help_text="Expected annual return (%)"
     )
-    
+
     class Meta:
         ordering = ['name']
         verbose_name_plural = "Asset Classes"
-    
+
     def __str__(self):
         return f"{self.name} ({self.target_allocation_pct}%)"
 ```
@@ -442,11 +442,11 @@ def optimize_asset_location(
 ) -> dict[str, dict[str, Decimal]]:
     """
     Optimize asset location across accounts to maximize after-tax returns.
-    
+
     Args:
         accounts: List of Account objects
         asset_classes: List of AssetClass objects
-        
+
     Returns:
         Dictionary mapping account names to asset class allocations
         Example: {'Roth IRA': {'Stocks': Decimal('60.0'), 'Bonds': Decimal('40.0')}}
@@ -454,20 +454,20 @@ def optimize_asset_location(
     # Implementation using CVXPY
     n_accounts = len(accounts)
     n_classes = len(asset_classes)
-    
+
     # Define optimization variables
     allocations = cp.Variable((n_accounts, n_classes))
-    
+
     # Define objective and constraints
     # ... CVXPY optimization code ...
-    
+
     # Solve and return results
     problem = cp.Problem(objective, constraints)
     problem.solve()
-    
+
     if problem.status != cp.OPTIMAL:
         raise ValueError(f"Optimization failed with status: {problem.status}")
-    
+
     # Format results as dictionary
     results = {}
     for i, account in enumerate(accounts):
@@ -475,7 +475,7 @@ def optimize_asset_location(
             asset_classes[j].name: Decimal(str(allocations.value[i, j]))
             for j in range(n_classes)
         }
-    
+
     return results
 ```
 
@@ -488,22 +488,22 @@ from portfolio.services.optimization import optimize_asset_location
 
 def optimize_view(request):
     """Display and run asset location optimization."""
-    
+
     if request.method == 'POST':
         try:
             accounts = Account.objects.all()
             asset_classes = AssetClass.objects.all()
-            
+
             results = optimize_asset_location(accounts, asset_classes)
-            
+
             messages.success(request, "Optimization completed successfully!")
             return render(request, 'portfolio/optimization_results.html', {
                 'results': results
             })
-            
+
         except Exception as e:
             messages.error(request, f"Optimization failed: {str(e)}")
-    
+
     return render(request, 'portfolio/optimization_form.html')
 ```
 

@@ -25,7 +25,7 @@
 
         <form method="post" id="strategy-form">
             {% csrf_token %}
-            
+
             {% if form.non_field_errors %}
             <div class="alert alert-danger">
                 {{ form.non_field_errors }}
@@ -61,7 +61,7 @@
                 <div class="card-body p-0">
                     <div class="alert alert-info m-3">
                         <i class="bi bi-info-circle me-2"></i>
-                        <strong>Note:</strong> Cash allocation will be calculated automatically 
+                        <strong>Note:</strong> Cash allocation will be calculated automatically
                         as the remainder (100% minus the sum of all other allocations).
                     </div>
                     <div class="table-responsive">
@@ -134,7 +134,7 @@ document.addEventListener('DOMContentLoaded', function() {
             total += val;
         });
         totalDisplay.textContent = total.toFixed(2);
-        
+
         const cash = Math.max(0, 100 - total);
         const cashPreview = document.getElementById('cash-preview');
         cashPreview.textContent = cash.toFixed(2);

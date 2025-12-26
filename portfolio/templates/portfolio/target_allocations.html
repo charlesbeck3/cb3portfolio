@@ -14,7 +14,7 @@
             <div>
                 <h1 class="h2 mb-0">Target Allocations</h1>
                 <p class="text-muted mt-2">
-                    Set default target allocations for each account type. 
+                    Set default target allocations for each account type.
                     Expand columns to override for specific accounts.
                     <br>
                     <small>Aggregate targets are calculated bottom-up based on account values.</small>
@@ -27,13 +27,13 @@
                     <label class="btn btn-outline-primary" for="variance-effective" title="Show variance from weighted average target (for rebalancing)">
                         <i class="bi bi-graph-up"></i> Effective Variance
                     </label>
-                    
+
                     <input type="radio" class="btn-check" name="variance-mode" id="variance-policy" value="policy" autocomplete="off">
                     <label class="btn btn-outline-primary" for="variance-policy" title="Show variance from stated strategy (for policy adherence)">
                         <i class="bi bi-clipboard-check"></i> Policy Variance
                     </label>
                 </div>
-                
+
                  <a href="{% url 'portfolio:dashboard' %}" class="btn btn-outline-secondary">Cancel</a>
                  <button type="submit" form="allocation-form" id="save-button-top" class="btn btn-primary">Save Targets</button>
             </div>
@@ -63,7 +63,7 @@
                 <h3 class="h4">Target Values ($)</h3>
                 <p class="text-muted small">Estimated target dollar values based on current portfolio size.</p>
             </div>
-            
+
             <div class="card shadow-sm mb-4">
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Variance toggle functionality
     const varianceModeInputs = document.querySelectorAll('input[name="variance-mode"]');
-    
+
     /**
      * Update variance display based on selected mode
      * @param {string} mode - Either 'effective' or 'policy'
@@ -116,7 +116,7 @@ document.addEventListener('DOMContentLoaded', function() {
         varianceCells.forEach(cell => {
             const valueSpan = cell.querySelector('.variance-value');
             if (!valueSpan) return;
-            
+
             if (mode === 'effective') {
                 // Show effective variance
                 const effectiveVar = cell.dataset.effectiveVariance;
@@ -134,11 +134,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }
         });
-        
+
         // 2. Toggle Allocation Columns (Policy vs Effective)
         const policyCols = document.querySelectorAll('.col-mode-policy');
         const effectiveCols = document.querySelectorAll('.col-mode-effective');
-        
+
         if (mode === 'effective') {
             policyCols.forEach(el => el.classList.add('d-none'));
             effectiveCols.forEach(el => el.classList.remove('d-none'));
@@ -146,17 +146,17 @@ document.addEventListener('DOMContentLoaded', function() {
             policyCols.forEach(el => el.classList.remove('d-none'));
             effectiveCols.forEach(el => el.classList.add('d-none'));
         }
-        
+
         // Store preference in localStorage for persistence
         localStorage.setItem('varianceMode', mode);
     }
-    
+
     // Add event listeners to radio buttons
     varianceModeInputs.forEach(input => {
         input.addEventListener('change', function() {
             if (this.checked) {
                 updateVarianceDisplay(this.value);
-                
+
                 // Flash the variance columns briefly to indicate change
                 const varianceCells = document.querySelectorAll('.variance-col');
                 varianceCells.forEach(cell => {
@@ -169,7 +169,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-    
+
     // Restore saved preference or default to 'effective'
     const savedMode = localStorage.getItem('varianceMode') || 'effective';
     const savedInput = document.getElementById(`variance-${savedMode}`);

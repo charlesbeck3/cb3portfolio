@@ -552,7 +552,7 @@ class MyTest(TestCase, PortfolioTestMixin):
         self.setup_system_data()
         self.user = User.objects.create_user(username="testuser")
         self.create_portfolio(user=self.user)
-    
+
     def test_something(self):
         with MockMarketPrices(get_standard_prices()):
             # test code

@@ -1,10 +1,26 @@
 repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: debug-statements
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.7.0
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package.lock.json
 
   - repo: local
     hooks:
@@ -14,3 +30,25 @@ repos:
         language: system
         types: [python]
         require_serial: true
+
+      - id: django-check
+        name: Django System Checks
+        entry: uv run python manage.py check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: django-migrations
+        name: Django Migration Check
+        entry: uv run python manage.py makemigrations --check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: pytest-fast
+        name: Fast Unit Tests
+        entry: uv run pytest -m unit
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]

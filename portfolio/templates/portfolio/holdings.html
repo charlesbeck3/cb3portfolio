@@ -107,7 +107,7 @@
                                                 <div class="d-flex justify-content-between align-items-center">
                                                     <strong>{{ row.ticker }}</strong>
                                                     {% if account and row.ticker %}
-                                                    <button type="button" class="btn btn-link btn-sm p-0 text-danger" 
+                                                    <button type="button" class="btn btn-link btn-sm p-0 text-danger"
                                                             data-bs-toggle="modal" data-bs-target="#deleteHoldingModal"
                                                             data-ticker="{{ row.ticker }}"
                                                             title="Remove {{ row.ticker }}">
@@ -119,12 +119,12 @@
                                             <td>{{ row.security_name }}</td>
                                             <td>{{ row.asset_class }}</td>
                                             <td class="text-end">{{ row.price }}</td>
-                                            
+
                                             <!-- Shares (Editable if account) -->
                                             <td class="text-end" style="min-width: 100px;">
                                                 {% if account %}
-                                                    <input type="number" name="shares_{{ row.ticker }}" 
-                                                           value="{{ row.shares_input }}" 
+                                                    <input type="number" name="shares_{{ row.ticker }}"
+                                                           value="{{ row.shares_input }}"
                                                            step="0.0001" class="form-control form-control-sm p-1 text-end"
                                                            style="font-size: 0.8rem;">
                                                 {% else %}
@@ -138,7 +138,7 @@
                                             <td class="text-end">{{ row.value }}</td>
                                             <td class="text-end">{{ row.target_value }}</td>
                                             <td class="text-end">{{ row.value_variance }}</td>
-                                            
+
                                             <!-- Allocation -->
                                             <td class="text-end">{{ row.allocation }}</td>
                                             <td class="text-end">{{ row.target_allocation }}</td>
@@ -147,7 +147,7 @@
                                         {% elif row.is_subtotal %}
                                         <tr class="{{ row.row_class }}" id="{{ row.row_id }}">
                                             <td colspan="4">{{ row.name }}</td>
-                                            
+
                                             <!-- Shares empty -->
                                             <td colspan="3"></td>
 
@@ -155,7 +155,7 @@
                                             <td class="text-end">{{ row.value }}</td>
                                             <td class="text-end">{{ row.target_value }}</td>
                                             <td class="text-end">{{ row.value_variance }}</td>
-                                            
+
                                             <!-- Allocation Total -->
                                             <td class="text-end">{{ row.allocation }}</td>
                                             <td class="text-end">{{ row.target_allocation }}</td>
@@ -173,7 +173,7 @@
                                             <td class="text-end">{{ row.value }}</td>
                                             <td class="text-end">{{ row.target_value }}</td>
                                             <td class="text-end">{{ row.value_variance }}</td>
-                                            
+
                                             <!-- Allocation Total -->
                                             <td class="text-end">{{ row.allocation }}</td>
                                             <td class="text-end">{{ row.target_allocation }}</td>
@@ -182,7 +182,7 @@
                                         {% elif row.is_grand_total %}
                                         <tr class="{{ row.row_class }}">
                                             <td colspan="4">{{ row.name }}</td>
-                                            
+
                                             <!-- Shares empty -->
                                             <td colspan="3"></td>
 
@@ -190,7 +190,7 @@
                                             <td class="text-end">{{ row.value }}</td>
                                             <td class="text-end">{{ row.target_value }}</td>
                                             <td class="text-end">{{ row.value_variance }}</td>
-                                             
+
                                              <!-- Allocation Total -->
                                             <td class="text-end">{{ row.allocation }}</td>
                                             <td class="text-end">{{ row.target_allocation }}</td>
