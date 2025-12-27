@@ -90,6 +90,7 @@ build-backend = "hatchling.build"
 dev = [
     "playwright>=1.56.0",            # E2E testing - update quarterly
     "pytest-django>=4.11.1",         # Testing - update quarterly
+    "pytest-cov>=6.0.0",             # Coverage plugin - new dependency
     "pytest-playwright>=0.7.2",      # E2E testing - update with Playwright
     "django-debug-toolbar>=4.4",     # Debug tools - update with Django
     "ruff>=0.7",                     # Linting - update monthly
