@@ -69,84 +69,94 @@ DATABASES = {
 # ============================================================================
 
 STATIC_ROOT = BASE_DIR / "staticfiles"  # noqa: F405
-STATICFILES_STORAGE = "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+
+# Whitenoise handles compression and caching automatically via STORAGES in base.py
+# No additional configuration needed!
 
 # ============================================================================
 # LOGGING CONFIGURATION
 # ============================================================================
 
+import os  # noqa: E402
+
+# Create logs directory if it doesn't exist
+LOGS_DIR = BASE_DIR / "logs"  # noqa: F405
+LOGS_DIR.mkdir(exist_ok=True)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {
-        "verbose": {
-            "format": "[{levelname}] {asctime} {name} {module}.{funcName}:{lineno} - {message}",
-            "style": "{",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
+        "json": {
+            "()": structlog.stdlib.ProcessorFormatter,  # noqa: F405
+            "processor": structlog.processors.JSONRenderer(),  # noqa: F405
+            "foreign_pre_chain": [
+                structlog.stdlib.add_log_level,  # noqa: F405
+                structlog.stdlib.add_logger_name,  # noqa: F405
+                structlog.processors.TimeStamper(fmt="iso", utc=True),  # noqa: F405
+            ],
         },
-        "simple": {
-            "format": "[{levelname}] {asctime} {name} - {message}",
+        "verbose": {
+            "format": "[{levelname}] {asctime} {name} {module}:{lineno} {message}",
             "style": "{",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
         },
     },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
-            "formatter": "simple",
+            "formatter": "json",
         },
-        "file": {
-            "level": "INFO",
+        "file_all": {
             "class": "logging.handlers.RotatingFileHandler",
-            "filename": BASE_DIR / "logs" / "application.log",  # noqa: F405
+            "filename": LOGS_DIR / "application.log",
             "maxBytes": 10485760,  # 10MB
             "backupCount": 10,
-            "formatter": "verbose",
+            "formatter": "json",
         },
-        "error_file": {
+        "file_errors": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": LOGS_DIR / "errors.log",
+            "maxBytes": 10485760,  # 10MB
+            "backupCount": 10,
+            "formatter": "json",
             "level": "ERROR",
-            "class": "logging.handlers.RotatingFileHandler",
-            "filename": BASE_DIR / "logs" / "errors.log",  # noqa: F405
-            "maxBytes": 10485760,  # 10MB
-            "backupCount": 10,
-            "formatter": "verbose",
         },
         "mail_admins": {
-            "level": "ERROR",
             "class": "django.utils.log.AdminEmailHandler",
+            "level": "ERROR",
             "formatter": "verbose",
         },
     },
+    "root": {
+        "handlers": ["console", "file_all"],
+        "level": "INFO",
+    },
     "loggers": {
-        "django": {
-            "handlers": ["console", "file"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "django.request": {
-            "handlers": ["error_file", "mail_admins"],
-            "level": "ERROR",
-            "propagate": False,
-        },
-        "django.security": {
-            "handlers": ["error_file", "mail_admins"],
-            "level": "ERROR",
-            "propagate": False,
-        },
         "portfolio": {
-            "handlers": ["console", "file"],
+            "handlers": ["console", "file_all", "file_errors"],
             "level": "INFO",
             "propagate": False,
         },
         "portfolio.services": {
-            "handlers": ["console", "file"],
-            "level": "DEBUG",
+            "handlers": ["console", "file_all", "file_errors"],
+            "level": "INFO",
             "propagate": False,
         },
-    },
-    "root": {
-        "handlers": ["console", "file", "error_file"],
-        "level": "INFO",
+        "django": {
+            "handlers": ["console", "file_all"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console", "file_errors", "mail_admins"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "django.security": {
+            "handlers": ["console", "file_errors", "mail_admins"],
+            "level": "WARNING",
+            "propagate": False,
+        },
     },
 }
 

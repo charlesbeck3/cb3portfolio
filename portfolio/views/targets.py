@@ -1,4 +1,3 @@
-import logging
 from typing import Any, cast
 
 from django.contrib import messages
@@ -6,10 +5,12 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
+import structlog
+
 from portfolio.services.target_allocations import TargetAllocationViewService
 from portfolio.views.mixins import PortfolioContextMixin
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
@@ -20,7 +21,7 @@ class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateVi
         self._service = TargetAllocationViewService()
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
-        logger.info(f"Target allocations accessed by user {cast(Any, self.request.user).id}")
+        logger.info("target_allocations_accessed", user_id=cast(Any, self.request.user).id)
         context = super().get_context_data(**kwargs)
         user = self.request.user
 

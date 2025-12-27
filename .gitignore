@@ -32,3 +32,14 @@ logs/*.log
 coverage_html/
 .coverage
 *.sql
+
+# Static files
+staticfiles/
+
+# Whitenoise compressed files
+*.gz
+*.br
+
+# Logs
+logs/
+*.log

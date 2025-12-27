@@ -1,8 +1,9 @@
-import logging
 from decimal import Decimal
 from typing import Any, cast
 
 from django.db import transaction
+
+import structlog
 
 from portfolio.models import (
     Account,
@@ -14,12 +15,12 @@ from portfolio.services.allocation_calculations import AllocationCalculationEngi
 from portfolio.services.allocation_presentation import AllocationPresentationFormatter
 from users.models import CustomUser
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class TargetAllocationViewService:
     def build_context(self, *, user: CustomUser) -> dict[str, Any]:
-        logger.info(f"Building target allocation context for user {cast(Any, user).id}")
+        logger.info("building_target_allocation_context", user_id=cast(Any, user).id)
         engine = AllocationCalculationEngine()
         formatter = AllocationPresentationFormatter()
 

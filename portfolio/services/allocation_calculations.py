@@ -9,13 +9,13 @@ DESIGN PHILOSOPHY:
 - Formatting happens in views/templates, not here
 """
 
-import logging
 from decimal import Decimal
 from typing import Any
 
 import pandas as pd
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AllocationCalculationEngine:
@@ -27,7 +27,7 @@ class AllocationCalculationEngine:
     """
 
     def __init__(self) -> None:
-        logger.debug("Initializing AllocationCalculationEngine")
+        logger.debug("initializing_allocation_engine")
 
     def calculate_allocations(
         self,
@@ -50,10 +50,13 @@ class AllocationCalculationEngine:
             - 'portfolio_summary': Overall portfolio summary
         """
         if holdings_df.empty:
-            logger.debug("calculate_allocations: holdings_df is empty")
+            logger.debug("calculate_allocations_empty")
             return self._empty_allocations()
 
-        logger.info(f"calculate_allocations: processing {len(holdings_df)} holdings")
+        logger.info(
+            "calculating_allocations",
+            holdings_count=len(holdings_df),
+        )
         total_value = float(holdings_df.sum().sum())
 
         return {
@@ -432,22 +435,20 @@ class AllocationCalculationEngine:
         """
         from portfolio.models import Portfolio
 
-        logger.info(f"Building presentation DataFrame for user {user.id}")
+        logger.info("building_presentation_dataframe", user_id=user.id)
 
         # Get holdings DataFrame
         portfolio = Portfolio.objects.filter(user=user).first()
         if not portfolio:
-            logger.info(
-                f"build_presentation_dataframe: No portfolio found for user {user.username}"
-            )
+            logger.info("no_portfolio_found", user=user.username)
             return pd.DataFrame()
 
         holdings_df = portfolio.to_dataframe()
         if holdings_df.empty:
-            logger.info("build_presentation_dataframe: Empty holdings DataFrame")
+            logger.info("empty_holdings_dataframe")
             return pd.DataFrame()
 
-        logger.info(f"build_presentation_dataframe: Building presentation for user {user.username}")
+        logger.info("processing_presentation_data", user=user.username)
 
         # Step 1: Calculate actual allocations
         allocations = self.calculate_allocations(holdings_df)

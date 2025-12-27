@@ -10,13 +10,13 @@ DESIGN PHILOSOPHY:
 - Templates receive ready-to-render dicts with formatted strings
 """
 
-import logging
 from decimal import Decimal
 from typing import Any
 
 import pandas as pd
+import structlog
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AllocationPresentationFormatter:
@@ -33,7 +33,7 @@ class AllocationPresentationFormatter:
         target_strategies: dict[str, Any],
         mode: str = "percent",
     ) -> list[dict[str, Any]]:
-        logger.info(f"Formatting presentation rows (mode={mode})")
+        logger.info("formatting_presentation_rows", mode=mode)
         """
         Format aggregated numeric DataFrames into display-ready rows.
 
