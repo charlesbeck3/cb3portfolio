@@ -25,6 +25,67 @@ ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if
 if not ALLOWED_HOSTS:
     raise ValueError("ALLOWED_HOSTS must be set in production")
 
+# HTTPS/SSL Configuration
+SECURE_SSL_REDIRECT = True
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Session Security
+SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+
+# CSRF Security
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = "Lax"
+
+# Content Security Policy (enforcing mode in production)
+CSP_REPORT_ONLY = False
+
+
+# ============================================================================
+# DATABASE CONFIGURATION
+# ============================================================================
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("DB_NAME"),
+        "USER": os.getenv("DB_USER"),
+        "PASSWORD": os.getenv("DB_PASSWORD"),
+        "HOST": os.getenv("DB_HOST", "localhost"),
+        "PORT": os.getenv("DB_PORT", "5432"),
+        "ATOMIC_REQUESTS": True,  # Wrap each view in a transaction
+        "CONN_MAX_AGE": 600,  # Connection pooling for 10 minutes
+        "CONN_HEALTH_CHECKS": True,  # Django 4.1+ health checks
+        "OPTIONS": {
+            "connect_timeout": 10,
+        },
+    }
+}
+
+
+# ============================================================================
+# EMAIL CONFIGURATION
+# ============================================================================
+
+# Production: SMTP backend
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.getenv("EMAIL_HOST")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@cb3portfolio.com")
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", "server@cb3portfolio.com")
+
+# Admins receive error emails (requires EMAIL_HOST to be set)
+ADMINS = [("Admin", os.getenv("ADMIN_EMAIL", "admin@cb3portfolio.com"))]
+MANAGERS = ADMINS
+
 # ... (rest of file) ...
 
 # ============================================================================
@@ -73,6 +134,7 @@ if os.getenv("EMAIL_HOST"):  # noqa: F405
 # ============================================================================
 
 # Template caching
+TEMPLATES[0]["APP_DIRS"] = False  # Must be False when loaders are defined # noqa: F405
 TEMPLATES[0]["OPTIONS"]["loaders"] = [  # type: ignore # noqa: F405
     (
         "django.template.loaders.cached.Loader",
@@ -82,6 +144,9 @@ TEMPLATES[0]["OPTIONS"]["loaders"] = [  # type: ignore # noqa: F405
         ],
     ),
 ]
+
+# Production: Template string_if_invalid helps catch template errors
+TEMPLATES[0]["OPTIONS"]["string_if_invalid"] = "INVALID_TEMPLATE_VAR: %s"  # noqa: F405
 
 # Disable debug toolbar in production
 if "debug_toolbar" in INSTALLED_APPS:  # noqa: F405

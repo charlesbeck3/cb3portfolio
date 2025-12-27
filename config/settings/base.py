@@ -81,15 +81,22 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# ============================================================================
+# DATABASE CONFIGURATION
+# ============================================================================
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "db.sqlite3",
+        "ATOMIC_REQUESTS": True,  # Wrap each view in a transaction
     }
 }
 
 
-# Password validation
+# ============================================================================
+# PASSWORD VALIDATION
+# ============================================================================
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -98,6 +105,9 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {
+            "min_length": 12,
+        },
     },
     {
         "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
@@ -123,6 +133,10 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
+# ============================================================================
+# STATIC FILES
+# ============================================================================
+
 STATIC_URL = "static/"
 STATICFILES_DIRS = [
     BASE_DIR / "static",
@@ -139,6 +153,9 @@ STORAGES = {
     },
 }
 
+# Whitenoise keeps static files cached forever (until hash changes)
+WHITENOISE_MAX_AGE = 31536000  # 1 year
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -151,67 +168,41 @@ LOGIN_URL = "login"
 # Custom User Model
 AUTH_USER_MODEL = "users.CustomUser"
 
+# ============================================================================
+# CONTENT SECURITY POLICY
+# ============================================================================
+
+# CSP Configuration (native Django 6.0 support)
+CSP_DEFAULT_SRC = ["'self'"]
+CSP_SCRIPT_SRC = [
+    "'self'",
+    "https://cdn.jsdelivr.net",  # Bootstrap JS
+]
+CSP_STYLE_SRC = [
+    "'self'",
+    "'unsafe-inline'",  # Required for Bootstrap inline styles
+    "https://cdn.jsdelivr.net",  # Bootstrap CSS
+]
+CSP_FONT_SRC = [
+    "'self'",
+    "https://cdn.jsdelivr.net",
+]
+CSP_IMG_SRC = ["'self'", "data:", "https:"]
+CSP_CONNECT_SRC = ["'self'"]
+CSP_FRAME_ANCESTORS = ["'none'"]  # Prevent clickjacking
+
+# Default to report-only mode (overridden in production)
+CSP_REPORT_ONLY = True
+
+# ============================================================================
+# EMAIL CONFIGURATION
+# ============================================================================
+
+# Development: Console backend (emails printed to console)
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = "noreply@localhost"
+SERVER_EMAIL = "server@localhost"
+
 # Logging Configuration
 # Using structlog for structured logging with Django's logging system
 LOGGING = get_logging_config(debug=DEBUG)
-
-# ============================================================================
-# CONTENT SECURITY POLICY (Django 6.0 Native)
-# ============================================================================
-
-from django.utils.csp import CSP  # noqa: E402
-
-# Development: Report-only mode (logs violations without blocking)
-if DEBUG:
-    SECURE_CSP_REPORT_ONLY = {
-        "default-src": [CSP.SELF],
-        "script-src": [
-            CSP.SELF,
-            CSP.UNSAFE_INLINE,  # Needed for Django forms and Bootstrap components
-            "https://cdn.jsdelivr.net",  # Bootstrap JS
-        ],
-        "style-src": [
-            CSP.SELF,
-            CSP.UNSAFE_INLINE,  # Needed for inline styles in templates
-            "https://cdn.jsdelivr.net",  # Bootstrap CSS
-        ],
-        "font-src": [
-            CSP.SELF,
-            "https://cdn.jsdelivr.net",  # Bootstrap Icons
-        ],
-        "img-src": [
-            CSP.SELF,
-            "data:",  # For inline images
-        ],
-        "connect-src": [CSP.SELF],
-        "frame-ancestors": [CSP.NONE],  # Prevent clickjacking
-        "base-uri": [CSP.SELF],
-        "form-action": [CSP.SELF],
-    }
-else:
-    # Production: Enforcing mode (blocks violations)
-    SECURE_CSP = {
-        "default-src": [CSP.SELF],
-        "script-src": [
-            CSP.SELF,
-            CSP.UNSAFE_INLINE,
-            "https://cdn.jsdelivr.net",
-        ],
-        "style-src": [
-            CSP.SELF,
-            CSP.UNSAFE_INLINE,
-            "https://cdn.jsdelivr.net",
-        ],
-        "font-src": [
-            CSP.SELF,
-            "https://cdn.jsdelivr.net",
-        ],
-        "img-src": [
-            CSP.SELF,
-            "data:",
-        ],
-        "connect-src": [CSP.SELF],
-        "frame-ancestors": [CSP.NONE],
-        "base-uri": [CSP.SELF],
-        "form-action": [CSP.SELF],
-    }

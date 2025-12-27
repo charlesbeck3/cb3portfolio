@@ -2,7 +2,13 @@ from .base import *  # noqa: F403
 
 DEBUG = True
 
+# Development: Enable template debugging
+TEMPLATES[0]["OPTIONS"]["debug"] = True  # noqa: F405
+
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
+
+# Development: Report-only mode for CSP (log violations, don't block)
+CSP_REPORT_ONLY = True
 
 # Simplify password validation for development
 AUTH_PASSWORD_VALIDATORS = []

@@ -21,6 +21,11 @@ from django.urls import include, path
 
 from portfolio.views.health import HealthCheckView
 
+# Admin site customization
+admin.site.site_header = "CB3 Portfolio Administration"
+admin.site.site_title = "CB3 Portfolio Admin"
+admin.site.index_title = "Portfolio Management"
+
 urlpatterns = [
     path("health/", HealthCheckView.as_view(), name="health"),
     path("admin/", admin.site.urls),
