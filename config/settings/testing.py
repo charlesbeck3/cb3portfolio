@@ -31,3 +31,14 @@ LOGGING = {
         },
     },
 }
+
+# Use default StaticFilesStorage for tests to avoid manifest requirements
+# This prevents "ValueError: Missing staticfiles manifest entry" in CI
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
