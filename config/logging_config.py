@@ -40,7 +40,7 @@ def configure_structlog() -> None:
         ]
 
     structlog.configure(
-        processors=processors,
+        processors=processors,  # type: ignore
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),

@@ -65,7 +65,7 @@ def variance_css_class(variance: float | Decimal | str) -> str:
 
 
 @register.filter
-def accounting_format(value: Decimal | float | None, decimal_places: int = 2) -> str:
+def accounting_format(value: Decimal | float | str | None, decimal_places: int = 2) -> str:
     """
     Format a number in accounting style (right-aligned, consistent decimals).
 
@@ -86,7 +86,7 @@ def accounting_format(value: Decimal | float | None, decimal_places: int = 2) ->
 
 
 @register.filter
-def accounting_percent(value: Decimal | float | None, decimal_places: int = 1) -> str:
+def accounting_percent(value: Decimal | float | str | None, decimal_places: int = 1) -> str:
     """
     Format a percentage in accounting style.
 

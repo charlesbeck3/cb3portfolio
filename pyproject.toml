@@ -8,12 +8,12 @@ authors = [
     { name = "Charles Beck III", email = "charlesbeck@gmail.com" }
 ]
 dependencies = [
-    "django>=6.0,<6.1",
-    "pandas>=2.3.3",
-    "python-dotenv>=1.0,<2.0",
-    "structlog>=25.5.0",
-    "whitenoise[brotli]>=6.11.0",
-    "yfinance>=0.2.66",
+    "django>=6.0,<6.1",              # Django LTS - update quarterly
+    "pandas>=2.3.3",                  # Data manipulation - update monthly
+    "python-dotenv>=1.0,<2.0",       # Environment config - stable
+    "structlog>=25.5.0",              # Structured logging - update as needed
+    "whitenoise[brotli]>=6.11.0",    # Static files - update with Django
+    "yfinance>=0.2.66",               # Market data - update monthly
 ]
 
 [tool.mypy]
@@ -76,7 +76,7 @@ module = "portfolio.services.allocation_calculations"
 warn_return_any = false
 
 [tool.django-stubs]
-django_settings_module = "config.settings"
+django_settings_module = "config.settings.base"
 
 [build-system]
 requires = ["hatchling"]
@@ -84,17 +84,17 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
-    "playwright>=1.56.0",
-    "pytest-django>=4.11.1",
-    "pytest-playwright>=0.7.2",
-    "django-debug-toolbar>=4.4",
-    "ruff>=0.7",
-    "mypy>=1.13",
-    "django-stubs>=5.1",
-    "pre-commit>=4.0",
-    "coverage>=7.0",
-    "detect-secrets>=1.4.0",
-    "safety>=3.7.0",
+    "playwright>=1.56.0",            # E2E testing - update quarterly
+    "pytest-django>=4.11.1",         # Testing - update quarterly
+    "pytest-playwright>=0.7.2",      # E2E testing - update with Playwright
+    "django-debug-toolbar>=4.4",     # Debug tools - update with Django
+    "ruff>=0.7",                     # Linting - update monthly
+    "mypy>=1.13",                    # Type checking - update monthly
+    "django-stubs>=5.1",             # Type stubs - update with Django
+    "pre-commit>=4.0",               # Git hooks - update quarterly
+    "coverage>=7.0",                 # Test coverage - update as needed
+    "detect-secrets>=1.4.0",         # Secret scanning - update quarterly
+    "safety>=3.7.0",                 # Security scanning - update monthly
 ]
 
 [tool.hatch.build.targets.wheel]

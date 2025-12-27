@@ -441,6 +441,10 @@ The project includes several security measures and audits:
 - **Automated Security Scanning**: GitHub Actions workflow runs Ruff S-rules and `safety` checks on every push/PR and weekly.
 - **Secret Scanning**: `detect-secrets` pre-commit hook prevents committing sensitive information.
 - **Production Security**: Security settings (HSTS, SSL redirect, secure cookies) are enabled in `config/settings/production.py`.
+- **Content Security Policy (CSP)**: Django 6.0 native CSP configured in `config/settings/base.py`
+  - Development: Report-only mode (logs violations without blocking)
+  - Production: Enforcing mode (blocks violations)
+  - Allows Bootstrap CDN, prevents clickjacking, restricts inline scripts
 - **Dependency Management**:
     - **Vulnerability Scanning**: `safety` checks for known vulnerabilities (run with `uv run safety check`).
     - **Automated Updates**: GitHub Actions dependency review on all PRs.
@@ -742,6 +746,58 @@ GitHub Actions workflows automatically run on push and PR:
 - **CI** (`.github/workflows/ci.yml`): Tests, linting, type checking, coverage
 - **Security** (`.github/workflows/security.yml`): Security scanning, vulnerability checks
 - **Dependency Review** (`.github/workflows/dependency-review.yml`): Automated dependency analysis on PRs
+
+## Dependency Management Policy
+
+### Update Strategy
+
+The project follows a structured approach to dependency updates:
+
+**Security Updates** (Immediate)
+- Applied immediately via Dependabot PRs
+- Automated by GitHub Actions dependency review
+- Pre-commit `safety` check prevents vulnerable packages
+
+**Python Version** (Conservative)
+- Stay within 1 minor version of latest stable Python
+- Currently: Python 3.12+ (will upgrade to 3.13 within 6 months of release)
+- Major version upgrades require testing period
+
+**Django & Core Framework** (Quarterly Review)
+- Django: Update to latest LTS or stable minor within 3 months
+- Major version upgrades planned with adequate testing period
+- Currently: Django 6.0
+
+**Library Updates** (Monthly Cadence)
+- Review minor/patch updates monthly
+- Auto-merge if CI passes and no breaking changes
+- Major version updates require manual review
+
+### Update Workflow
+
+1. **Dependabot PRs**: Auto-created for security and version updates
+2. **CI Validation**: All tests must pass before merge
+3. **Dependency Review**: GitHub Actions checks for vulnerabilities
+4. **Manual Testing**: Complex updates tested in development first
+
+### Monitoring
+
+```bash
+# Check for outdated packages
+uv pip list --outdated
+
+# Security audit
+uv run safety check
+
+# Update all dependencies (development)
+uv sync --upgrade
+```
+
+### Pinning Strategy
+
+- **Production**: Use exact versions in `pyproject.toml` for reproducibility
+- **Development**: Allow minor/patch updates for faster iteration
+- **CI**: Use locked versions from `uv.lock` for consistency
 
 ## Contributing
 
