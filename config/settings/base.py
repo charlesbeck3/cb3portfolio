@@ -15,22 +15,16 @@ load_dotenv()
 # Updated for config/settings/base.py (3 levels up)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-# Configure structlog early (before Django logging)
-import structlog  # noqa: E402
-
-from config.logging_config import configure_structlog  # noqa: E402
-
-configure_structlog()
-
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
-
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv("SECRET_KEY") or "django-insecure-placeholder-key-for-tests-and-local-dev"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "False") == "True"
+
+# Configure logging early (before Django uses it)
+from config.logging import configure_structlog, get_logging_config  # noqa: E402
+
+configure_structlog(debug=DEBUG)
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()]
 if not ALLOWED_HOSTS and DEBUG:
@@ -159,72 +153,7 @@ AUTH_USER_MODEL = "users.CustomUser"
 
 # Logging Configuration
 # Using structlog for structured logging with Django's logging system
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "json": {
-            "()": structlog.stdlib.ProcessorFormatter,
-            "processor": structlog.processors.JSONRenderer(),
-            "foreign_pre_chain": [
-                structlog.stdlib.add_log_level,
-                structlog.stdlib.add_logger_name,
-                structlog.processors.TimeStamper(fmt="iso", utc=True),
-            ],
-        },
-        "console": {
-            "()": structlog.stdlib.ProcessorFormatter,
-            "processor": structlog.dev.ConsoleRenderer(colors=True),
-            "foreign_pre_chain": [
-                structlog.stdlib.add_log_level,
-                structlog.stdlib.add_logger_name,
-                structlog.processors.TimeStamper(fmt="iso", utc=True),
-            ],
-        },
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "console" if DEBUG else "json",
-        },
-    },
-    "root": {
-        "handlers": ["console"],
-        "level": "INFO",
-    },
-    "loggers": {
-        "portfolio": {
-            "handlers": ["console"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "portfolio.services": {
-            "handlers": ["console"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "portfolio.views": {
-            "handlers": ["console"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "django": {
-            "handlers": ["console"],
-            "level": "INFO",
-            "propagate": False,
-        },
-        "django.request": {
-            "handlers": ["console"],
-            "level": "WARNING",
-            "propagate": False,
-        },
-        "django.security": {
-            "handlers": ["console"],
-            "level": "WARNING",
-            "propagate": False,
-        },
-    },
-}
+LOGGING = get_logging_config(debug=DEBUG)
 
 # ============================================================================
 # CONTENT SECURITY POLICY (Django 6.0 Native)

@@ -28,6 +28,47 @@ if not ALLOWED_HOSTS:
 # ... (rest of file) ...
 
 # ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+
+from config.logging import get_logging_config  # noqa: E402
+
+LOGGING = get_logging_config(debug=False)
+
+# Production-specific enhancements: Add file handlers with rotation
+LOGGING["handlers"]["file"] = {
+    "class": "logging.handlers.RotatingFileHandler",
+    "filename": BASE_DIR / "logs" / "application.log",  # noqa: F405
+    "maxBytes": 10 * 1024 * 1024,  # 10MB
+    "backupCount": 5,
+    "formatter": "json",
+    "level": "INFO",
+}
+
+LOGGING["handlers"]["error_file"] = {
+    "class": "logging.handlers.RotatingFileHandler",
+    "filename": BASE_DIR / "logs" / "errors.log",  # noqa: F405
+    "maxBytes": 10 * 1024 * 1024,  # 10MB
+    "backupCount": 5,
+    "formatter": "json",
+    "level": "ERROR",
+}
+
+# Add file handlers to root and portfolio loggers
+LOGGING["root"]["handlers"] = ["console", "file"]
+LOGGING["loggers"]["portfolio"]["handlers"] = ["console", "file"]
+
+# Email admins on ERROR (requires EMAIL_* settings to be configured)
+if os.getenv("EMAIL_HOST"):  # noqa: F405
+    LOGGING["handlers"]["mail_admins"] = {
+        "level": "ERROR",
+        "class": "django.utils.log.AdminEmailHandler",
+        "include_html": True,
+    }
+    LOGGING["loggers"]["django.request"]["handlers"] = ["console", "file", "mail_admins"]
+
+
+# ============================================================================
 # PERFORMANCE OPTIMIZATION
 # ============================================================================
 

@@ -16,3 +16,10 @@ try:
     INTERNAL_IPS = ["127.0.0.1"]
 except ImportError:
     pass
+
+# Development-specific logging: verbose output with colors
+from config.logging import get_logging_config  # noqa: E402
+
+LOGGING = get_logging_config(debug=True)
+# Set portfolio logging to DEBUG for development
+LOGGING["loggers"]["portfolio"]["level"] = "DEBUG"

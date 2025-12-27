@@ -423,16 +423,37 @@ See `.env.example` for complete list.
 
 ### Logging Strategy
 
-The project uses a structured logging strategy to facilitate monitoring and debugging:
+The project uses structured logging with `structlog` for both development and production:
 
-- **Hierarchy**: Loggers are organized by module (e.g., `portfolio.services`, `portfolio.views`).
-- **Levels**:
-  - `INFO`: Used for major lifecycle events (e.g., building context, saving allocations).
-  - `DEBUG`: Used for detailed initialization and internal calculation steps.
-  - `WARNING`: Used for data anomalies or non-critical failures.
-  - `ERROR`: Used for exceptions that disrupt the user flow.
-- **Production Config**: In production, logs are routed to both the console and rotating file handlers (`logs/application.log`, `logs/errors.log`).
-- **Email Alerts**: Critical errors in production trigger email alerts to `ADMINS`.
+**Configuration Location**: All logging configuration lives in `config/logging.py`
+
+- **Development**: Pretty console output with colors, DEBUG level for portfolio app
+- **Testing**: Minimal logging (CRITICAL only) to keep test output clean
+- **Production**: JSON-formatted logs with file rotation and email alerts
+
+**Log Files** (production only):
+- `logs/application.log` - All application logs (INFO and above)
+- `logs/errors.log` - Error logs only (ERROR and above)
+- Both use 10MB rotation with 5 backup files
+
+**Customizing Logging**:
+
+Each environment's settings file can customize logging by importing and modifying the base config:
+
+```python
+from config.logging import get_logging_config
+
+LOGGING = get_logging_config(debug=False)
+# Add custom handlers, adjust levels, etc.
+LOGGING["loggers"]["myapp"]["level"] = "DEBUG"
+```
+
+**Log Hierarchy**:
+- `portfolio` - Main application logger
+- `portfolio.services` - Service layer operations
+- `portfolio.views` - View layer operations
+- `django.request` - HTTP request/response logging
+- `django.security` - Security-related events
 
 ### Security Hardening
 
