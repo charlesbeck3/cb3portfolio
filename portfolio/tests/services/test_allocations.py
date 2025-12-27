@@ -426,9 +426,9 @@ class TestPerformance:
 
         # Check within 1.0 to account for float math
         # Cast expected_value to float as DataFrame uses floats
-        assert (
-            abs(grand_total - float(expected_value)) < 1.0
-        ), f"Expected ${expected_value}, got ${grand_total}"
+        assert abs(grand_total - float(expected_value)) < 1.0, (
+            f"Expected ${expected_value}, got ${grand_total}"
+        )
 
         assert len(result["assets"]) > 0
         assert len(result["category_subtotals"]) > 0
