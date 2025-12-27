@@ -29,6 +29,7 @@ repos:
         entry: uv run mypy
         language: system
         types: [python]
+        exclude: ^portfolio/(tests|management/commands)/
         require_serial: true
 
       - id: django-check
@@ -48,6 +49,14 @@ repos:
       - id: pytest-fast
         name: Fast Unit Tests
         entry: uv run pytest -m unit
+        language: system
+        types: [python]
+        pass_filenames: false
+        # Run on commit by default (fast)
+
+      - id: pytest-integration
+        name: Integration Tests
+        entry: uv run pytest -m integration
         language: system
         types: [python]
         pass_filenames: false

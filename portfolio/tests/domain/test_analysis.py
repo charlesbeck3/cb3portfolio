@@ -19,17 +19,19 @@ def test_target_value_and_variance(test_portfolio: dict[str, Any]) -> None:
     portfolio = test_portfolio["portfolio"]
     system = test_portfolio["system"]
 
-    us_stocks = AssetClass.objects.create(name="US Stocks", category=system.cat_us_eq)
-    bonds = AssetClass.objects.create(name="Bonds", category=system.cat_fi)
+    us_equities, _ = AssetClass.objects.get_or_create(  # type: ignore[attr-defined]
+        name="US Equities", defaults={"category": system.cat_us_eq}
+    )
+    bonds = AssetClass.objects.create(name="Bonds", category=system.cat_fi)  # type: ignore[attr-defined]
 
-    acc_roth = Account.objects.create(
+    acc_roth = Account.objects.create(  # type: ignore[misc]
         user=user,
         name="Roth IRA",
         portfolio=portfolio,
         account_type=system.type_roth,
         institution=system.institution,
     )
-    acc_taxable = Account.objects.create(
+    acc_taxable = Account.objects.create(  # type: ignore[misc]
         user=user,
         name="Taxable",
         portfolio=portfolio,
@@ -40,16 +42,16 @@ def test_target_value_and_variance(test_portfolio: dict[str, Any]) -> None:
     # Create new securities for this test to avoid conflicts
     from portfolio.models import Security
 
-    sec_vti_test = Security.objects.create(ticker="VTI_TEST", asset_class=us_stocks)
-    sec_bnd_test = Security.objects.create(ticker="BND_TEST", asset_class=bonds)
+    sec_vti_test = Security.objects.create(ticker="VTI_TEST", asset_class=us_equities)  # type: ignore[attr-defined]
+    sec_bnd_test = Security.objects.create(ticker="BND_TEST", asset_class=bonds)  # type: ignore[attr-defined]
 
-    Holding.objects.create(
+    Holding.objects.create(  # type: ignore[misc]
         account=acc_roth,
         security=sec_vti_test,
         shares=Decimal("6"),
         current_price=Decimal("100"),
     )
-    Holding.objects.create(
+    Holding.objects.create(  # type: ignore[misc]
         account=acc_taxable,
         security=sec_bnd_test,
         shares=Decimal("4"),
@@ -61,16 +63,16 @@ def test_target_value_and_variance(test_portfolio: dict[str, Any]) -> None:
     analysis = PortfolioAnalysis(
         portfolio=domain_portfolio,
         targets={
-            "US Stocks": Decimal("50.00"),
+            "US Equities": Decimal("50.00"),
             "Bonds": Decimal("50.00"),
         },
     )
 
     assert analysis.total_value == Decimal("1000")
 
-    assert analysis.target_value_for("US Stocks") == Decimal("500")
-    assert analysis.variance_for("US Stocks") == Decimal("100")
-    assert analysis.variance_pct_for("US Stocks").quantize(Decimal("0.01")) == Decimal("10.00")
+    assert analysis.target_value_for("US Equities") == Decimal("500")
+    assert analysis.variance_for("US Equities") == Decimal("100")
+    assert analysis.variance_pct_for("US Equities").quantize(Decimal("0.01")) == Decimal("10.00")
 
     assert analysis.target_value_for("Bonds") == Decimal("500")
     assert analysis.variance_for("Bonds") == Decimal("-100")
@@ -81,5 +83,5 @@ def test_target_value_and_variance(test_portfolio: dict[str, Any]) -> None:
 @pytest.mark.unit
 def test_variance_pct_for_zero_total(test_user: Any) -> None:
     empty = DomainPortfolio(user_id=test_user.id, accounts=[])
-    analysis = PortfolioAnalysis(portfolio=empty, targets={"US Stocks": Decimal("50.00")})
-    assert analysis.variance_pct_for("US Stocks") == Decimal("0.00")
+    analysis = PortfolioAnalysis(portfolio=empty, targets={"US Equities": Decimal("50.00")})
+    assert analysis.variance_pct_for("US Equities") == Decimal("0.00")

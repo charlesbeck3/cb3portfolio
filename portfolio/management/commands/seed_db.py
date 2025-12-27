@@ -11,7 +11,7 @@ class Command(BaseCommand):
         self.stdout.write("Starting Database Seeding...")
 
         call_command("seed_system")
-        call_command("seed_users")
+        call_command("seed_dev_data")
 
         self.stdout.write(self.style.SUCCESS("--------------------------------------"))
         self.stdout.write(self.style.SUCCESS("FULL DATABASE SEED COMPLETE"))

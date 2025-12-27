@@ -1,5 +1,6 @@
+{% load allocation_tags %}
 {% with account_types=rows.0.account_types %}
-<table class="table table-bordered table-striped table-hover mb-0 align-middle" id="{{ table_id }}" style="font-size: 0.8rem; table-layout: fixed;">
+<table class="table table-bordered table-striped table-hover mb-0 align-middle target-allocation-table" id="{{ table_id }}">
     <thead class="table-light">
         <tr>
             <th scope="col" class="ps-4" rowspan="2" style="width: 250px; min-width: 250px; white-space: nowrap;">Asset Class</th>
@@ -77,7 +78,7 @@
     </thead>
     <tbody>
         {% for row in rows %}
-        <tr {% if row.is_subtotal %}class="table-info fw-bold"{% elif row.is_group_total %}class="fw-bold" style="background-color: #e2e3e5;"{% elif row.is_grand_total %}class="table-dark fw-bold"{% endif %}>
+        <tr class="{{ row.row_type|row_css_class }}">
             <td class="ps-4">{{ row.asset_class_name }}</td>
 
             {% for group in row.account_types %}
@@ -88,7 +89,7 @@
                 </td>
 
                 <td class="text-end pe-1 small fw-bold {% if row.is_grand_total %}text-white{% else %}text-muted{% endif %} col-mode-effective">{{ group.effective|safe }}</td>
-                <td class="text-end pe-1 small fw-bold variance-col"
+                <td class="text-end pe-1 small fw-bold variance-col {{ group.effective_variance_raw|variance_css_class }}"
                     data-effective-variance="{{ group.effective_variance|safe }}"
                     data-policy-variance="{{ group.policy_variance|safe }}"
                     data-effective-variance-pct="{{ group.effective_variance_pct }}"
@@ -120,7 +121,7 @@
                 {% elif row.is_subtotal %}id="sub-total-target-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-total-{{ row.asset_class_id }}"{% endif %}
             >{{ row.portfolio.effective|safe }}</td>
-            <td class="text-end pe-2 table-active fw-bold variance-col"
+            <td class="text-end pe-2 table-active fw-bold variance-col {{ row.portfolio.effective_variance_raw|variance_css_class }}"
                 data-effective-variance="{{ row.portfolio.effective_variance|safe }}"
                 data-policy-variance="{{ row.portfolio.policy_variance|safe }}"
                 data-effective-variance-pct="{{ row.portfolio.effective_variance_pct }}"

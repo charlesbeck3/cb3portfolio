@@ -391,47 +391,72 @@ class TestPortfolioCalculations(SimpleTestCase):
 
 @pytest.mark.unit
 @pytest.mark.performance
-class TestPerformance(SimpleTestCase):
+class TestPerformance:
     """
     Performance tests to verify refactoring improved efficiency.
 
     Compare old vs new approach timing.
     """
 
-    def test_aggregation_performance(self) -> None:
-        """Verify pandas aggregation is faster than manual loops."""
+    def test_aggregation_performance_with_large_dataset(
+        self, large_portfolio_benchmark: dict[str, Any]
+    ) -> None:
+        """Verify pandas aggregation performs well with large datasets."""
         import time
 
-        # Create large dataset
-        n_assets = 100
-        data = {
-            "group_code": ["EQUITY"] * n_assets,
-            "category_code": [f"CAT_{i // 10}" for i in range(n_assets)],
-            "asset_class_name": [f"Asset_{i}" for i in range(n_assets)],
-            "group_label": ["Equities"] * n_assets,
-            "category_label": [f"Label_{i // 10}" for i in range(n_assets)],
-            "asset_class_id": list(range(n_assets)),
-            "portfolio_current": [float(i * 1000) for i in range(n_assets)],
-            "portfolio_target": [float(i * 950) for i in range(n_assets)],
-            "portfolio_variance": [float(i * 50) for i in range(n_assets)],
-        }
+        from portfolio.services.allocation_calculations import AllocationCalculationEngine
 
-        df = pd.DataFrame(data)
-        df = df.set_index(["group_code", "category_code", "asset_class_name"])
-
+        user = large_portfolio_benchmark["user"]
         engine = AllocationCalculationEngine()
 
-        # Time the aggregation
+        # Time the full calculation pipeline
         start = time.time()
+        df = engine.build_presentation_dataframe(user)
         result = engine.aggregate_presentation_levels(df)
         elapsed = time.time() - start
 
-        # Should complete very quickly (< 0.1 seconds)
-        self.assertLess(elapsed, 0.1)
+        # Should complete in reasonable time (< 1 second for 400 holdings)
+        assert elapsed < 1.0, f"Calculation took {elapsed:.3f}s, expected < 1.0s"
 
-        # Should produce correct results
-        self.assertEqual(len(result["assets"]), n_assets)
-        self.assertGreater(len(result["category_subtotals"]), 0)
+        # Verify results are correct
+        # Assets are aggregated by class, so count will be less than holdings
+        # But total value should match exactly
+        grand_total = result["grand_total"].iloc[0]["portfolio_actual"]
+        expected_value = large_portfolio_benchmark["total_value"]
+
+        # Check within 1.0 to account for float math
+        # Cast expected_value to float as DataFrame uses floats
+        assert (
+            abs(grand_total - float(expected_value)) < 1.0
+        ), f"Expected ${expected_value}, got ${grand_total}"
+
+        assert len(result["assets"]) > 0
+        assert len(result["category_subtotals"]) > 0
+        assert len(result["group_totals"]) > 0
+
+    def test_aggregation_performance_with_medium_dataset(
+        self, medium_portfolio_benchmark: dict[str, Any]
+    ) -> None:
+        """Verify performance with medium-sized portfolio."""
+        import time
+
+        from portfolio.services.allocation_calculations import AllocationCalculationEngine
+
+        user = medium_portfolio_benchmark["user"]
+        engine = AllocationCalculationEngine()
+
+        start = time.time()
+        df = engine.build_presentation_dataframe(user)
+        result = engine.aggregate_presentation_levels(df)
+        elapsed = time.time() - start
+
+        # Should be very fast for medium datasets (< 0.5s)
+        assert elapsed < 0.5, f"Calculation took {elapsed:.3f}s, expected < 0.5s"
+
+        # Basic validity check
+        grand_total = result["grand_total"].iloc[0]["portfolio_actual"]
+        expected_value = medium_portfolio_benchmark["total_value"]
+        assert abs(grand_total - float(expected_value)) < 1.0
 
 
 # Integration test showing full workflow

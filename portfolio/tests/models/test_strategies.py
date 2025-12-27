@@ -125,7 +125,9 @@ def test_target_allocation_negative_validation(test_user: Any, base_system_data:
     """Test that negative allocations are rejected."""
     system = base_system_data
     strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy")
-    asset_class = AssetClass.objects.create(name="US Stocks", category=system.cat_us_eq)
+    asset_class, _ = AssetClass.objects.get_or_create(
+        name="US Equities", defaults={"category": system.cat_us_eq}
+    )
 
     allocation = TargetAllocation(
         strategy=strategy,
@@ -146,7 +148,9 @@ def test_target_allocation_over_100_validation(test_user: Any, base_system_data:
     """Test that allocations over 100% are rejected."""
     system = base_system_data
     strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy")
-    asset_class = AssetClass.objects.create(name="US Stocks", category=system.cat_us_eq)
+    asset_class, _ = AssetClass.objects.get_or_create(
+        name="US Equities", defaults={"category": system.cat_us_eq}
+    )
 
     allocation = TargetAllocation(
         strategy=strategy,

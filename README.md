@@ -149,6 +149,11 @@ uv run python manage.py createsuperuser
 
 # Run development server
 uv run python manage.py runserver
+
+# (Optional) Seed development data
+# Creates a demo user with a realistic portfolio
+uv run python manage.py seed_dev_data
+
 ```
 
 Access the application at http://127.0.0.1:8000/
@@ -204,8 +209,9 @@ portfolio_management/
 │       ├── services/          # Service tests
 │       ├── calculations/      # Financial math tests
 │       └── e2e/               # Browser tests
-├── static/                     # Static files (CSS, JS)
-│   └── css/
+├── static/                    # Static files
+│   └── css/                   # Stylesheets
+│       └── portfolio.css      # Main application styles
 └── db.sqlite3                  # SQLite database (created on first run)
 ```
 
@@ -369,6 +375,9 @@ uv run python manage.py makemigrations
 # Apply migrations
 uv run python manage.py migrate
 
+# Seed development data
+uv run python manage.py seed_dev_data
+
 # Run tests
 uv run python manage.py test
 
@@ -506,6 +515,10 @@ Tests are organized by type and complexity:
 **Golden Reference Tests** - Known expected values
 - `calculations/test_golden_reference.py`: Real portfolio scenarios
 - Run with: `uv run pytest -m golden`
+
+**Performance Tests** - Benchmarks
+- `services/test_allocations.py`: Calculation engine performance
+- Run with: `uv run pytest -m performance`
 
 ### Test Fixtures
 

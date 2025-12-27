@@ -249,7 +249,6 @@ class AllocationPresentationFormatter:
             "is_group_total": row_type == "group_total",
             "is_grand_total": row_type == "grand_total",
             "is_cash": bool(row.get("is_cash", False)),
-            "css_class": self._get_css_class(row_type),
         }
 
         result["portfolio"] = {
@@ -366,16 +365,6 @@ class AllocationPresentationFormatter:
 
         result.extend(grand_rows)
         return result
-
-    def _get_css_class(self, row_type: str) -> str:
-        """Get CSS class for row type."""
-        css_map = {
-            "asset": "",
-            "subtotal": "subtotal",
-            "group_total": "group-total",
-            "grand_total": "grand-total",
-        }
-        return css_map.get(row_type, "")
 
     def _format_value(self, value: float, mode: str) -> str:
         """

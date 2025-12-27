@@ -39,7 +39,16 @@ SECURITY_PRICES = {
 
 
 class Command(BaseCommand):
-    help = "Seeds the database with User portfolios (Admin and Test User)"
+    help = (
+        "Seeds development data: demo user with realistic portfolio holdings (for local dev only)"
+    )
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--skip-admin",
+            action="store_true",
+            help="Skip creating admin user (useful if admin already exists)",
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         self.stdout.write("Seeding User Data...")
@@ -50,15 +59,21 @@ class Command(BaseCommand):
         # ---------------------------
         # 1. Admin / Superuser
         # ---------------------------
+        skip_admin = options.get("skip_admin", False)
+
+        # ---------------------------
+        # 1. Admin / Superuser
+        # ---------------------------
         username = os.environ.get("DJANGO_SUPERUSER_USERNAME", "admin")
         email = os.environ.get("DJANGO_SUPERUSER_EMAIL", "admin@example.com")
         password = os.environ.get("DJANGO_SUPERUSER_PASSWORD", "admin")
 
-        if not User.objects.filter(username=username).exists():
-            User.objects.create_superuser(username, email, password)
-            self.stdout.write(self.style.SUCCESS(f"Created superuser: {username}"))
-        else:
-            self.stdout.write(f"Superuser already exists: {username}")
+        if not skip_admin:
+            if not User.objects.filter(username=username).exists():
+                User.objects.create_superuser(username, email, password)
+                self.stdout.write(self.style.SUCCESS(f"Created superuser: {username}"))
+            else:
+                self.stdout.write(f"Superuser already exists: {username}")
 
         admin_user = User.objects.get(username=username)
 
@@ -74,7 +89,7 @@ class Command(BaseCommand):
         # ---------------------------
         test_username = "testuser"
         test_email = "test@example.com"
-        test_password = "testpassword"
+        test_password = "testpassword"  # pragma: allowlist secret
 
         if not User.objects.filter(username=test_username).exists():
             User.objects.create_user(test_username, test_email, test_password)

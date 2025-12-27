@@ -1,0 +1,239 @@
+/**
+ * CB3 Portfolio - Main Stylesheet
+ *
+ * Organization:
+ * 1. CSS Custom Properties (Design Tokens)
+ * 2. Layout & Structure
+ * 3. Navigation
+ * 4. Sidebar
+ * 5. Tables & Data Display
+ * 6. Cards & Components
+ * 7. Utilities
+ * 8. Responsive Overrides
+ */
+
+/* ============================================================================
+   1. CSS Custom Properties (Design Tokens)
+   ============================================================================ */
+
+:root {
+    /* Table Column Widths */
+    --asset-col-width: 18%;
+    --total-col-width: 21%;
+    --account-col-width: auto; /* Calculated per template */
+
+    /* Sidebar */
+    --sidebar-width: 16.666667%; /* col-md-2 */
+    --sidebar-bg: #f8f9fa;
+    --sidebar-border: #dee2e6;
+
+    /* Colors */
+    --table-subtotal-bg: #d1ecf1;
+    --table-group-bg: #e2e3e5;
+    --table-hover-bg: #f8f9fa;
+
+    /* Transitions */
+    --transition-speed: 0.3s;
+}
+
+/* ============================================================================
+   2. Layout & Structure
+   ============================================================================ */
+
+/* Sidebar Collapsible Behavior */
+#sidebar-column {
+    transition: all var(--transition-speed) ease;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+body.sidebar-collapsed #sidebar-column {
+    width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    flex: 0 0 0 !important;
+    max-width: 0 !important;
+}
+
+body.sidebar-collapsed #main-content-column {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+}
+
+/* Mobile: Hide sidebar by default */
+@media (max-width: 768px) {
+    #sidebar-column {
+        display: none !important;
+    }
+
+    #main-content-column {
+        width: 100% !important;
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+    }
+}
+
+/* ============================================================================
+   3. Navigation
+   ============================================================================ */
+
+/* Navbar customizations would go here if needed */
+
+/* ============================================================================
+   4. Sidebar
+   ============================================================================ */
+
+.sidebar {
+    background-color: var(--sidebar-bg);
+    height: 100%;
+    padding: 1rem;
+    border-right: 1px solid var(--sidebar-border);
+}
+
+.sidebar .accordion-item {
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.sidebar .accordion-button {
+    background-color: #ffffff;
+    color: #212529;
+    box-shadow: none;
+}
+
+.sidebar .accordion-button:not(.collapsed) {
+    background-color: #f1f3f5;
+    color: #212529;
+    box-shadow: none;
+    border-bottom: 1px solid var(--sidebar-border);
+}
+
+.sidebar .accordion-button:focus {
+    box-shadow: none;
+    border-color: rgba(0, 0, 0, 0.125);
+}
+
+.sidebar .accordion-button::after {
+    margin-left: 0.5rem;
+}
+
+.sidebar .list-group-item {
+    background-color: transparent;
+}
+
+.sidebar .list-group-item:hover {
+    background-color: var(--table-hover-bg);
+}
+
+/* ============================================================================
+   5. Tables & Data Display
+   ============================================================================ */
+
+/* Base table styling */
+.table {
+    font-size: 0.9rem;
+}
+
+/* Dashboard Holdings Table */
+.dashboard-content .holdings-table {
+    table-layout: fixed;
+    font-size: 0.8rem;
+}
+
+.dashboard-content .holdings-table col.col-asset {
+    width: var(--asset-col-width);
+}
+
+.dashboard-content .holdings-table col.col-account {
+    width: calc(
+        (100% - var(--asset-col-width) - var(--total-col-width))
+        / var(--account-columns, 12)
+    );
+}
+
+.dashboard-content .holdings-table col.col-total-sub {
+    width: calc(var(--total-col-width) / 3);
+    white-space: nowrap;
+}
+
+/* Table row types */
+.table tr.subtotal,
+.table tr.subtotal td {
+    background-color: #6c757d !important;
+    color: #ffffff !important;
+    font-weight: bold;
+}
+
+.table tr.group-total,
+.table tr.group-total td {
+    background-color: #495057 !important;
+    color: #ffffff !important;
+    font-weight: bold;
+}
+
+.table tr.grand-total,
+.table tr.grand-total td {
+    background-color: #212529 !important;
+    color: #ffffff !important;
+    font-weight: bold;
+    border-top: 2px solid #000;
+}
+
+/* Target Allocation Table Specific Styles */
+.target-allocation-table {
+    font-size: 0.85rem;
+}
+
+.target-allocation-table th {
+    white-space: nowrap;
+    font-size: 0.8rem;
+}
+
+.target-allocation-table td {
+    vertical-align: middle;
+}
+
+/* Variance highlighting */
+.variance-positive {
+    color: #198754; /* Bootstrap success green */
+}
+
+.variance-negative {
+    color: #dc3545; /* Bootstrap danger red */
+}
+
+/* ============================================================================
+   6. Cards & Components
+   ============================================================================ */
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+/* ============================================================================
+   7. Utilities
+   ============================================================================ */
+
+/* Text utilities */
+.text-accounting {
+    font-family: 'Courier New', monospace;
+    text-align: right;
+}
+
+/* ============================================================================
+   8. Responsive Overrides
+   ============================================================================ */
+
+@media (max-width: 992px) {
+    .table {
+        font-size: 0.8rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-content .holdings-table {
+        font-size: 0.7rem;
+    }
+}

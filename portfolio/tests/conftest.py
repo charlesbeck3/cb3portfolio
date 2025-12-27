@@ -34,6 +34,10 @@ from portfolio.models import (
     Portfolio,
     Security,
 )
+from portfolio.tests.fixtures.benchmarks import (
+    large_portfolio_benchmark,
+    medium_portfolio_benchmark,
+)
 
 # Import mock fixtures to make them available globally
 from portfolio.tests.fixtures.mocks import (
@@ -65,6 +69,9 @@ __all__ = [
     "stable_test_prices",
     "zero_prices",
     "volatile_prices",
+    # Benchmark fixtures
+    "large_portfolio_benchmark",
+    "medium_portfolio_benchmark",
 ]
 
 

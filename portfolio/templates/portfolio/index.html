@@ -5,28 +5,7 @@
 {% block content %}
 {% with account_count=account_types|length %}
 {% widthratio account_count 1 3 as account_value_columns %}
-<style>
-    .dashboard-content .holdings-table {
-        table-layout: fixed;
-        font-size: 0.8rem;
-    }
 
-    .dashboard-content .holdings-table col.col-asset {
-        width: var(--asset-col-width, 18%);
-    }
-
-    .dashboard-content .holdings-table col.col-account {
-        width: calc(
-            (100% - var(--asset-col-width, 18%) - var(--total-col-width, 21%))
-            / var(--account-columns, 12)
-        );
-    }
-
-    .dashboard-content .holdings-table col.col-total-sub {
-        width: calc(var(--total-col-width, 21%) / 3);
-        white-space: nowrap;
-    }
-</style>
 
 <div class="dashboard-content" style="--account-columns: {{ account_value_columns }};">
 <div class="row">

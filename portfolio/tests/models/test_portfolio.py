@@ -93,7 +93,9 @@ def test_portfolio_with_invalid_strategy_validation(test_user: Any, base_system_
 
     # Create a strategy with allocations that don't sum to 100%
     strategy = AllocationStrategy.objects.create(user=test_user, name="Invalid Strategy")
-    asset_class = AssetClass.objects.create(name="US Stocks", category=system.cat_us_eq)
+    asset_class, _ = AssetClass.objects.get_or_create(
+        name="US Equities", defaults={"category": system.cat_us_eq}
+    )
 
     # Manually create allocations that sum to 90% (bypassing save_allocations)
     TargetAllocation.objects.create(

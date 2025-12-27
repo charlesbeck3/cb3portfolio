@@ -27,7 +27,9 @@ class AllocationCalculationEngineTotalsTests(TestCase):
         self.portfolio = Portfolio.objects.create(user=self.user, name="Test Portfolio")
 
         self.category = AssetClassCategory.objects.create(code="EQUITY", label="Equities")
-        self.asset_class = AssetClass.objects.create(name="US Stocks", category=self.category)
+        self.asset_class, _ = AssetClass.objects.get_or_create(
+            name="US Equities", defaults={"category": self.category}
+        )
 
         self.group = AccountGroup.objects.create(name="Brokerage")
         self.account_type = AccountType.objects.create(

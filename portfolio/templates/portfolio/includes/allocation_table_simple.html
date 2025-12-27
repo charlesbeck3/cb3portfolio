@@ -1,3 +1,4 @@
+{% load allocation_tags %}
 {% if rows %}
     {% with account_types=rows.0.account_types %}
     <table class="table table-bordered table-striped table-hover mb-0 align-middle" id="{{ table_id }}" style="font-size: 0.8rem; table-layout: fixed;">
@@ -25,13 +26,13 @@
         </thead>
         <tbody>
             {% for row in rows %}
-            <tr {% if row.is_subtotal %}class="table-info fw-bold"{% elif row.is_group_total %}class="fw-bold" style="background-color: #e2e3e5;"{% elif row.is_grand_total %}class="table-dark fw-bold"{% endif %}>
+            <tr class="{{ row.row_type|row_css_class }}">
                 <td class="ps-4">{{ row.asset_class_name }}</td>
                 {% for at_col in row.account_types %}
                     <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ at_col.actual|safe }}</td>
                     <td class="text-end pe-1 small col-mode-policy d-none {% if row.is_grand_total %}text-white{% endif %}">{{ at_col.policy|safe }}</td>
                     <td class="text-end pe-1 small col-mode-effective {% if row.is_grand_total %}text-white{% endif %}">{{ at_col.effective|safe }}</td>
-                    <td class="text-end pe-1 small fw-bold variance-col {% if row.is_grand_total %}text-white{% endif %}"
+                    <td class="text-end pe-1 small fw-bold variance-col {{ at_col.effective_variance_raw|variance_css_class }} {% if row.is_grand_total %}text-white{% endif %}"
                         data-effective-variance="{{ at_col.effective_variance|safe }}"
                         data-policy-variance="{{ at_col.policy_variance|safe }}">
                         <span class="variance-value">{{ at_col.effective_variance|safe }}</span>
@@ -40,7 +41,7 @@
                 <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.actual|safe }}</td>
                 <td class="text-end pe-2 table-active col-mode-policy d-none {% if row.is_grand_total %}text-white{% endif %}">{{ row.portfolio.explicit_target|safe }}</td>
                 <td class="text-end pe-2 table-active col-mode-effective {% if row.is_grand_total %}text-white{% endif %}">{{ row.portfolio.effective|safe }}</td>
-                <td class="text-end pe-2 table-active fw-bold variance-col {% if row.is_grand_total %}text-white{% endif %}"
+                <td class="text-end pe-2 table-active fw-bold variance-col {{ row.portfolio.effective_variance_raw|variance_css_class }} {% if row.is_grand_total %}text-white{% endif %}"
                     data-effective-variance="{{ row.portfolio.effective_variance|safe }}"
                     data-policy-variance="{{ row.portfolio.effective_variance|safe }}"> <!-- Portfolio only has effective variance currently, or we might need to clarify if it has policy variance -->
                     <span class="variance-value">{{ row.portfolio.effective_variance|safe }}</span>

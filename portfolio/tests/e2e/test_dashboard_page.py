@@ -4,6 +4,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 
+@pytest.mark.e2e
 @pytest.mark.django_db
 class TestDashboardPage:
     @pytest.fixture(autouse=True)
