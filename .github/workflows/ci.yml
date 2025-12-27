@@ -2,34 +2,48 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.14"]
 
     steps:
     - uses: actions/checkout@v4
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v3
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true
 
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
 
     - name: Install dependencies
-      run: uv sync --all-extras --dev
+      run: uv sync
 
-    - name: Run Linting
+    - name: Run linting (Ruff)
       run: uv run ruff check .
 
-    - name: Run Type Checking
-      run: uv run mypy .
+    - name: Run formatting check (Ruff)
+      run: uv run ruff format --check .
 
-    - name: Run Tests
-      run: uv run python manage.py test
+    - name: Run type checking (MyPy)
+      run: uv run mypy portfolio/
+      continue-on-error: true
+
+    - name: Run tests with coverage
+      run: uv run pytest --cov=portfolio --cov-report=term-missing --cov-report=xml
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

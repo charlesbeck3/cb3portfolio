@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import logging
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
@@ -12,6 +11,8 @@ if TYPE_CHECKING:
     from portfolio.models.strategies import AllocationStrategy
 
 from portfolio.managers import AccountManager
+
+logger = logging.getLogger(__name__)
 
 
 class Institution(models.Model):

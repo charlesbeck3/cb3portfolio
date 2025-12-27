@@ -26,3 +26,9 @@ htmlcov/
 .coverage
 .secrets.baseline
 logs/
+
+# Add to existing .gitignore
+logs/*.log
+coverage_html/
+.coverage
+*.sql

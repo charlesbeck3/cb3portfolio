@@ -1,10 +1,11 @@
-from __future__ import annotations
-
+import logging
 from decimal import Decimal
 
 from portfolio.models import Holding
 from portfolio.services.market_data import MarketDataService
 from users.models import CustomUser
+
+logger = logging.getLogger(__name__)
 
 
 class PricingService:
@@ -12,6 +13,7 @@ class PricingService:
 
     def __init__(self, market_data: MarketDataService | None = None) -> None:
         self._market_data = market_data or MarketDataService()
+        logger.debug("Initializing PricingService")
 
     def update_holdings_prices(self, user: CustomUser) -> dict[str, Decimal]:
         """Fetch current prices and update all holdings for a user.

@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import logging
 from decimal import Decimal
 from typing import Any, cast
 
@@ -15,9 +14,12 @@ from portfolio.services.allocation_calculations import AllocationCalculationEngi
 from portfolio.services.allocation_presentation import AllocationPresentationFormatter
 from users.models import CustomUser
 
+logger = logging.getLogger(__name__)
+
 
 class TargetAllocationViewService:
     def build_context(self, *, user: CustomUser) -> dict[str, Any]:
+        logger.info(f"Building target allocation context for user {cast(Any, user).id}")
         engine = AllocationCalculationEngine()
         formatter = AllocationPresentationFormatter()
 

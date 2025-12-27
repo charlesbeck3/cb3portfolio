@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import logging
 from typing import Any, cast
 
 from django.contrib import messages
@@ -10,6 +9,8 @@ from django.views.generic import TemplateView
 from portfolio.services.target_allocations import TargetAllocationViewService
 from portfolio.views.mixins import PortfolioContextMixin
 
+logger = logging.getLogger(__name__)
+
 
 class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
     template_name = "portfolio/target_allocations.html"
@@ -19,6 +20,7 @@ class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateVi
         self._service = TargetAllocationViewService()
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        logger.info(f"Target allocations accessed by user {cast(Any, self.request.user).id}")
         context = super().get_context_data(**kwargs)
         user = self.request.user
 

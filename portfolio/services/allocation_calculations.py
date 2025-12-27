@@ -26,6 +26,9 @@ class AllocationCalculationEngine:
     Views/templates are responsible for formatting display strings.
     """
 
+    def __init__(self) -> None:
+        logger.debug("Initializing AllocationCalculationEngine")
+
     def calculate_allocations(
         self,
         holdings_df: pd.DataFrame,
@@ -429,6 +432,8 @@ class AllocationCalculationEngine:
         """
         from portfolio.models import Portfolio
 
+        logger.info(f"Building presentation DataFrame for user {user.id}")
+
         # Get holdings DataFrame
         portfolio = Portfolio.objects.filter(user=user).first()
         if not portfolio:
@@ -507,6 +512,8 @@ class AllocationCalculationEngine:
             ],
             ascending=[True, False, True, False, False, True],
         )
+
+        logger.debug(f"Presentation DataFrame built with {len(df)} rows")
 
         # Step 10: Set MultiIndex
         df = df.set_index(["group_code", "category_code", "asset_class_name"])

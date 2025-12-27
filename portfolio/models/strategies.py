@@ -151,6 +151,9 @@ class AllocationStrategy(models.Model):
             )
 
         # Save to database
+        logger.info(
+            f"Saving {len(final_allocations)} allocations for strategy '{self.name}' (user {self.user_id})"
+        )
         with transaction.atomic():
             # Clear existing allocations
             self.target_allocations.all().delete()

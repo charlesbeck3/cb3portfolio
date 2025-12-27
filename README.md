@@ -387,6 +387,64 @@ uv run python manage.py shell
 # Lint and format
 uv run ruff check . && uv run ruff format .
 ```
+## Environment Configuration
+
+### Settings Modules
+
+The application supports three environments:
+
+**Development (Default)**
+```bash
+DJANGO_SETTINGS_MODULE=config.settings.development
+uv run python manage.py runserver
+```
+
+**Testing**
+```bash
+DJANGO_SETTINGS_MODULE=config.settings.testing
+uv run pytest
+```
+
+**Production**
+```bash
+DJANGO_SETTINGS_MODULE=config.settings.production
+uv run python manage.py check --deploy
+```
+
+### Production Environment Variables
+
+Required for production deployment:
+- `SECRET_KEY` - Django secret key (generate with `get_random_secret_key()`)
+- `ALLOWED_HOSTS` - Comma-separated list of allowed hostnames
+- `DB_NAME`, `DB_USER`, `DB_PASSWORD` - PostgreSQL credentials
+- Email settings (optional but recommended for error reporting)
+
+See `.env.example` for complete list.
+
+### Logging Strategy
+
+The project uses a structured logging strategy to facilitate monitoring and debugging:
+
+- **Hierarchy**: Loggers are organized by module (e.g., `portfolio.services`, `portfolio.views`).
+- **Levels**:
+  - `INFO`: Used for major lifecycle events (e.g., building context, saving allocations).
+  - `DEBUG`: Used for detailed initialization and internal calculation steps.
+  - `WARNING`: Used for data anomalies or non-critical failures.
+  - `ERROR`: Used for exceptions that disrupt the user flow.
+- **Production Config**: In production, logs are routed to both the console and rotating file handlers (`logs/application.log`, `logs/errors.log`).
+- **Email Alerts**: Critical errors in production trigger email alerts to `ADMINS`.
+
+### Security Hardening
+
+The project includes several security measures and audits:
+
+- **Automated Security Scanning**: GitHub Actions workflow runs Ruff S-rules and `safety` checks on every push/PR and weekly.
+- **Secret Scanning**: `detect-secrets` pre-commit hook prevents committing sensitive information.
+- **Production Security**: Security settings (HSTS, SSL redirect, secure cookies) are enabled in `config/settings/production.py`.
+- **Dependency Management**:
+    - **Vulnerability Scanning**: `safety` checks for known vulnerabilities (run with `uv run safety check`).
+    - **Automated Updates**: GitHub Actions dependency review on all PRs.
+    - **Pre-commit Checks**: `safety` runs automatically on pre-push.
 
 ## Configuration
 
@@ -629,6 +687,62 @@ uv run pytest --cov=portfolio --cov-report=html
 - Ensure virtual environment is activated
 - Run `uv pip install -e ".[dev]"`
 
+## Development Commands
+
+The project uses `uv` for dependency management. All commands use `uv run` prefix:
+
+### Testing
+```bash
+uv run pytest                                    # Run all tests
+uv run pytest --cov=portfolio                    # With coverage
+uv run pytest --cov=portfolio --cov-report=html  # HTML coverage report
+uv run pytest -m unit                            # Unit tests only
+uv run pytest -m integration                     # Integration tests only
+```
+
+### Code Quality
+```bash
+uv run ruff check .                              # Lint
+uv run ruff format .                             # Format
+uv run ruff check . --fix                        # Auto-fix linting issues
+uv run mypy portfolio/                           # Type checking
+
+# Run all checks before committing
+uv run ruff check . && uv run ruff format --check . && uv run mypy portfolio/
+```
+
+### Security
+```bash
+uv run ruff check . --select S                   # Security checks
+uv run safety check                              # Dependency vulnerabilities
+```
+
+### Django Management
+```bash
+uv run python manage.py runserver                # Start dev server
+uv run python manage.py makemigrations           # Create migrations
+uv run python manage.py migrate                  # Apply migrations
+uv run python manage.py createsuperuser          # Create admin user
+```
+
+### Pre-commit Hooks
+```bash
+# Install pre-commit hooks
+uv run pre-commit install
+uv run pre-commit install --hook-type pre-push
+
+# Run hooks manually
+uv run pre-commit run --all-files
+```
+
+## CI/CD
+
+GitHub Actions workflows automatically run on push and PR:
+
+- **CI** (`.github/workflows/ci.yml`): Tests, linting, type checking, coverage
+- **Security** (`.github/workflows/security.yml`): Security scanning, vulnerability checks
+- **Dependency Review** (`.github/workflows/dependency-review.yml`): Automated dependency analysis on PRs
+
 ## Contributing
 
 ### Development Workflow
@@ -636,9 +750,9 @@ uv run pytest --cov=portfolio --cov-report=html
 1. Create feature branch
 2. Make changes
 3. Write/update tests
-4. Run linter: `uv run ruff check . && uv run ruff format .`
-5. Run tests: `uv run python manage.py test`
-6. Commit changes
+4. Run checks: `uv run check`
+5. Run tests: `uv run test`
+6. Commit changes (pre-commit hooks will run)
 7. Create pull request
 
 ### Code Style

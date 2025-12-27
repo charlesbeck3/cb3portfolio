@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import logging
 from collections import OrderedDict
 from decimal import Decimal
 from typing import Any
@@ -7,6 +6,8 @@ from typing import Any
 from django.http import HttpRequest
 
 from portfolio.models import Account, AccountGroup
+
+logger = logging.getLogger(__name__)
 
 
 class PortfolioContextMixin:

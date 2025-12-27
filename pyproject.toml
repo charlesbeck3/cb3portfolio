@@ -17,13 +17,61 @@ dependencies = [
 [tool.mypy]
 python_version = "3.14"
 plugins = ["mypy_django_plugin.main"]
-check_untyped_defs = false
-disallow_untyped_defs = false
-ignore_missing_imports = true
-warn_unused_ignores = false
+
+# Strictness settings
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_incomplete_defs = true
+
+# Warnings
 warn_redundant_casts = true
+warn_unused_ignores = true
 warn_unused_configs = true
-exclude = ["portfolio/migrations/", "portfolio/tests/", "portfolio/management/commands/"]
+warn_return_any = true
+warn_unreachable = true
+
+# Error handling
+ignore_missing_imports = true
+strict_optional = true
+show_error_codes = true
+
+# Exclude patterns
+exclude = [
+    "portfolio/migrations/",
+    "portfolio/tests/",
+    "portfolio/management/commands/",
+    "conftest.py",
+]
+
+[[tool.mypy.overrides]]
+module = "portfolio.tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "portfolio.migrations.*"
+ignore_errors = true
+
+# Django-heavy modules: disable strict checks for Django ORM attributes
+[[tool.mypy.overrides]]
+module = [
+    "portfolio.admin",
+    "portfolio.forms.*",
+    "portfolio.views.*",
+    "portfolio.domain.*",
+    "portfolio.services.seeder",
+    "portfolio.services.target_allocations",
+]
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+warn_return_any = false
+
+# Services with Django ORM queries: allow .objects attribute
+[[tool.mypy.overrides]]
+module = "portfolio.services.allocation_calculations"
+warn_return_any = false
 
 [tool.django-stubs]
 django_settings_module = "config.settings"
@@ -44,6 +92,7 @@ dev = [
     "pre-commit>=4.0",
     "coverage>=7.0",
     "detect-secrets>=1.4.0",
+    "safety>=3.7.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -134,6 +183,12 @@ line-ending = "auto"
 [tool.django]
 # Django-specific settings for tools that support it
 settings-module = "config.settings"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.base"
+python_files = ["test_*.py", "*_test.py"]
+testpaths = ["portfolio/tests"]
+addopts = "--cov=portfolio --cov-report=term-missing --cov-report=html:coverage_html"
 
 [tool.coverage.run]
 # Coverage configuration

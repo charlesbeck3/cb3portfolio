@@ -144,11 +144,11 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {
         "verbose": {
-            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
+            "format": "{levelname} {asctime} {name} {module}:{lineno} {message}",
             "style": "{",
         },
         "simple": {
-            "format": "{levelname} {asctime} {message}",
+            "format": "{levelname} {asctime} {name} {message}",
             "style": "{",
         },
     },
@@ -163,6 +163,16 @@ LOGGING = {
             "handlers": ["console"],
             "level": "INFO",
             "propagate": True,
+        },
+        "portfolio.services": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "portfolio.views": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
         },
     },
 }
