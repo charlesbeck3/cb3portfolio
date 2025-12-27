@@ -37,6 +37,9 @@ jobs:
       run: uv run mypy portfolio/
       continue-on-error: true
 
+    - name: Install Playwright browsers
+      run: uv run playwright install --with-deps chromium
+
     - name: Run tests with coverage
       run: uv run pytest --cov=portfolio --cov-report=term-missing --cov-report=xml
 
