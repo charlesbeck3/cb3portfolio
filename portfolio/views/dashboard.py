@@ -19,7 +19,8 @@ class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         logger.info("dashboard_accessed", user_id=cast(Any, self.request.user).id)
         context = super().get_context_data(**kwargs)
         user = self.request.user
-        assert user.is_authenticated
+        if not user.is_authenticated:
+            return context  # Should be unreachable due to LoginRequiredMixin
 
         # Initialize engine and formatter
         engine = AllocationCalculationEngine()

@@ -166,7 +166,7 @@ def test_user(db: Any) -> Any:
 def test_user_with_name(db: Any) -> Any:
     """Test user with custom username - for multi-user test scenarios."""
 
-    def _create_user(username: str, password: str = "password") -> Any:
+    def _create_user(username: str, password: str = "password") -> Any:  # noqa: S107
         return User.objects.create_user(username=username, password=password)
 
     return _create_user

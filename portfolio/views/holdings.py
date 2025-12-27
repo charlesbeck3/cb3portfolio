@@ -21,7 +21,8 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         logger.info(f"Holdings accessed by user {cast(Any, self.request.user).id}")
         context = super().get_context_data(**kwargs)
         user = self.request.user
-        assert user.is_authenticated
+        if not user.is_authenticated:
+            return context
 
         account_id = kwargs.get("account_id")
 

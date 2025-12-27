@@ -29,7 +29,9 @@ class PortfolioContextMixin:
         eliminating duplicate calculation logic and improving performance.
         """
         user = self.request.user
-        assert user.is_authenticated
+        if not user.is_authenticated:
+            # Should be unreachable for views using LoginRequiredMixin
+            return {"sidebar_data": {"grand_total": Decimal("0.00"), "groups": {}}}
 
         from portfolio.services.allocation_calculations import AllocationCalculationEngine
 

@@ -89,7 +89,7 @@ class Command(BaseCommand):
         # ---------------------------
         test_username = "testuser"
         test_email = "test@example.com"
-        test_password = "testpassword"  # pragma: allowlist secret
+        test_password = "testpassword"  # pragma: allowlist secret  # noqa: S105
 
         if not User.objects.filter(username=test_username).exists():
             User.objects.create_user(test_username, test_email, test_password)
