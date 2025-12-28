@@ -3,6 +3,7 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
+from django.utils import timezone
 
 import pandas as pd
 
@@ -14,6 +15,7 @@ from portfolio.models import (
     AllocationStrategy,
     Holding,
     Security,
+    SecurityPrice,
     TargetAllocation,
 )
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
@@ -41,6 +43,19 @@ class Command(BaseCommand, PortfolioTestMixin):
 
         # 2. Setup System Data (Institutions, Asset Classes, etc.)
         self.setup_system_data()
+
+        # Initialize portfolio for the scenario setup
+        from portfolio.models import Portfolio
+
+        self.portfolio, _ = Portfolio.objects.get_or_create(user=self.user, name="Main Portfolio")
+
+        # Clean up existing scenario data to ensure a fresh state
+        Holding.objects.filter(account__portfolio=self.portfolio).delete()
+        Account.objects.filter(portfolio=self.portfolio).delete()
+        AllocationStrategy.objects.filter(user=self.user).delete()
+
+        # Run the scenario setup
+        self.setup_golden_reference_scenario()
 
         # 3. Load Domain Portfolio and Display Results
         domain_portfolio = DomainPortfolio.load_for_user(self.user)
@@ -198,7 +213,6 @@ class Command(BaseCommand, PortfolioTestMixin):
             account=acc_treasury,
             security=self.sec_ibond,
             shares=Decimal("108000.00"),
-            current_price=Decimal("1.00"),
         )
 
         # 2. WF S&P
@@ -214,7 +228,6 @@ class Command(BaseCommand, PortfolioTestMixin):
             account=acc_wf_sp,
             security=self.sec_voo,
             shares=Decimal("70000.00") / Decimal("622.01"),
-            current_price=Decimal("622.01"),
         )
 
         # 3. ML Brokerage
@@ -229,49 +242,41 @@ class Command(BaseCommand, PortfolioTestMixin):
             account=acc_ml,
             security=self.sec_voo,
             shares=Decimal("656.00"),
-            current_price=Decimal("622.01"),
         )
         Holding.objects.create(
             account=acc_ml,
             security=self.sec_vea,
             shares=Decimal("5698.00"),
-            current_price=Decimal("62.51"),
         )
         Holding.objects.create(
             account=acc_ml,
             security=self.sec_vgsh,
             shares=Decimal("3026.00"),
-            current_price=Decimal("58.69"),
         )
         Holding.objects.create(
             account=acc_ml,
             security=self.sec_vig,
             shares=Decimal("665.00"),
-            current_price=Decimal("219.37"),
         )
         Holding.objects.create(
             account=acc_ml,
             security=self.sec_vtv,
             shares=Decimal("750.00"),
-            current_price=Decimal("190.86"),
         )
         Holding.objects.create(
             account=acc_ml,
             security=self.sec_vwo,
             shares=Decimal("2540.00"),
-            current_price=Decimal("53.58"),
         )
         Holding.objects.create(
             account=acc_ml,
             security=self.sec_vgit,
             shares=Decimal("968.00"),
-            current_price=Decimal("60.02"),
         )
         Holding.objects.create(
             account=acc_ml,
             security=self.sec_cash,
             shares=Decimal("5.00"),
-            current_price=Decimal("1.00"),
         )
 
         # 4. CB IRA
@@ -286,37 +291,104 @@ class Command(BaseCommand, PortfolioTestMixin):
             account=acc_cb_ira,
             security=self.sec_vnq,
             shares=Decimal("1202.00"),
-            current_price=Decimal("88.93"),
         )
         Holding.objects.create(
             account=acc_cb_ira,
             security=self.sec_vgsh,
             shares=Decimal("1731.00"),
-            current_price=Decimal("58.69"),
         )
         Holding.objects.create(
             account=acc_cb_ira,
             security=self.sec_vti,
             shares=Decimal("288.00"),
-            current_price=Decimal("333.25"),
         )
         Holding.objects.create(
             account=acc_cb_ira,
             security=self.sec_vea,
             shares=Decimal("606.00"),
-            current_price=Decimal("62.51"),
         )
         Holding.objects.create(
             account=acc_cb_ira,
             security=self.sec_vgit,
             shares=Decimal("288.00"),
-            current_price=Decimal("60.02"),
         )
         Holding.objects.create(
             account=acc_cb_ira,
             security=self.sec_cash,
             shares=Decimal("11.00"),
-            current_price=Decimal("1.00"),
+        )
+
+        # Create all SecurityPrice objects in bulk
+        now = timezone.now()
+        SecurityPrice.objects.bulk_create(
+            [
+                SecurityPrice(
+                    security=self.sec_ibond,
+                    price=Decimal("1.00"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+                SecurityPrice(
+                    security=self.sec_voo,
+                    price=Decimal("622.01"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+                SecurityPrice(
+                    security=self.sec_vea,
+                    price=Decimal("62.51"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+                SecurityPrice(
+                    security=self.sec_vgsh,
+                    price=Decimal("58.69"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+                SecurityPrice(
+                    security=self.sec_vig,
+                    price=Decimal("219.37"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+                SecurityPrice(
+                    security=self.sec_vtv,
+                    price=Decimal("190.86"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+                SecurityPrice(
+                    security=self.sec_vwo,
+                    price=Decimal("53.58"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+                SecurityPrice(
+                    security=self.sec_vgit,
+                    price=Decimal("60.02"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+                SecurityPrice(
+                    security=self.sec_cash,
+                    price=Decimal("1.00"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+                SecurityPrice(
+                    security=self.sec_vnq,
+                    price=Decimal("88.93"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+                SecurityPrice(
+                    security=self.sec_vti,
+                    price=Decimal("333.25"),
+                    price_datetime=now,
+                    source="manual",
+                ),
+            ]
         )
 
     def format_df_for_display(self, df: pd.DataFrame, left_align_cols: list[str]) -> str:
@@ -506,7 +578,7 @@ class Command(BaseCommand, PortfolioTestMixin):
                         "Ticker": h.security.ticker,
                         "Asset Class": h.security.asset_class.name,
                         "Shares": f"{h.shares:,.4f}",
-                        "Price": f"${h.current_price:,.2f}" if h.current_price else "N/A",
+                        "Price": f"${h.latest_price:,.2f}" if h.latest_price else "N/A",
                         "Market Value": float(h.market_value),
                     }
                 )
@@ -559,9 +631,9 @@ class Command(BaseCommand, PortfolioTestMixin):
                 {
                     "Level": row["row_type"],
                     "Asset Class": row["asset_class_name"],
-                    "Current": row["portfolio"]["current"],
-                    "Target": row["portfolio"]["target"],
-                    "Var": row["portfolio"]["variance"],
+                    "Current": row["portfolio"]["actual"],
+                    "Target": row["portfolio"]["effective"],
+                    "Var": row["portfolio"]["effective_variance"],
                 }
             )
 
@@ -584,7 +656,7 @@ class Command(BaseCommand, PortfolioTestMixin):
                     "Security": h.security.ticker,
                     "Value": float(h.market_value),
                     "Shares": float(h.shares),
-                    "Price": float(h.current_price) if h.current_price else 0.0,
+                    "Price": float(h.latest_price) if h.latest_price else 0.0,
                 }
             )
         holdings_df = pd.DataFrame(raw_holdings)
@@ -593,10 +665,10 @@ class Command(BaseCommand, PortfolioTestMixin):
 
         self.stdout.write(self.style.MIGRATE_LABEL("\nENGINE HOLDINGS DETAIL VALIDATION"))
         detail_display = detail_df[
-            ["Ticker", "Asset_Class", "Value", "Target_Value", "Variance"]
+            ["Ticker", "Asset_Class", "Value", "Target_Value", "Value_Variance"]
         ].copy()
         detail_display["Value"] = detail_display["Value"].apply("${:,.2f}".format)
         detail_display["Target_Value"] = detail_display["Target_Value"].apply("${:,.2f}".format)
-        detail_display["Variance"] = detail_display["Variance"].apply("${:,.2f}".format)
+        detail_display["Value_Variance"] = detail_display["Value_Variance"].apply("${:,.2f}".format)
 
         self.stdout.write(self.format_df_for_display(detail_display, ["Ticker", "Asset_Class"]))
