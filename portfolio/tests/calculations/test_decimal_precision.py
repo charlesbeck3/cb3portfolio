@@ -5,6 +5,8 @@ Test decimal precision consistency across models and calculation engine.
 from decimal import Decimal
 from typing import Any
 
+from django.utils import timezone
+
 import pytest
 
 from portfolio.models import (
@@ -12,6 +14,7 @@ from portfolio.models import (
     Holding,
     Portfolio,
     Security,
+    SecurityPrice,
 )
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
 
@@ -58,13 +61,20 @@ class TestDecimalPrecision:
             account=account,
             security=security,
             shares=Decimal("1.1"),
-            current_price=Decimal("1.00"),
         )
         Holding.objects.create(
             account=account,
             security=security2,
             shares=Decimal("2.2"),
-            current_price=Decimal("1.00"),
+        )
+
+        # Create prices
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=security, price=Decimal("1.00"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=security2, price=Decimal("1.00"), price_datetime=now, source="manual"
         )
 
         engine = AllocationCalculationEngine()
@@ -99,7 +109,7 @@ class TestDecimalPrecision:
         sec1 = Security.objects.create(
             ticker="S1", name="S1", asset_class=system.cat_us_eq.asset_classes.first()
         )
-        Holding.objects.create(account=account1, security=sec1, shares=val1, current_price=1)
+        Holding.objects.create(account=account1, security=sec1, shares=val1)
 
         account2 = Account.objects.create(
             portfolio=portfolio,
@@ -111,7 +121,16 @@ class TestDecimalPrecision:
         sec2 = Security.objects.create(
             ticker="S2", name="S2", asset_class=system.cat_us_eq.asset_classes.first()
         )
-        Holding.objects.create(account=account2, security=sec2, shares=val2, current_price=1)
+        Holding.objects.create(account=account2, security=sec2, shares=val2)
+
+        # Create prices
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=sec1, price=Decimal("1.00"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=sec2, price=Decimal("1.00"), price_datetime=now, source="manual"
+        )
 
         engine = AllocationCalculationEngine()
 
@@ -155,8 +174,11 @@ class TestDecimalPrecision:
         assert shares_field.decimal_places == 8
         assert shares_field.max_digits == 20
 
-        price_field = Holding._meta.get_field("current_price")
-        assert price_field.decimal_places == 2
-        # For penny stocks or crypto, 2 decimal places might be insufficient.
-        # But for 'standard' portfolio, maybe ok.
-        # This test ensures we are aware of this limitation.
+        # current_price field has been removed - prices now stored in SecurityPrice
+        # SecurityPrice.price field has max_digits=10, decimal_places=4
+        from portfolio.models import SecurityPrice
+
+        price_field = SecurityPrice._meta.get_field("price")
+        assert price_field.decimal_places == 4
+        # 4 decimal places provides better precision for stocks and crypto
+        # This is an improvement over the old 2 decimal places

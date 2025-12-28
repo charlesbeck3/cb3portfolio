@@ -25,6 +25,7 @@ Total Portfolio Value: $1,962,680.16
 from decimal import Decimal
 
 from django.test import TestCase
+from django.utils import timezone
 
 import pytest
 
@@ -37,6 +38,7 @@ from portfolio.models import (
     AssetClass,
     Holding,
     Security,
+    SecurityPrice,
     TargetAllocation,
 )
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
@@ -228,7 +230,6 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
             account=self.acc_treasury,
             security=self.sec_ibond,
             shares=Decimal("108000.00"),
-            current_price=Decimal("1.00"),
         )
 
         # ================================================================
@@ -247,7 +248,6 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
             account=self.acc_wf_sp,
             security=self.sec_voo,
             shares=Decimal("70000.00") / Decimal("622.01"),
-            current_price=Decimal("622.01"),
         )
 
         # ================================================================
@@ -267,56 +267,48 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
             account=self.acc_ml_brokerage,
             security=self.sec_voo,
             shares=Decimal("656.00"),
-            current_price=Decimal("622.01"),
         )
         # VEA - International Developed
         Holding.objects.create(
             account=self.acc_ml_brokerage,
             security=self.sec_vea,
             shares=Decimal("5698.00"),
-            current_price=Decimal("62.51"),
         )
         # VGSH - Short-term Treasuries
         Holding.objects.create(
             account=self.acc_ml_brokerage,
             security=self.sec_vgsh,
             shares=Decimal("3026.00"),
-            current_price=Decimal("58.69"),
         )
         # VIG - US Dividend
         Holding.objects.create(
             account=self.acc_ml_brokerage,
             security=self.sec_vig,
             shares=Decimal("665.00"),
-            current_price=Decimal("219.37"),
         )
         # VTV - US Value
         Holding.objects.create(
             account=self.acc_ml_brokerage,
             security=self.sec_vtv,
             shares=Decimal("750.00"),
-            current_price=Decimal("190.86"),
         )
         # VWO - Emerging Markets
         Holding.objects.create(
             account=self.acc_ml_brokerage,
             security=self.sec_vwo,
             shares=Decimal("2540.00"),
-            current_price=Decimal("53.58"),
         )
         # VGIT - Intermediate Treasuries
         Holding.objects.create(
             account=self.acc_ml_brokerage,
             security=self.sec_vgit,
             shares=Decimal("968.00"),
-            current_price=Decimal("60.02"),
         )
         # Cash
         Holding.objects.create(
             account=self.acc_ml_brokerage,
             security=self.cash,
             shares=Decimal("5.00"),
-            current_price=Decimal("1.00"),
         )
 
         # ================================================================
@@ -336,42 +328,72 @@ class TestGoldenReferenceRealWorldScenario(TestCase, PortfolioTestMixin):
             account=self.acc_cb_ira,
             security=self.sec_vnq,
             shares=Decimal("1202.00"),
-            current_price=Decimal("88.93"),
         )
         # VGSH - Short-term Treasuries
         Holding.objects.create(
             account=self.acc_cb_ira,
             security=self.sec_vgsh,
             shares=Decimal("1731.00"),
-            current_price=Decimal("58.69"),
         )
         # VTI - US Equities
         Holding.objects.create(
             account=self.acc_cb_ira,
             security=self.sec_vti,
             shares=Decimal("288.00"),
-            current_price=Decimal("333.25"),
         )
         # VEA - International Developed
         Holding.objects.create(
             account=self.acc_cb_ira,
             security=self.sec_vea,
             shares=Decimal("606.00"),
-            current_price=Decimal("62.51"),
         )
         # VGIT - Intermediate Treasuries
         Holding.objects.create(
             account=self.acc_cb_ira,
             security=self.sec_vgit,
             shares=Decimal("288.00"),
-            current_price=Decimal("60.02"),
         )
         # Cash
         Holding.objects.create(
             account=self.acc_cb_ira,
             security=self.cash,
             shares=Decimal("11.00"),
-            current_price=Decimal("1.00"),
+        )
+
+        # Create all SecurityPrice objects
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=self.sec_ibond, price=Decimal("1.00"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.sec_voo, price=Decimal("622.01"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.sec_vea, price=Decimal("62.51"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.sec_vgsh, price=Decimal("58.69"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.sec_vig, price=Decimal("219.37"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.sec_vtv, price=Decimal("190.86"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.sec_vwo, price=Decimal("53.58"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.sec_vgit, price=Decimal("60.02"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.cash, price=Decimal("1.00"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.sec_vnq, price=Decimal("88.93"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.sec_vti, price=Decimal("333.25"), price_datetime=now, source="manual"
         )
 
     # ====================================================================

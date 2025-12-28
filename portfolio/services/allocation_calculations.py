@@ -339,7 +339,7 @@ class AllocationCalculationEngine:
                     "Ticker": h.security.ticker,
                     "Security_Name": h.security.name,
                     "Shares": float(h.shares),
-                    "Price": float(h.current_price) if h.current_price else 0.0,
+                    "Price": float(h.latest_price) if h.latest_price else 0.0,
                     "Value": float(h.market_value),
                 }
             )
@@ -1314,28 +1314,23 @@ class AllocationCalculationEngine:
         """
         from portfolio.models import Holding
 
-        holdings = (
-            Holding.objects.filter(account__user=user)
-            .select_related("account", "security__asset_class")
-            .values(
-                "account_id",
-                "security__asset_class__name",
-                "shares",
-                "current_price",
-            )
+        holdings = Holding.objects.filter(account__user=user).select_related(
+            "account", "security__asset_class"
         )
 
-        if not holdings:
+        if not holdings.exists():
             return pd.DataFrame()
 
         data = []
         for h in holdings:
-            price = h["current_price"] or 0
-            value = float(h["shares"] * price)
+            price = h.latest_price or 0
+            value = float(h.shares * price)
             data.append(
                 {
-                    "Account_ID": h["account_id"],
-                    "Asset_Class": h["security__asset_class__name"],
+                    "Account_ID": h.account_id,
+                    "Asset_Class": h.security.asset_class.name
+                    if h.security.asset_class
+                    else "Unclassified",
                     "Value": value,
                 }
             )
