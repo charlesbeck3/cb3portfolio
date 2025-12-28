@@ -14,6 +14,7 @@ from .models import (
     Portfolio,
     RebalancingRecommendation,
     Security,
+    SecurityPrice,
     TargetAllocation,
 )
 
@@ -100,6 +101,23 @@ class SecurityAdmin(admin.ModelAdmin):
         return obj.asset_class.category.label
 
 
+class SecurityPriceAdmin(admin.ModelAdmin):
+    """Admin for SecurityPrice model."""
+
+    list_display = ["security", "price", "price_datetime", "source", "fetched_at"]
+    list_filter = ["source", "price_datetime"]
+    search_fields = ["security__ticker", "security__name"]
+    date_hierarchy = "price_datetime"
+    readonly_fields = ["fetched_at"]
+
+    ordering = ["-price_datetime", "security__ticker"]
+
+    fieldsets = (
+        ("Price Information", {"fields": ("security", "price", "price_datetime")}),
+        ("Metadata", {"fields": ("source", "fetched_at"), "classes": ("collapse",)}),
+    )
+
+
 class HoldingAdmin(admin.ModelAdmin):
     list_display = (
         "account",
@@ -134,6 +152,7 @@ admin.site.register(Portfolio, PortfolioAdmin)
 admin.site.register(AllocationStrategy, AllocationStrategyAdmin)
 admin.site.register(AccountTypeStrategyAssignment, AccountTypeStrategyAssignmentAdmin)
 admin.site.register(Security, SecurityAdmin)
+admin.site.register(SecurityPrice, SecurityPriceAdmin)
 admin.site.register(Holding, HoldingAdmin)
 admin.site.register(TargetAllocation, TargetAllocationAdmin)
 admin.site.register(RebalancingRecommendation)

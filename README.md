@@ -227,6 +227,10 @@ portfolio_management/
   - Linked to asset class
   - Tax efficiency ratings for optimization
 
+- **SecurityPrice** - Historical price data (NEW)
+  - Centralized price storage
+  - Market timestamps and audit trail
+
 - **Account** - Investment accounts (IRA, 401k, Taxable, etc.)
   - Tax treatment (tax-deferred, tax-free, taxable)
   - Institution and account details

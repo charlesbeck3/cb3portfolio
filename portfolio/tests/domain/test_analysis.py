@@ -49,13 +49,25 @@ def test_target_value_and_variance(test_portfolio: dict[str, Any]) -> None:
         account=acc_roth,
         security=sec_vti_test,
         shares=Decimal("6"),
-        current_price=Decimal("100"),
     )
     Holding.objects.create(  # type: ignore[misc]
         account=acc_taxable,
         security=sec_bnd_test,
         shares=Decimal("4"),
-        current_price=Decimal("100"),
+    )
+
+    # Create prices
+    from django.utils import timezone
+
+    from portfolio.models import SecurityPrice
+
+    now = timezone.now()
+
+    SecurityPrice.objects.create(
+        security=sec_vti_test, price=Decimal("100"), price_datetime=now, source="manual"
+    )
+    SecurityPrice.objects.create(
+        security=sec_bnd_test, price=Decimal("100"), price_datetime=now, source="manual"
     )
 
     domain_portfolio = DomainPortfolio(user_id=user.id, accounts=[acc_roth, acc_taxable])

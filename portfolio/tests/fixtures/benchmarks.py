@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 import pytest
 
@@ -21,6 +22,7 @@ from portfolio.models import (
     Institution,
     Portfolio,
     Security,
+    SecurityPrice,
 )
 
 User = get_user_model()
@@ -119,11 +121,22 @@ def large_portfolio_benchmark(base_system_data: Any, db: Any) -> dict[str, Any]:
                     account=account,
                     security=security,
                     shares=Decimal("100.00"),
-                    current_price=Decimal("50.00"),
                 )
             )
 
     Holding.objects.bulk_create(holdings)
+
+    # Bulk create prices for all securities
+    now = timezone.now()
+
+    unique_security_ids = {h.security.pk for h in holdings}
+    unique_securities = Security.objects.filter(id__in=unique_security_ids)
+
+    security_prices = [
+        SecurityPrice(security=s, price=Decimal("50.00"), price_datetime=now, source="manual")
+        for s in unique_securities
+    ]
+    SecurityPrice.objects.bulk_create(security_prices)
 
     return {
         "user": user,
@@ -214,11 +227,22 @@ def medium_portfolio_benchmark(base_system_data: Any, db: Any) -> dict[str, Any]
                     account=account,
                     security=security,
                     shares=Decimal("50.00"),
-                    current_price=Decimal("100.00"),
                 )
             )
 
     Holding.objects.bulk_create(holdings)
+
+    # Bulk create prices for all securities
+    now = timezone.now()
+
+    unique_security_ids = {h.security.pk for h in holdings}
+    unique_securities = Security.objects.filter(id__in=unique_security_ids)
+
+    security_prices = [
+        SecurityPrice(security=s, price=Decimal("100.00"), price_datetime=now, source="manual")
+        for s in unique_securities
+    ]
+    SecurityPrice.objects.bulk_create(security_prices)
 
     return {
         "user": user,

@@ -36,7 +36,7 @@ from .accounts import Account, AccountGroup, AccountType, Institution
 from .assets import AssetClass, AssetClassCategory
 from .portfolio import Portfolio
 from .rebalancing import RebalancingRecommendation
-from .securities import Holding, Security
+from .securities import Holding, Security, SecurityPrice
 from .strategies import (
     AccountTypeStrategyAssignment,
     AllocationStrategy,
@@ -56,6 +56,7 @@ __all__ = [
     # Securities
     "Holding",
     "Security",
+    "SecurityPrice",
     # Strategies
     "AccountTypeStrategyAssignment",
     "AllocationStrategy",

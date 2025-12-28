@@ -248,7 +248,14 @@ def simple_holdings(test_portfolio: dict[str, Any], roth_account: Account) -> di
         account=roth_account,
         security=system.vti,
         shares=Decimal("10"),
-        current_price=Decimal("100"),
+    )
+
+    from django.utils import timezone
+
+    from portfolio.models import SecurityPrice
+
+    SecurityPrice.objects.create(
+        security=system.vti, price=Decimal("100"), price_datetime=timezone.now(), source="manual"
     )
 
     return {
@@ -276,14 +283,28 @@ def multi_account_holdings(
         account=roth_account,
         security=system.vti,
         shares=Decimal("6"),
-        current_price=Decimal("100"),
+    )
+
+    from django.utils import timezone
+
+    from portfolio.models import SecurityPrice
+
+    # Price for VTI (matches simple_holdings but just to be sure)
+    SecurityPrice.objects.update_or_create(
+        security=system.vti,
+        defaults={"price": Decimal("100"), "price_datetime": timezone.now(), "source": "manual"},
     )
 
     taxable_holding = Holding.objects.create(
         account=taxable_account,
         security=system.bnd,
         shares=Decimal("4"),
-        current_price=Decimal("100"),
+    )
+
+    # Price for BND
+    SecurityPrice.objects.update_or_create(
+        security=system.bnd,
+        defaults={"price": Decimal("100"), "price_datetime": timezone.now(), "source": "manual"},
     )
 
     return {
