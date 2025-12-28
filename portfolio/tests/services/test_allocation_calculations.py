@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from portfolio.models import (
     Account,
@@ -13,6 +14,7 @@ from portfolio.models import (
     Institution,
     Portfolio,
     Security,
+    SecurityPrice,
 )
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
 
@@ -56,7 +58,12 @@ class AllocationCalculationEngineTotalsTests(TestCase):
             account=account,
             security=self.security,
             shares=Decimal("10"),
-            current_price=Decimal("100.00"),
+        )
+
+        # Create price
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=self.security, price=Decimal("100.00"), price_datetime=now, source="manual"
         )
 
         engine = AllocationCalculationEngine()
@@ -87,7 +94,6 @@ class AllocationCalculationEngineTotalsTests(TestCase):
             account=account1,
             security=self.security,
             shares=Decimal("10"),
-            current_price=Decimal("100.00"),
         )
 
         # Account 2: $2500
@@ -95,7 +101,12 @@ class AllocationCalculationEngineTotalsTests(TestCase):
             account=account2,
             security=self.security,
             shares=Decimal("25"),
-            current_price=Decimal("100.00"),
+        )
+
+        # Create price
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=self.security, price=Decimal("100.00"), price_datetime=now, source="manual"
         )
 
         engine = AllocationCalculationEngine()
@@ -134,14 +145,18 @@ class AllocationCalculationEngineTotalsTests(TestCase):
             account=account1,
             security=self.security,
             shares=Decimal("10"),
-            current_price=Decimal("100.00"),
         )
 
         Holding.objects.create(
             account=account2,
             security=self.security,
             shares=Decimal("25"),
-            current_price=Decimal("100.00"),
+        )
+
+        # Create price
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=self.security, price=Decimal("100.00"), price_datetime=now, source="manual"
         )
 
         engine = AllocationCalculationEngine()

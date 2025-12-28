@@ -2,10 +2,11 @@ from decimal import Decimal
 from typing import Any
 
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 import pytest
 
-from portfolio.models import Account, AccountType, AssetClass, Holding, Security
+from portfolio.models import Account, AccountType, AssetClass, Holding, Security, SecurityPrice
 
 
 @pytest.mark.models
@@ -37,8 +38,14 @@ def test_account_type_to_dataframe(test_portfolio: dict[str, Any]) -> None:
         institution=institution,
     )
 
-    Holding.objects.create(account=acc1, security=sec, shares=10, current_price=100)
-    Holding.objects.create(account=acc2, security=sec, shares=20, current_price=100)
+    Holding.objects.create(account=acc1, security=sec, shares=10)
+    Holding.objects.create(account=acc2, security=sec, shares=20)
+
+    # Create price
+    now = timezone.now()
+    SecurityPrice.objects.create(
+        security=sec, price=Decimal("100"), price_datetime=now, source="manual"
+    )
 
     df = type_obj.to_dataframe()
     assert len(df) == 2
@@ -146,8 +153,14 @@ class TestAccount:
             account=account,
             security=security,
             shares=Decimal("10"),
-            current_price=Decimal("100"),
         )
+
+        # Create price
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=security, price=Decimal("100"), price_datetime=now, source="manual"
+        )
+
         # 10 * 100 = 1000
         assert account.total_value() == Decimal("1000")
 
@@ -175,13 +188,20 @@ class TestAccount:
             account=account,
             security=vti,
             shares=Decimal("2"),
-            current_price=Decimal("100"),
         )
         Holding.objects.create(
             account=account,
             security=bnd,
             shares=Decimal("4"),
-            current_price=Decimal("50"),
+        )
+
+        # Create prices
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=vti, price=Decimal("100"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=bnd, price=Decimal("50"), price_datetime=now, source="manual"
         )
 
         by_ac = account.holdings_by_asset_class()
@@ -213,13 +233,20 @@ class TestAccount:
             account=account,
             security=vti,
             shares=Decimal("6"),
-            current_price=Decimal("100"),
         )
         Holding.objects.create(
             account=account,
             security=bnd,
             shares=Decimal("4"),
-            current_price=Decimal("100"),
+        )
+
+        # Create prices
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=vti, price=Decimal("100"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=bnd, price=Decimal("100"), price_datetime=now, source="manual"
         )
 
         # Target: 50/50 -> 500 each
@@ -242,8 +269,12 @@ class TestAccount:
             account_type=system.type_roth,
             institution=system.institution,
         )
-        Holding.objects.create(
-            account=account, security=sec, shares=Decimal("10"), current_price=Decimal("100")
+        Holding.objects.create(account=account, security=sec, shares=Decimal("10"))
+
+        # Create price
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=sec, price=Decimal("100"), price_datetime=now, source="manual"
         )
 
         df = account.to_dataframe()

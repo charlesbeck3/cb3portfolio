@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from portfolio.models import (
     Account,
@@ -12,6 +13,7 @@ from portfolio.models import (
     AssetClassCategory,
     Holding,
     Security,
+    SecurityPrice,
     TargetAllocation,
 )
 from portfolio.tests.base import PortfolioTestMixin
@@ -65,14 +67,17 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         )
 
         # Setup Holdings
-        Holding.objects.create(
-            account=self.acc_roth, security=self.sec_vti, shares=60, current_price=100
+        Holding.objects.create(account=self.acc_roth, security=self.sec_vti, shares=60)
+        Holding.objects.create(account=self.acc_tax, security=self.sec_vti, shares=20)
+        Holding.objects.create(account=self.acc_tax, security=self.cash, shares=2000)
+
+        # Create prices
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=self.sec_vti, price=Decimal("100"), price_datetime=now, source="manual"
         )
-        Holding.objects.create(
-            account=self.acc_tax, security=self.sec_vti, shares=20, current_price=100
-        )
-        Holding.objects.create(
-            account=self.acc_tax, security=self.cash, shares=2000, current_price=1
+        SecurityPrice.objects.create(
+            security=self.cash, price=Decimal("1"), price_datetime=now, source="manual"
         )
 
         # Setup Strategies
@@ -238,9 +243,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
         )
 
         # Add Value to account (via holding)
-        Holding.objects.create(
-            account=acc_cash, security=self.cash, shares=Decimal("150000"), current_price=1
-        )
+        Holding.objects.create(account=acc_cash, security=self.cash, shares=Decimal("150000"))
 
         # Mock prices (needed for view/service)
         with MockMarketPrices({"VTI": Decimal("100.00"), "CASH": Decimal("1.00")}):
@@ -326,9 +329,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
 
         # Add Cash Holding to give account value
         # 150k value
-        Holding.objects.create(
-            account=acc_fi, security=self.cash, shares=Decimal("150000"), current_price=1
-        )
+        Holding.objects.create(account=acc_fi, security=self.cash, shares=Decimal("150000"))
 
         # Create Strategy: 50% TIPS, 50% Cash
         strategy_fi = AllocationStrategy.objects.create(user=self.user, name="Half TIPS")
@@ -460,20 +461,29 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             account=self.acc_tax,
             security=sec_us,
             shares=Decimal("10"),
-            current_price=Decimal("150.00"),
         )  # $1500
         Holding.objects.create(
             account=self.acc_tax,
             security=sec_us_2,
             shares=Decimal("10"),
-            current_price=Decimal("100.00"),
         )  # $1000
         Holding.objects.create(
             account=self.acc_tax,
             security=sec_intl,
             shares=Decimal("10"),
-            current_price=Decimal("100.00"),
         )  # $1000
+
+        # Create prices for the new securities
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=sec_us, price=Decimal("150.00"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=sec_us_2, price=Decimal("100.00"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=sec_intl, price=Decimal("100.00"), price_datetime=now, source="manual"
+        )
 
         # Assign Strategy to Account
         strategy_growth = AllocationStrategy.objects.create(user=self.user, name="Global Growth")

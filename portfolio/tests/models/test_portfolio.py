@@ -2,6 +2,7 @@ from decimal import Decimal
 from typing import Any
 
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 import pytest
 
@@ -12,6 +13,7 @@ from portfolio.models import (
     Holding,
     Portfolio,
     Security,
+    SecurityPrice,
     TargetAllocation,
 )
 
@@ -55,13 +57,20 @@ class TestPortfolio:
             account=account,
             security=vti,
             shares=Decimal("50"),
-            current_price=Decimal("100.00"),
         )
         Holding.objects.create(
             account=account,
             security=bnd,
             shares=Decimal("100"),
-            current_price=Decimal("50.00"),
+        )
+
+        # Create prices
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=vti, price=Decimal("100.00"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=bnd, price=Decimal("50.00"), price_datetime=now, source="manual"
         )
 
         df = portfolio.to_dataframe()

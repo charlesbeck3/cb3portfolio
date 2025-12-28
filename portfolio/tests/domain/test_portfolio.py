@@ -2,11 +2,12 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 import pytest
 
 from portfolio.domain.portfolio import Portfolio
-from portfolio.models import Account, AssetClass, Holding
+from portfolio.models import Account, AssetClass, Holding, SecurityPrice
 from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
@@ -51,14 +52,21 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
             account=self.acc_roth,
             security=self.vti,
             shares=Decimal("6"),
-            current_price=Decimal("100"),
         )
         # Taxable: 4 shares @ 100 = 400 Bonds
         Holding.objects.create(
             account=self.acc_taxable,
             security=self.bnd,
             shares=Decimal("4"),
-            current_price=Decimal("100"),
+        )
+
+        # Create prices
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=self.vti, price=Decimal("100"), price_datetime=now, source="manual"
+        )
+        SecurityPrice.objects.create(
+            security=self.bnd, price=Decimal("100"), price_datetime=now, source="manual"
         )
 
     def test_len_and_iter(self) -> None:

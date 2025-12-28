@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 
 from portfolio.models import (
     Account,
@@ -11,6 +12,7 @@ from portfolio.models import (
     AssetClassCategory,
     Institution,
     Portfolio,
+    SecurityPrice,
 )
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
 from portfolio.services.allocation_presentation import AllocationPresentationFormatter
@@ -53,7 +55,12 @@ class TestAllocationVectorized(TestCase):
             account=self.account,
             security=ticker,
             shares=Decimal("10"),
-            current_price=Decimal("100.00"),
+        )
+
+        # Create price
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=ticker, price=Decimal("100.00"), price_datetime=now, source="manual"
         )
 
         df = self.engine.build_presentation_dataframe(self.user)
@@ -77,7 +84,12 @@ class TestAllocationVectorized(TestCase):
             account=self.account,
             security=ticker,
             shares=Decimal("10"),
-            current_price=Decimal("100.00"),
+        )
+
+        # Create price
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=ticker, price=Decimal("100.00"), price_datetime=now, source="manual"
         )
 
         df = self.engine.build_presentation_dataframe(self.user)
@@ -97,7 +109,12 @@ class TestAllocationVectorized(TestCase):
             account=self.account,
             security=ticker,
             shares=Decimal("10"),
-            current_price=Decimal("100.00"),
+        )
+
+        # Create price
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=ticker, price=Decimal("100.00"), price_datetime=now, source="manual"
         )
 
         df = self.engine.build_presentation_dataframe(self.user)

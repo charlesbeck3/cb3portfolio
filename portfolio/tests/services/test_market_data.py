@@ -9,41 +9,49 @@ from portfolio.services.market_data import MarketDataService
 class MarketDataServiceTests(TestCase):
     @patch("portfolio.services.market_data.yf.download")
     def test_get_prices(self, mock_download: MagicMock) -> None:
-        # Mock yfinance response
-        mock_data = MagicMock()
-        # Mocking .iloc[-1] to return a dict-like object or series for multiple tickers
-        # When multiple tickers are downloaded, yfinance returns a DataFrame.
-        # .iloc[-1] on that DataFrame returns a Series indexed by ticker.
-        mock_data.iloc.__getitem__.side_effect = lambda key: {"VTI": 210.00, "BND": 85.00}[key]
+        # Mock yfinance response - create real pandas objects
+        from datetime import datetime
 
-        # We need to structure the mock so that 'Close' returns an object that .iloc[-1] works on.
-        # And that result behaves like a dict or Series.
-        mock_close = MagicMock()
-        mock_close.iloc.__getitem__.return_value = {"VTI": 210.00, "BND": 85.00}
+        import pandas as pd
 
-        # Simulating that accessing ['VTI'] on the result of .iloc[-1] returns the float
-        # But wait, our code does: price = latest_prices[ticker]
-        # So latest_prices needs to be subscriptable.
-        mock_latest_prices = MagicMock()
-        mock_latest_prices.__getitem__.side_effect = lambda k: {"VTI": 210.00, "BND": 85.00}[k]
+        # Create a real pandas Series with the prices (multi-ticker case)
+        # yf.download returns a DataFrame, and data["Close"] gives us the Close column
+        # For multiple tickers, data["Close"].iloc[-1] gives us a Series with ticker symbols as index
+        mock_close_series = pd.Series(
+            data=[210.00, 85.00], index=pd.Index(["VTI", "BND"], name="Ticker")
+        )
+        # The series name is the timestamp
+        mock_close_series.name = datetime(2024, 1, 1, 16, 0, 0)
 
+        # Create a mock DataFrame that behaves like yfinance output
         mock_df = MagicMock()
-        mock_df.iloc.__getitem__.return_value = mock_latest_prices
+        # When code does data["Close"]
+        mock_close_col = MagicMock()
+        mock_close_col.iloc.__getitem__.return_value = mock_close_series
+        mock_close_col.index = pd.DatetimeIndex([datetime(2024, 1, 1, 16, 0, 0)])
+        mock_close_col.empty = False
 
-        mock_download.return_value = {"Close": mock_df}
+        mock_df.__getitem__.return_value = mock_close_col
+        mock_download.return_value = mock_df
 
         tickers = ["VTI", "BND", "CASH"]
         prices = MarketDataService.get_prices(tickers)
 
-        # distinct tickers to yfinance should be VTI, BND. CASH is handled separately.
+        # Verify yfinance was called correctly
+        self.assertTrue(mock_download.called)
         filtered_tickers_arg = mock_download.call_args[0][0]
         self.assertIn("VTI", filtered_tickers_arg)
         self.assertIn("BND", filtered_tickers_arg)
         self.assertNotIn("CASH", filtered_tickers_arg)
 
-        self.assertEqual(prices["VTI"], Decimal("210.0"))
-        self.assertEqual(prices["BND"], Decimal("85.0"))
-        self.assertEqual(prices["CASH"], Decimal("1.00"))
+        # get_prices now returns (price, datetime) tuples
+        self.assertEqual(prices["VTI"][0], Decimal("210.0"))  # price
+        self.assertEqual(prices["BND"][0], Decimal("85.0"))  # price
+        self.assertEqual(prices["CASH"][0], Decimal("1.00"))  # price
+        # Check that datetimes are returned
+        self.assertIsNotNone(prices["VTI"][1])
+        self.assertIsNotNone(prices["BND"][1])
+        self.assertIsNotNone(prices["CASH"][1])
 
     def test_get_prices_empty(self) -> None:
         prices = MarketDataService.get_prices([])

@@ -45,8 +45,10 @@ class TestFixtureSystem:
         from portfolio.services import MarketDataService
 
         prices = MarketDataService.get_prices(["VTI", "BND"])
-        assert prices["VTI"] == Decimal("100.00")
-        assert prices["BND"] == Decimal("80.00")
+        # Prices are now tuples of (price, datetime)
+        assert prices["VTI"][0] == Decimal("100.00")
+        assert prices["BND"][0] == Decimal("80.00")
+        assert prices["VTI"][1] is not None  # datetime should be present
 
     def test_mock_market_prices_factory(self, mock_market_prices: Any) -> None:
         """Verify mock_market_prices factory works."""
@@ -57,5 +59,8 @@ class TestFixtureSystem:
 
         result = MarketDataService.get_prices(["TEST"])
 
-        assert result == custom_prices
+        # Result should be tuples, but we can check the price part
+        assert "TEST" in result
+        assert result["TEST"][0] == Decimal("999.99")
+        assert result["TEST"][1] is not None  # datetime should be present
         mock.assert_called_once()

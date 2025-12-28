@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 import pytest
 
@@ -15,6 +16,7 @@ from portfolio.models import (
     Holding,
     Portfolio,
     Security,
+    SecurityPrice,
     TargetAllocation,
 )
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
@@ -66,7 +68,12 @@ class TestZeroBalanceHandling:
             account=account,
             security=security,
             shares=Decimal("0"),
-            current_price=Decimal("100.00"),
+        )
+
+        # Create price
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=security, price=Decimal("100.00"), price_datetime=now, source="manual"
         )
 
         engine = AllocationCalculationEngine()
@@ -113,8 +120,7 @@ class TestInvalidPriceData:
     """Tests for handling invalid or missing price data."""
 
     def test_negative_price_validation(self, test_user: Any, base_system_data: Any) -> None:
-        """Test that negative prices are rejected."""
-        # Assuming we might add validation to Holding or a SecurityPrice model
+        """Test that negative prices are rejected in SecurityPrice."""
         system = base_system_data
         account = Account.objects.create(
             name="Test Account",
@@ -124,17 +130,23 @@ class TestInvalidPriceData:
             institution=system.institution,
         )
 
-        holding = Holding(
+        # Create holding (no price validation here anymore)
+        Holding.objects.create(
             account=account,
             security=system.vti,
             shares=Decimal("10"),
-            current_price=Decimal("-50.00"),
+        )
+
+        # Test negative price in SecurityPrice
+        now = timezone.now()
+        price = SecurityPrice(
+            security=system.vti, price=Decimal("-50.00"), price_datetime=now, source="manual"
         )
 
         with pytest.raises(ValidationError) as exc_info:
-            holding.full_clean()
+            price.full_clean()
 
-        assert "current_price" in exc_info.value.message_dict
+        assert "price" in exc_info.value.message_dict
 
 
 @pytest.mark.models
@@ -158,7 +170,6 @@ class TestNegativeShares:
                 account=account,
                 security=system.vti,
                 shares=Decimal("-100"),
-                current_price=Decimal("100"),
             )
             holding.full_clean()
 

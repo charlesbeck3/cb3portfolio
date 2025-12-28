@@ -50,17 +50,28 @@ class PricingServiceTests(TestCase, PortfolioTestMixin):
             account=self.account,
             security=self.security,
             shares=Decimal("10.0"),
-            current_price=None,
         )
 
+        from datetime import datetime
+
+        from django.utils import timezone as tz
+
         mock_market_data = MagicMock()
-        mock_market_data.get_prices.return_value = {"VTI": Decimal("210.00")}
+        # MarketDataService now returns (price, datetime) tuples
+        mock_dt = tz.make_aware(datetime(2024, 1, 1, 12, 0, 0))
+        mock_market_data.get_prices.return_value = {"VTI": (Decimal("210.00"), mock_dt)}
 
         service = PricingService(market_data=mock_market_data)
 
         result = service.update_holdings_prices(self.user)
-        holding.refresh_from_db()
 
+        # Check that SecurityPrice was created
+        from portfolio.models import SecurityPrice
+
+        price_obj = SecurityPrice.objects.filter(security=self.security).latest("price_datetime")
+
+        # PricingService.update_holdings_prices returns dict[str, Decimal] for backward compatibility
         self.assertEqual(result, {"VTI": Decimal("210.00")})
-        self.assertEqual(holding.current_price, Decimal("210.00"))
+        self.assertEqual(price_obj.price, Decimal("210.00"))
+        self.assertEqual(holding.latest_price, Decimal("210.00"))
         mock_market_data.get_prices.assert_called_once()

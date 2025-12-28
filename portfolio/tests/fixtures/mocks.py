@@ -41,9 +41,16 @@ def mock_market_prices(request: Any) -> Callable[[dict[str, Decimal]], MagicMock
     """
 
     def _mock_prices(prices: dict[str, Decimal]) -> MagicMock:
+        from django.utils import timezone
+
         patcher = patch("portfolio.services.MarketDataService.get_prices")
         mock = patcher.start()
-        mock.return_value = prices
+
+        # Convert prices to (price, datetime) tuples as MarketDataService now returns
+        now = timezone.now()
+        price_tuples = {ticker: (price, now) for ticker, price in prices.items()}
+        mock.return_value = price_tuples
+
         request.addfinalizer(patcher.stop)
         return mock
 
@@ -71,13 +78,16 @@ def stable_test_prices() -> Generator[MagicMock]:
             response = client.get('/dashboard/')
             # ... assertions ...
     """
+    from django.utils import timezone
+
     with patch("portfolio.services.MarketDataService.get_prices") as mock:
+        now = timezone.now()
         mock.return_value = {
-            "VTI": Decimal("100.00"),
-            "VXUS": Decimal("50.00"),
-            "BND": Decimal("80.00"),
-            "VGSH": Decimal("60.00"),
-            "CASH": Decimal("1.00"),
+            "VTI": (Decimal("100.00"), now),
+            "VXUS": (Decimal("50.00"), now),
+            "BND": (Decimal("80.00"), now),
+            "VGSH": (Decimal("60.00"), now),
+            "CASH": (Decimal("1.00"), now),
         }
         yield mock
 
@@ -109,12 +119,15 @@ def volatile_prices() -> Generator[MagicMock]:
     - Very low prices
     - Many decimal places
     """
+    from django.utils import timezone
+
     with patch("portfolio.services.MarketDataService.get_prices") as mock:
+        now = timezone.now()
         mock.return_value = {
-            "VTI": Decimal("9999.9999"),
-            "VXUS": Decimal("0.0001"),
-            "BND": Decimal("123.456789"),
-            "CASH": Decimal("1.00"),
+            "VTI": (Decimal("9999.9999"), now),
+            "VXUS": (Decimal("0.0001"), now),
+            "BND": (Decimal("123.456789"), now),
+            "CASH": (Decimal("1.00"), now),
         }
         yield mock
 
@@ -144,9 +157,15 @@ class MockMarketPrices:
         self.mock: Any = None
 
     def __enter__(self) -> MagicMock:
+        from django.utils import timezone
+
         self.patcher = patch("portfolio.services.MarketDataService.get_prices")
         self.mock = self.patcher.start()
-        self.mock.return_value = self.prices
+
+        # Convert prices to (price, datetime) tuples
+        now = timezone.now()
+        price_tuples = {ticker: (price, now) for ticker, price in self.prices.items()}
+        self.mock.return_value = price_tuples
         return self.mock
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:

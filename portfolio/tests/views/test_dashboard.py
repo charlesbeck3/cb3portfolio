@@ -3,6 +3,7 @@ from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.utils import timezone
 
 import pytest
 
@@ -11,6 +12,7 @@ from portfolio.models import (
     AccountTypeStrategyAssignment,
     AllocationStrategy,
     Holding,
+    SecurityPrice,
     TargetAllocation,
 )
 
@@ -41,7 +43,13 @@ def test_account_types_context_filtering(client: Any, test_portfolio: dict[str, 
     url = reverse("portfolio:dashboard")
 
     # Add a holding so rows are generated
-    Holding.objects.create(account=acc_roth, security=system.cash, shares=100, current_price=1)
+    Holding.objects.create(account=acc_roth, security=system.cash, shares=100)
+
+    # Create price
+    now = timezone.now()
+    SecurityPrice.objects.create(
+        security=system.cash, price=Decimal("1"), price_datetime=now, source="manual"
+    )
 
     response = client.get(url)
     assert response.status_code == 200
@@ -87,12 +95,24 @@ def test_redundant_totals(client: Any, test_portfolio: dict[str, Any]) -> None:
         account_type=system.type_taxable,
         institution=system.institution,
     )
-    Holding.objects.create(account=acc_dep, security=system.cash, shares=100, current_price=1)
+    Holding.objects.create(account=acc_dep, security=system.cash, shares=100)
 
     # 2. Multi-Asset Group
     # Use seeded objects for group comparison
-    Holding.objects.create(account=acc_dep, security=system.vti, shares=10, current_price=100)
-    Holding.objects.create(account=acc_dep, security=system.vxus, shares=10, current_price=50)
+    Holding.objects.create(account=acc_dep, security=system.vti, shares=10)
+    Holding.objects.create(account=acc_dep, security=system.vxus, shares=10)
+
+    # Create prices
+    now = timezone.now()
+    SecurityPrice.objects.create(
+        security=system.cash, price=Decimal("1"), price_datetime=now, source="manual"
+    )
+    SecurityPrice.objects.create(
+        security=system.vti, price=Decimal("100"), price_datetime=now, source="manual"
+    )
+    SecurityPrice.objects.create(
+        security=system.vxus, price=Decimal("50"), price_datetime=now, source="manual"
+    )
 
     # --- Execute ---
     response = client.get(reverse("portfolio:dashboard"))
@@ -123,9 +143,7 @@ def test_redundant_totals(client: Any, test_portfolio: dict[str, Any]) -> None:
 
 @pytest.mark.views
 @pytest.mark.integration
-def test_dashboard_calculated_values(
-    client: Any, test_portfolio: dict[str, Any], mock_market_prices: Any
-) -> None:
+def test_dashboard_calculated_values(client: Any, test_portfolio: dict[str, Any]) -> None:
     """
     Verify that dashboard tables contain calculated values.
     """
@@ -146,7 +164,7 @@ def test_dashboard_calculated_values(
         institution=system.institution,
     )
 
-    Holding.objects.create(account=acc_tax, security=sec_us, shares=10, current_price=100)
+    Holding.objects.create(account=acc_tax, security=sec_us, shares=10)
 
     strategy, _ = AllocationStrategy.objects.update_or_create(
         user=user,
@@ -166,13 +184,19 @@ def test_dashboard_calculated_values(
     ac_intl = system.asset_class_intl_developed
     sec_intl = system.vxus
 
-    Holding.objects.create(account=acc_tax, security=sec_intl, shares=10, current_price=50)
+    Holding.objects.create(account=acc_tax, security=sec_intl, shares=10)
     TargetAllocation.objects.create(
         strategy=strategy, asset_class=ac_intl, target_percent=Decimal("40.00")
     )
 
-    # Use mock_market_prices fixture as function
-    mock_market_prices({"VTI": Decimal("100.00"), "VXUS": Decimal("50.00")})
+    # Create SecurityPrice objects instead of mocking
+    now = timezone.now()
+    SecurityPrice.objects.create(
+        security=sec_us, price=Decimal("100.00"), price_datetime=now, source="manual"
+    )
+    SecurityPrice.objects.create(
+        security=sec_intl, price=Decimal("50.00"), price_datetime=now, source="manual"
+    )
 
     response = client.get(reverse("portfolio:dashboard"))
 

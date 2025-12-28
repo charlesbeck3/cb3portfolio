@@ -3,11 +3,12 @@ from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 import pytest
 from playwright.sync_api import Page
 
-from portfolio.models import Account, Holding
+from portfolio.models import Account, Holding, SecurityPrice
 from portfolio.tests.constants import TEST_PASSWORD, TEST_USERNAME
 
 
@@ -70,7 +71,12 @@ def standard_test_portfolio(db: Any) -> dict[str, Any]:
         account=account,
         security=mixin.vti,
         shares=Decimal("10"),
-        current_price=Decimal("100"),
+    )
+
+    # Create price
+    now = timezone.now()
+    SecurityPrice.objects.create(
+        security=mixin.vti, price=Decimal("100"), price_datetime=now, source="manual"
     )
 
     return {
