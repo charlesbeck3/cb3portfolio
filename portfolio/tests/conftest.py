@@ -38,6 +38,7 @@ from portfolio.tests.fixtures.benchmarks import (
     large_portfolio_benchmark,
     medium_portfolio_benchmark,
 )
+from portfolio.tests.fixtures.golden_reference import golden_reference_portfolio
 
 # Import mock fixtures to make them available globally
 from portfolio.tests.fixtures.mocks import (
@@ -64,6 +65,8 @@ __all__ = [
     "simple_holdings",
     "multi_account_holdings",
     "standard_test_portfolio",
+    # Golden reference
+    "golden_reference_portfolio",
     # Mock fixtures
     "mock_market_prices",
     "stable_test_prices",

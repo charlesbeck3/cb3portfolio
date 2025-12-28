@@ -202,13 +202,16 @@ portfolio_management/
 │   │   ├── dashboard.html
 │   │   ├── optimization.html
 │   │   └── rebalancing.html
-│   └── tests/                 # Test suite
-│       ├── __init__.py
-│       ├── models/            # Model tests
-│       ├── views/             # View tests
-│       ├── services/          # Service tests
+│   └── tests/                 # Test suite (1:1 mapping with code)
+│       ├── fixtures/          # Shared pytest fixtures
+│       ├── models/            # Django model tests
+│       ├── domain/            # Domain logic tests
+│       ├── services/          # Service layer tests
+│       ├── views/             # View and template tests
+│       ├── forms/             # Form validation tests
+│       ├── templatetags/      # Custom template logic tests
 │       ├── calculations/      # Financial math tests
-│       └── e2e/               # Browser tests
+│       └── e2e/               # Browser automation tests
 ├── static/                    # Static files
 │   └── css/                   # Stylesheets
 │       └── portfolio.css      # Main application styles
@@ -300,15 +303,17 @@ trades = calculate_rebalancing(account, threshold)
 ### Running Tests
 
 ```bash
-# Run all tests
-uv run python manage.py test
+# Run all tests (pytest)
+uv run pytest
 
-# Run specific test file
-uv run python manage.py test portfolio.tests.test_optimization
+# Run by marker
+uv run pytest -m unit
 
-# Run with coverage
-uv run coverage run --source='.' manage.py test
-uv run coverage report
+# Run specific folder
+uv run pytest portfolio/tests/views/
+
+# With coverage
+uv run pytest --cov=portfolio --cov-report=html
 ```
 
 ### Code Quality
@@ -967,34 +972,19 @@ Tests are organized by type and complexity:
 
 #### Writing New Tests
 
-**Pytest Style (Preferred):**
+**Pytest-Native (Standard):**
+Create a test file mirroring the production location (e.g., `portfolio/models/foo.py` -> `portfolio/tests/models/test_foo.py`).
+
 ```python
 import pytest
 from decimal import Decimal
 
 @pytest.mark.django_db
-@pytest.mark.views
-def test_dashboard(client, simple_holdings, stable_test_prices):
-    client.force_login(simple_holdings['user'])
-    response = client.get('/dashboard/')
-    assert response.status_code == 200
-```
-
-**Django TestCase Style:**
-```python
-from django.test import TestCase
-from portfolio.tests.base import PortfolioTestMixin
-from portfolio.tests.fixtures.mocks import MockMarketPrices, get_standard_prices
-
-class MyTest(TestCase, PortfolioTestMixin):
-    def setUp(self):
-        self.setup_system_data()
-        self.user = User.objects.create_user(username="testuser")
-        self.create_portfolio(user=self.user)
-
-    def test_something(self):
-        with MockMarketPrices(get_standard_prices()):
-            # test code
+@pytest.mark.models
+def test_allocation_strategy_validation(test_user, base_system_data):
+    # Setup using centralized fixtures from conftest.py
+    strategy = AllocationStrategy.objects.create(user=test_user, name="60/40")
+    # ... test code ...
 ```
 
 ### Running Tests

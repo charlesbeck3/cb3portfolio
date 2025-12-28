@@ -285,6 +285,65 @@ pytest --cov --cov-fail-under=90
 
 ## Test Organization
 
+### File Naming Convention
+
+**Test files MUST mirror production code structure and naming.**
+
+```
+Production Structure              Test Structure
+─────────────────────             ─────────────────────
+cb3portfolio/
+├── models/
+│   ├── __init__.py              tests/
+│   ├── portfolio.py             ├── models/
+│   ├── account.py               │   ├── __init__.py
+│   └── allocation.py            │   ├── test_portfolio.py
+├── engines/                     │   ├── test_account.py
+│   ├── __init__.py              │   └── test_allocation.py
+│   ├── allocation.py            ├── engines/
+│   └── rebalance.py             │   ├── __init__.py
+├── formatters/                  │   ├── test_allocation.py
+│   ├── __init__.py              │   └── test_rebalance.py
+│   ├── currency.py              ├── formatters/
+│   └── percentage.py            │   ├── __init__.py
+├── services/                    │   ├── test_currency.py
+│   ├── __init__.py              │   └── test_percentage.py
+│   └── portfolio_service.py     └── services/
+└── views/                           ├── __init__.py
+    ├── __init__.py                  ├── test_portfolio_service.py
+    ├── portfolio_views.py           └── views/
+    └── dashboard_views.py               ├── __init__.py
+                                         ├── test_portfolio_views.py
+                                         └── test_dashboard_views.py
+```
+
+### Naming Rules
+
+1. **Module tests:** `test_{module_name}.py`
+   - `models/portfolio.py` → `tests/models/test_portfolio.py`
+   - `engines/allocation.py` → `tests/engines/test_allocation.py`
+
+2. **Directory structure:** Mirror production directories exactly
+   - If production has `cb3portfolio/engines/`, tests have `tests/engines/`
+   - Maintain same nesting levels
+
+3. **Test function names:** `test_{function_or_method}_{scenario}`
+   ```python
+   # For portfolio.py::Portfolio.calculate_total_value()
+   def test_calculate_total_value_with_multiple_accounts():
+       pass
+
+   def test_calculate_total_value_empty_portfolio():
+       pass
+   ```
+
+### Benefits of Mirroring Structure
+
+- **Easy navigation:** Find tests for any production file instantly
+- **Clear ownership:** Each test file maps to exactly one production file
+- **Refactoring safety:** Moving/renaming production code makes test updates obvious
+- **IDE support:** Most IDEs can jump between test and production files
+
 ### Test File Structure
 
 ```
@@ -295,12 +354,29 @@ tests/
 │   └── golden/              # Golden reference data
 │       ├── allocation_drift.json
 │       └── rebalance_trades.json
-├── test_models.py           # Domain model tests
-├── test_engines.py          # Calculation engine tests
-├── test_formatters.py       # Formatter tests
-├── test_services.py         # Service layer tests
-├── test_views.py            # View tests
-└── e2e/                     # End-to-end tests
+├── models/                  # Mirrors cb3portfolio/models/
+│   ├── __init__.py
+│   ├── test_portfolio.py
+│   ├── test_account.py
+│   ├── test_holding.py
+│   ├── test_asset_class.py
+│   └── test_allocation.py
+├── engines/                 # Mirrors cb3portfolio/engines/
+│   ├── __init__.py
+│   ├── test_allocation.py
+│   └── test_rebalance.py
+├── formatters/              # Mirrors cb3portfolio/formatters/
+│   ├── __init__.py
+│   ├── test_currency.py
+│   └── test_percentage.py
+├── services/                # Mirrors cb3portfolio/services/
+│   ├── __init__.py
+│   └── test_portfolio_service.py
+├── views/                   # Mirrors cb3portfolio/views/
+│   ├── __init__.py
+│   ├── test_portfolio_views.py
+│   └── test_dashboard_views.py
+└── e2e/                     # End-to-end tests (special case)
     ├── conftest.py
     └── test_portfolio_workflow.py
 ```
@@ -347,151 +423,4 @@ def portfolio_with_allocations(portfolio_with_accounts):
     return portfolio_with_accounts
 ```
 
-## Testing Best Practices
-
-### DO's
-
-- ✅ Write descriptive test names that explain what's being tested
-- ✅ Use fixtures for test data setup (DRY principle)
-- ✅ Test one thing per test
-- ✅ Use Arrange-Act-Assert pattern
-- ✅ Test edge cases and error conditions
-- ✅ Make tests independent (no order dependencies)
-- ✅ Use `@pytest.mark` to categorize tests
-
-### DON'Ts
-
-- ❌ Don't test Django framework code (it's already tested)
-- ❌ Don't create overly complex fixtures
-- ❌ Don't use sleep() - use proper waits
-- ❌ Don't skip golden reference tests for calculations
-- ❌ Don't commit failing tests
-- ❌ Don't test implementation details (test behavior)
-
-## Test Markers
-
-```python
-import pytest
-
-# Mark slow tests
-@pytest.mark.slow
-def test_complex_calculation():
-    pass
-
-# Mark tests requiring external services
-@pytest.mark.integration
-def test_external_api():
-    pass
-
-# Mark E2E tests
-@pytest.mark.e2e
-def test_browser_workflow():
-    pass
-
-# Skip tests conditionally
-@pytest.mark.skipif(sys.platform == 'win32', reason="Unix only")
-def test_unix_specific():
-    pass
-```
-
-Run specific markers:
-```bash
-pytest -m "not slow"      # Skip slow tests
-pytest -m integration     # Only integration tests
-pytest -m e2e             # Only E2E tests
-```
-
-## Pre-Commit Testing
-
-Before committing, ALWAYS run:
-
-```bash
-# 1. Format code
-ruff format .
-
-# 2. Check linting
-ruff check .
-
-# 3. Type check
-mypy .
-
-# 4. Run tests
-pytest
-
-# 5. Check coverage
-pytest --cov --cov-fail-under=90
-```
-
-All must pass before committing.
-
-## Continuous Integration
-
-In CI/CD pipeline, run:
-
-```bash
-# Install dependencies
-uv sync
-
-# Run all quality checks
-ruff format . --check
-ruff check .
-mypy .
-
-# Run all tests with coverage
-pytest --cov --cov-fail-under=90
-
-# Run E2E tests
-pytest tests/e2e/ --headed false
-```
-
-## Debugging Failed Tests
-
-```bash
-# Run with debugger on failure
-pytest --pdb
-
-# Run last failed tests
-pytest --lf
-
-# Run failed tests first, then others
-pytest --ff
-
-# Show local variables on failure
-pytest -l
-
-# Very verbose output
-pytest -vv
-```
-
-## Golden Reference Test Creation
-
-### Creating New Golden Reference
-
-1. **Create real scenario:**
-```python
-def create_real_scenario():
-    # Use actual portfolio data
-    portfolio = create_portfolio_from_real_data()
-    return portfolio
-```
-
-2. **Calculate expected results:**
-```python
-# Calculate using engine
-result = engine.calculate(portfolio)
-
-# Save as golden reference
-result.to_json('tests/fixtures/golden/new_calculation.json')
-```
-
-3. **Verify independently:**
-- Use spreadsheet to verify calculations
-- Compare with manual calculations
-- Document assumptions
-
-4. **Create test:**
-```python
-def test_new_calculation_golden(db):
-    portfolio = create_real_scenario()
-    result = engine.calculate(portfolio)
-    expe
+## Test

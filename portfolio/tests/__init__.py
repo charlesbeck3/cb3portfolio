@@ -1,53 +1,66 @@
 """
 Portfolio Test Suite Organization
 
+Mirroring production structure with 1:1 mapping between code and tests.
+
 ## Test Categories
 
-### Unit Tests (No Database)
-- services/test_allocations.py: Pure pandas calculation logic
-  * TestPureCalculations: Zero Django dependencies
-  * Uses SimpleTestCase for speed
+### Models (portfolio/models/ -> portfolio/tests/models/)
+- test_accounts.py: Account model and queries
+- test_assets.py: Asset class and category models
+- test_portfolio.py: Portfolio model and DataFrame conversion
+- test_securities.py: Security, Holding, and Price models
+- test_strategies.py: AllocationStrategy and TargetAllocation models
 
-### Integration Tests (Database Required)
-- models/: Model validation and database operations
-- views/: View logic with database fixtures
-- services/: Service layer tests (business logic)
-- integration/: Cross-component integration tests
-- calculations/: Specialized financial calculation tests
+### Domain (portfolio/domain/ -> portfolio/tests/domain/)
+- test_portfolio.py: Domain aggregate root logic
+- test_allocation.py: AssetAllocation value object
+- test_analysis.py: Portfolio analysis calculations
 
-### End-to-End Tests (Browser + Database)
-- e2e/test_smoke_pages.py: Basic page loading
-- e2e/test_dashboard_page.py: Dashboard interactions
-- e2e/test_target_allocations_page.py: Allocation feature flows
-- e2e/test_portfolio_explicit_target.py: Complex scenarios
+### Services (portfolio/services/ -> portfolio/tests/services/)
+- test_allocation_calculations.py: Core engine logic (pandas)
+- test_allocation_presentation.py: Presentation formatting
+- test_pricing.py: Security price resolution
+- test_market_data.py: External data integration
 
-### Golden Reference Tests
-- calculations/test_golden_reference.py: Real-world portfolio scenarios
-  * Hand-calculated expected values from Excel
-  * Comprehensive coverage of calculation accuracy
+### Views (portfolio/views/ -> portfolio/tests/views/)
+- test_targets.py: Target allocation view and logic
+- test_strategies.py: Allocation strategy management
+- test_dashboard.py: Main dashboard view
+- test_mixins.py: Shared view functionality
+
+### Forms (portfolio/forms/ -> portfolio/tests/forms/)
+- test_allocations.py: Allocation management forms
+- test_strategies.py: Strategy creation forms
+
+### Template Tags (portfolio/templatetags/ -> portfolio/tests/templatetags/)
+- test_portfolio_tags.py: Formatting filters (currency, etc)
+- test_allocation_tags.py: Allocation-specific display logic
+- test_portfolio_filters.py: Accounting-style filters
+
+### End-to-End Tests (portfolio/tests/e2e/)
+- test_smoke_pages.py: Basic page loading
+- test_target_allocations_page.py: Allocation feature flows
+- test_portfolio_explicit_target.py: Complex scenarios
 
 ## Fixtures & Helpers
 
-### Base Classes
-- base.PortfolioTestMixin: Shared setup for portfolio data
-  * setup_portfolio_data(): Seeds system data
-  * create_portfolio(): Creates user portfolio
-
 ### Pytest Fixtures (conftest.py)
-- Root conftest.py: Django async configuration
-- e2e/conftest.py: Browser testing fixtures
+- base_system_data: Fundamental lookup data (AccountTypes, AssetClasses, etc)
+- test_user: Standard test user
+- test_portfolio: Pre-configured portfolio for unit testing
+
+### Golden Reference (fixtures/golden_reference.py)
+- golden_reference_portfolio: Complete real-world scenario for accuracy testing
+- Used in calculations/test_golden_reference.py
 
 ## Running Tests
 
 # All tests
 uv run pytest
 
-# Specific category
-uv run pytest portfolio/tests/e2e/
-uv run pytest portfolio/tests/domain/
-
-# Specific test
-uv run pytest portfolio/tests/models/test_accounts.py::TestAccount::test_to_dataframe
+# Specific directory
+uv run pytest portfolio/tests/views/
 
 # With coverage
 uv run pytest --cov=portfolio --cov-report=html
