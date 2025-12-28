@@ -27,6 +27,8 @@ class PortfolioContextMixin:
 
         REFACTORED: Now uses AllocationCalculationEngine for both drifts and totals,
         eliminating duplicate calculation logic and improving performance.
+
+        Automatically updates prices from market data on each request.
         """
         user = self.request.user
         if not user.is_authenticated:
@@ -34,6 +36,15 @@ class PortfolioContextMixin:
             return {"sidebar_data": {"grand_total": Decimal("0.00"), "groups": {}}}
 
         from portfolio.services.allocation_calculations import AllocationCalculationEngine
+        from portfolio.services.pricing import PricingService
+
+        # Auto-update prices on each page load
+        pricing_service = PricingService()
+        try:
+            pricing_service.update_holdings_prices(user)
+        except Exception as e:
+            # Log error but don't break the page if price fetch fails
+            logger.warning(f"Failed to update prices for {user.username}: {e}")
 
         engine = AllocationCalculationEngine()
 
