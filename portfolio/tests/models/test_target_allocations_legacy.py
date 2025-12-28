@@ -34,7 +34,7 @@ class TargetAllocationViewTests(TestCase, PortfolioTestMixin):
             code="EQUITIES", defaults={"label": "Equities", "sort_order": 1}
         )
         self.ac_us, _ = AssetClass.objects.get_or_create(
-            name="US Stocks", defaults={"category": self.cat_eq}
+            name="US Equities", defaults={"category": self.cat_eq}
         )
         self.sec_vti, _ = Security.objects.get_or_create(
             ticker="VTI", defaults={"name": "VTI", "asset_class": self.ac_us}

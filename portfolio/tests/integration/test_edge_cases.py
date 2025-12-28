@@ -61,7 +61,7 @@ class TestZeroBalanceHandling:
         security = Security.objects.create(
             ticker="VTI_ZERO",
             name="Vanguard Total Stock Market Zero",
-            asset_class=system.cat_us_eq.asset_classes.create(name="US Stocks Zero Shares"),
+            asset_class=system.cat_us_eq.asset_classes.create(name="US Equities Zero Shares"),
         )
         # Create holding with zero shares
         Holding.objects.create(
@@ -95,7 +95,7 @@ class TestAllZeroAllocations:
         portfolio = Portfolio.objects.create(name="Test Portfolio", user=test_user)
         strategy = AllocationStrategy.objects.create(name="Zero Strategy", user=test_user)
 
-        asset_class = system.cat_us_eq.asset_classes.create(name="US Stocks Zero")
+        asset_class = system.cat_us_eq.asset_classes.create(name="US Equities Zero")
 
         TargetAllocation.objects.create(
             strategy=strategy,

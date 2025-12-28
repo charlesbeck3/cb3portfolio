@@ -23,7 +23,9 @@ class PricingServiceTests(TestCase, PortfolioTestMixin):
         self.create_portfolio(user=self.user)
         self.institution = Institution.objects.create(name="Test Institution")
         self.asset_class = AssetClass.objects.create(
-            name="US Stocks", category=self.category_us_equities
+            # Use existing US Equities or create if testing isolation
+            name="US Equities Test",
+            category=self.category_us_equities,
         )
         self.account = Account.objects.create(
             user=self.user,

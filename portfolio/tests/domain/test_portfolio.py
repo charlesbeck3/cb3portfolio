@@ -21,8 +21,8 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
         self.user = User.objects.create_user(username="testuser", password="password")
         self.create_portfolio(user=self.user)
 
-        self.us_stocks = AssetClass.objects.create(
-            name="US Stocks", category=self.category_us_equities
+        self.us_stocks, _ = AssetClass.objects.get_or_create(
+            name="US Equities", defaults={"category": self.category_us_equities}
         )
         self.bonds = AssetClass.objects.create(name="Bonds", category=self.category_fixed_income)
 
@@ -87,13 +87,13 @@ class PortfolioTests(TestCase, PortfolioTestMixin):
     def test_value_by_asset_class(self) -> None:
         portfolio = Portfolio(user_id=self.user.id, accounts=[self.acc_roth, self.acc_taxable])
         by_ac = portfolio.value_by_asset_class()
-        self.assertEqual(by_ac["US Stocks"], Decimal("600"))
+        self.assertEqual(by_ac["US Equities"], Decimal("600"))
         self.assertEqual(by_ac["Bonds"], Decimal("400"))
 
     def test_allocation_by_asset_class(self) -> None:
         portfolio = Portfolio(user_id=self.user.id, accounts=[self.acc_roth, self.acc_taxable])
         alloc = portfolio.allocation_by_asset_class()
-        self.assertEqual(alloc["US Stocks"].quantize(Decimal("0.01")), Decimal("60.00"))
+        self.assertEqual(alloc["US Equities"].quantize(Decimal("0.01")), Decimal("60.00"))
         self.assertEqual(alloc["Bonds"].quantize(Decimal("0.01")), Decimal("40.00"))
 
     def test_account_by_id(self) -> None:

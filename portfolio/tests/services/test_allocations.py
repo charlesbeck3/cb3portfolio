@@ -122,7 +122,7 @@ class TestDataFrameAggregation(SimpleTestCase):
         data = {
             "group_code": ["EQUITY", "EQUITY", "FIXED"],
             "category_code": ["US", "INTL", "BONDS"],
-            "asset_class_name": ["US Stocks", "Intl Stocks", "Bonds"],
+            "asset_class_name": ["US Equities", "Intl Stocks", "Bonds"],
             "group_label": ["Equities", "Equities", "Fixed Income"],
             "category_label": ["US Equities", "Intl Equities", "Fixed Income Bonds"],
             "asset_class_id": [1, 2, 3],
@@ -251,7 +251,7 @@ class TestFormatting(SimpleTestCase):
         asset_data = {
             "group_code": ["EQUITY"],
             "category_code": ["US"],
-            "asset_class_name": ["US Stocks"],
+            "asset_class_name": ["US Equities"],
             "asset_class_id": [1],
             "group_label": ["Equities"],
             "category_label": ["US Equities"],

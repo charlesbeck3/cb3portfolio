@@ -30,7 +30,7 @@ class HoldingsViewPostTests(TestCase, PortfolioTestMixin):
             code="EQUITIES", defaults={"label": "Equities"}
         )
         self.ac_us, _ = AssetClass.objects.get_or_create(
-            name="US Stocks", defaults={"category": self.cat_eq}
+            name="US Equities", defaults={"category": self.cat_eq}
         )
         self.sec_us, _ = Security.objects.get_or_create(
             ticker="VTI", defaults={"name": "VTI", "asset_class": self.ac_us}
