@@ -498,6 +498,345 @@ Key settings in `config/settings.py`:
 
 ## Architecture Decisions
 
+## Deployment
+
+### Pre-Deployment Checklist
+
+Before deploying to production, ensure:
+
+1. **Environment Variables Set**
+   ```bash
+   # Required variables
+   SECRET_KEY=<generated-secret-key>
+   ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
+   DB_NAME=cb3portfolio_prod
+   DB_USER=portfolio_user
+   DB_PASSWORD=<secure-password>
+   DB_HOST=localhost
+   DB_PORT=5432
+
+   # Optional but recommended
+   EMAIL_HOST=smtp.example.com
+   EMAIL_PORT=587
+   EMAIL_HOST_USER=noreply@yourdomain.com
+   EMAIL_HOST_PASSWORD=<app-password>
+   ADMIN_EMAIL=admin@yourdomain.com
+   ```
+
+2. **Database Setup**
+   ```bash
+   # Create PostgreSQL database
+   createdb cb3portfolio_prod
+
+   # Run migrations
+   DJANGO_SETTINGS_MODULE=config.settings.production uv run python manage.py migrate
+
+   # Create superuser
+   DJANGO_SETTINGS_MODULE=config.settings.production uv run python manage.py createsuperuser
+
+   # Seed system data
+   DJANGO_SETTINGS_MODULE=config.settings.production uv run python manage.py seed_dev_data
+   ```
+
+3. **Static Files**
+   ```bash
+   # Collect static files for serving
+   DJANGO_SETTINGS_MODULE=config.settings.production uv run python manage.py collectstatic --noinput
+   ```
+
+4. **Security Checks**
+   ```bash
+   # Run Django deployment checks
+   DJANGO_SETTINGS_MODULE=config.settings.production uv run python manage.py check --deploy
+
+   # Run system checks
+   DJANGO_SETTINGS_MODULE=config.settings.production uv run python manage.py check
+   ```
+
+### Production Deployment Steps
+
+1. **Clone Repository**
+   ```bash
+   git clone <repository-url>
+   cd cb3portfolio
+   ```
+
+2. **Install Dependencies**
+   ```bash
+   uv sync --frozen
+   ```
+
+3. **Configure Environment**
+   - Copy `.env.example` to `.env`
+   - Set all required environment variables
+   - Ensure `DEBUG=False`
+   - Ensure `DJANGO_SETTINGS_MODULE=config.settings.production`
+
+4. **Initialize Database**
+   ```bash
+   uv run python manage.py migrate
+   uv run python manage.py seed_dev_data  # Creates system data
+   uv run python manage.py createsuperuser
+   ```
+
+5. **Collect Static Files**
+   ```bash
+   uv run python manage.py collectstatic --noinput
+   ```
+
+6. **Start Application**
+   ```bash
+   # Using gunicorn (recommended for production)
+   uv add gunicorn
+   uv run gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 4
+
+   # Or using uvicorn for ASGI (async support)
+   uv add uvicorn
+   uv run uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --workers 4
+   ```
+
+### Monitoring & Maintenance
+
+**Health Check Endpoint**
+- URL: `/health/`
+- Returns JSON status of database connectivity
+- Use for load balancer health checks
+- Returns 200 OK when healthy, 503 when unhealthy
+
+Example response:
+```json
+{
+  "status": "healthy",
+  "checks": {
+    "database": "ok",
+    "version": "1.0.0"
+  }
+}
+```
+
+**Log Locations** (production):
+- Application logs: `logs/application.log`
+- Error logs: `logs/errors.log`
+- Both rotate at 10MB with 5 backups
+- JSON format for log aggregation tools
+
+**Performance Monitoring**
+- Response headers include `X-Request-ID` for tracing
+- Response headers include `X-Request-Duration` for timing
+- Slow requests (>0.5s in production) logged automatically with context:
+  ```json
+  {
+    "event": "slow_request_detected",
+    "duration": 1.234,
+    "path": "/dashboard/",
+    "method": "GET",
+    "request_id": "abc-123-def",
+    "threshold": 0.5
+  }
+  ```
+
+**Request Tracing**
+- Every request has unique `X-Request-ID` in response headers
+- Load balancers can inject `X-Request-ID` for end-to-end tracing
+- All logs include `request_id` field for correlation
+- Use request ID to trace single request through all log entries:
+  ```bash
+  grep "request_id\":\"abc-123-def" logs/application.log
+  ```
+
+**Database Backups**
+```bash
+# Backup database
+pg_dump cb3portfolio_prod > backup_$(date +%Y%m%d_%H%M%S).sql
+
+# Restore database
+psql cb3portfolio_prod < backup_20240101_120000.sql
+```
+
+**Dependency Updates**
+```bash
+# Check for security vulnerabilities
+uv run safety check
+
+# Update dependencies (test thoroughly before deploying)
+uv sync --upgrade
+```
+
+### Troubleshooting Production Issues
+
+**Check Application Status**
+```bash
+# Visit health check endpoint
+curl https://yourdomain.com/health/
+
+# Check system status
+uv run python manage.py check
+
+# Check deployment readiness
+uv run python manage.py check --deploy
+```
+
+**View Logs**
+```bash
+# Application logs (JSON format)
+tail -f logs/application.log
+
+# Error logs only
+tail -f logs/errors.log
+
+# Filter by request ID
+grep "request_id\":\"abc-123-def" logs/application.log
+
+# View logs with jq for better formatting
+tail -f logs/application.log | jq .
+```
+
+**Common Issues**
+
+*Missing Environment Variables*
+- Error: `ImproperlyConfigured: Missing required environment variables`
+- Solution: Check `.env` file has all required variables from `.env.example`
+- Verify: `printenv | grep DB_`
+
+*Database Connection Failed*
+- Check health endpoint: `curl http://localhost:8000/health/`
+- Verify database credentials in `.env`
+- Test connection: `uv run python manage.py dbshell`
+- Check PostgreSQL is running: `systemctl status postgresql`
+
+*Static Files Not Loading*
+- Run: `uv run python manage.py collectstatic --noinput`
+- Verify `STATIC_ROOT` directory exists
+- Check nginx/Apache static file configuration
+
+*Slow Performance*
+- Check `logs/application.log` for slow request warnings
+- Use `X-Request-Duration` header to identify bottlenecks
+- Review database query counts with Django Debug Toolbar in development
+- Consider adding database indexes for frequently queried fields
+
+*System Check Warnings*
+- Warning: "No asset classes defined in the database"
+- Solution: `uv run python manage.py seed_dev_data`
+- This creates required system data (asset classes, account types, etc.)
+
+## Performance Optimization
+
+### Database Query Optimization
+
+**Use select_related for foreign keys:**
+```python
+# Bad: N+1 queries
+accounts = Account.objects.all()
+for account in accounts:
+    print(account.portfolio.name)  # Extra query per account
+
+# Good: Single query with JOIN
+accounts = Account.objects.select_related('portfolio').all()
+for account in accounts:
+    print(account.portfolio.name)  # No extra queries
+```
+
+**Use prefetch_related for reverse relations:**
+```python
+# Bad: N+1 queries
+portfolios = Portfolio.objects.all()
+for portfolio in portfolios:
+    for account in portfolio.accounts.all():  # Extra query per portfolio
+        print(account.name)
+
+# Good: Two queries total
+portfolios = Portfolio.objects.prefetch_related('accounts').all()
+for portfolio in portfolios:
+    for account in portfolio.accounts.all():  # No extra queries
+        print(account.name)
+```
+
+### Database Indexes
+
+The application uses database indexes on frequently queried fields:
+- `Account.portfolio` - Foreign key lookups
+- `Holding.account` - Portfolio aggregations
+- `Security.ticker` - Symbol lookups
+- `AssetClass.name` - Allocation matching
+
+Add custom indexes if experiencing slow queries:
+```python
+class Meta:
+    indexes = [
+        models.Index(fields=['field_name']),
+        models.Index(fields=['field1', 'field2']),  # Composite index
+    ]
+```
+
+Run migrations after adding indexes:
+```bash
+uv run python manage.py makemigrations
+uv run python manage.py migrate
+```
+
+### Caching Strategies
+
+**Template fragment caching:**
+```django
+{% load cache %}
+{% cache 3600 portfolio_summary portfolio.id %}
+    <!-- Expensive template rendering -->
+{% endcache %}
+```
+
+**View caching:**
+```python
+from django.views.decorators.cache import cache_page
+
+@cache_page(60 * 15)  # Cache for 15 minutes
+def dashboard_view(request):
+    # ...
+```
+
+**Database connection pooling** (already configured in production):
+- `CONN_MAX_AGE = 600` - Reuse connections for 10 minutes
+- `CONN_HEALTH_CHECKS = True` - Verify connection health
+- Reduces overhead of establishing database connections
+
+### Monitoring Slow Requests
+
+Requests exceeding the threshold are automatically logged:
+
+**Development:** Threshold = 1.0 seconds
+**Production:** Threshold = 0.5 seconds
+
+Log format:
+```json
+{
+  "event": "slow_request_detected",
+  "duration": 1.234,
+  "path": "/dashboard/",
+  "method": "GET",
+  "request_id": "abc-123-def",
+  "threshold": 0.5,
+  "timestamp": "2024-01-01T12:00:00Z"
+}
+```
+
+To adjust the threshold, set `SLOW_REQUEST_THRESHOLD` in settings:
+```python
+# config/settings/production.py
+SLOW_REQUEST_THRESHOLD = 0.3  # 300ms
+```
+
+### Production Performance Checklist
+
+- [ ] Database indexes on foreign keys and frequently queried fields
+- [ ] `select_related()` used for foreign key queries
+- [ ] `prefetch_related()` used for reverse relations
+- [ ] Template caching for expensive renders
+- [ ] Static files compressed and cached (Whitenoise configured)
+- [ ] Database connection pooling enabled (CONN_MAX_AGE)
+- [ ] Slow request monitoring active (SLOW_REQUEST_THRESHOLD)
+- [ ] gunicorn/uvicorn with multiple workers
+- [ ] Regular database VACUUM and ANALYZE (PostgreSQL)
+
 ### Why Django?
 - Built-in admin interface (zero UI code for CRUD)
 - Strong ORM for relational data

@@ -7,7 +7,16 @@ Ensure all environment variables are properly set before deployment.
 
 import os
 
+# Validate production configuration immediately
+from config.startup_checks import validate_production_config  # noqa: E402
+
 from .base import *  # noqa: F403
+
+validate_production_config()
+
+# Ensure logs directory exists
+LOGS_DIR = BASE_DIR / "logs"  # noqa: F405
+LOGS_DIR.mkdir(exist_ok=True)
 
 # ============================================================================
 # SECURITY SETTINGS
@@ -15,15 +24,9 @@ from .base import *  # noqa: F403
 
 DEBUG = False
 
-# Required: Must be set via environment variable
-SECRET_KEY = os.getenv("SECRET_KEY", "")  # noqa: F405
-if not SECRET_KEY:
-    raise ValueError("SECRET_KEY environment variable must be set in production")
-
-# Required: Comma-separated list of allowed hosts
+# Environment variables validated by startup_checks
+SECRET_KEY = os.getenv("SECRET_KEY")  # noqa: F405
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()]  # noqa: F405
-if not ALLOWED_HOSTS:
-    raise ValueError("ALLOWED_HOSTS must be set in production")
 
 # HTTPS/SSL Configuration
 SECURE_SSL_REDIRECT = True

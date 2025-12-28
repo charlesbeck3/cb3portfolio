@@ -48,6 +48,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "portfolio.middleware.RequestIDMiddleware",  # Add request ID first
+    "portfolio.middleware.PerformanceTimingMiddleware",  # Then timing
     "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -202,6 +204,13 @@ CSP_REPORT_ONLY = True
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = "noreply@localhost"
 SERVER_EMAIL = "server@localhost"
+
+# ============================================================================
+# MONITORING CONFIGURATION
+# ============================================================================
+
+# Threshold in seconds for logging slow requests
+SLOW_REQUEST_THRESHOLD = 1.0
 
 # Logging Configuration
 # Using structlog for structured logging with Django's logging system
