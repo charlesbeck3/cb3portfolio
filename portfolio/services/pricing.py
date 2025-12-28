@@ -79,40 +79,39 @@ class PricingService:
             logger.warning("No prices returned from market data service")
             return {}
 
+        # Create a mapping from ticker to security object for efficient lookup
+        ticker_to_security = {s.ticker: s for s in securities}
+
         # Store prices in SecurityPrice table
         with transaction.atomic():
-            for security in securities:
-                ticker = security.ticker
+            for ticker in tickers:
+                if ticker in price_data:
+                    price, market_time = price_data[ticker]
 
-                if ticker not in price_data:
-                    logger.warning(f"No price returned for {ticker}", ticker=ticker)
-                    continue
+                    # Get security for this ticker
+                    security = ticker_to_security.get(ticker)
+                    if not security:
+                        logger.warning(f"No security found for ticker: {ticker}")
+                        continue
 
-                price, market_time = price_data[ticker]
+                    # Use override if provided (for testing)
+                    if override_datetime:
+                        market_time = override_datetime
 
-                # Use override if provided (for testing)
-                if override_datetime:
-                    market_time = override_datetime
+                    # Create or update SecurityPrice record
+                    # fetched_at is automatically set by auto_now_add
+                    SecurityPrice.objects.update_or_create(
+                        security=security,
+                        price_datetime=market_time,  # Market time from Yahoo
+                        defaults={"price": price, "source": "yfinance"},
+                    )
 
-                # Create or update SecurityPrice record
-                # fetched_at is automatically set by auto_now_add
-                SecurityPrice.objects.update_or_create(
-                    security=security,
-                    price_datetime=market_time,  # Market time from Yahoo
-                    defaults={"price": price, "source": "yfinance"},
-                )
-
-                logger.debug(
-                    f"Stored price for {ticker}",
-                    ticker=ticker,
-                    price=price,
-                    market_time=market_time,
-                )
+                    logger.debug(f"Stored price for {ticker}: {price} at {market_time}")
+                else:
+                    logger.warning(f"No price returned for {ticker}")
 
         logger.info(
-            "Updated prices for user",
-            user_id=user.id,
-            security_count=len([t for t in tickers if t in price_data]),
+            f"Updated prices for user {user.id}: {len([t for t in tickers if t in price_data])} securities"
         )
 
         # Return just prices (without timestamps) for backward compatibility
