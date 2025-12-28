@@ -266,7 +266,7 @@ class Holding(models.Model):
         """
         Whether this holding has a price available.
 
-        Checks both SecurityPrice table and fallback current_price.
+        Returns True if a SecurityPrice record exists for this holding's security.
         """
         return self.latest_price is not None
 

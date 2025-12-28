@@ -49,7 +49,6 @@ class PricingService:
         1. Finds all securities held by user
         2. Fetches prices with market timestamps from data service
         3. Stores in SecurityPrice table (price_datetime = market time)
-        4. Updates holding.current_price for backward compatibility
 
         The fetched_at timestamp is automatically set by the model and
         represents when we retrieved the data (audit trail).
@@ -114,7 +113,7 @@ class PricingService:
             f"Updated prices for user {user.id}: {len([t for t in tickers if t in price_data])} securities"
         )
 
-        # Return just prices (without timestamps) for backward compatibility
+        # Return prices as dict[ticker, price] (timestamps available via SecurityPrice queries)
         return {t: p for t, (p, _) in price_data.items()}
 
     def get_price_at_datetime(

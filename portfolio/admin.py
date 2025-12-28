@@ -123,13 +123,19 @@ class HoldingAdmin(admin.ModelAdmin):
         "account",
         "security",
         "shares",
-        "current_price",
+        "get_latest_price",
         "get_market_value",
         "as_of_date",
     )
     list_filter = ("account", "security__asset_class")
     search_fields = ("security__ticker", "account__name")
     readonly_fields = ("as_of_date",)
+
+    @admin.display(description="Latest Price")
+    def get_latest_price(self, obj: Holding) -> str:
+        """Display latest price from SecurityPrice table."""
+        price = obj.latest_price
+        return f"${price:,.2f}" if price is not None else "N/A"
 
     @admin.display(description="Market Value")
     def get_market_value(self, obj: Holding) -> str:
