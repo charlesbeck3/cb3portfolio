@@ -1636,6 +1636,11 @@ class AllocationCalculationEngine:
         Convert DataFrame rows to list of dicts for template.
         """
         df_reset = df.reset_index()
+
+        # Ensure boolean flags are not NaN (NaN evaluates to True in templates)
+        if "is_cash" in df_reset.columns:
+            df_reset["is_cash"] = df_reset["is_cash"].fillna(False).astype(bool)
+
         rows = df_reset.to_dict("records")
 
         formatted_rows = []

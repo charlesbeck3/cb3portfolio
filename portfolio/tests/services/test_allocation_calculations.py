@@ -133,7 +133,11 @@ class TestAllocationCalculationEngine:
         """Verify all variance columns are calculated by engine."""
         data = {
             "group_code": ["EQUITY", "EQUITY"],
+            "group_label": ["Equities", "Equities"],
             "category_code": ["US", "INTL"],
+            "category_label": ["US Equities", "Intl Equities"],
+            "group_sort_order": [1, 1],
+            "category_sort_order": [1, 2],
             "asset_class_name": ["US Equities", "Intl Stocks"],
             "portfolio_actual": [100.0, 50.0],
             "portfolio_actual_pct": [10.0, 5.0],
