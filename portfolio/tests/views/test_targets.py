@@ -352,7 +352,7 @@ class TestTargetAllocationViewHTTP:
             None,
         )
         assert taxable_group is not None
-        assert taxable_group["actual_raw"] == 2500.0
+        assert taxable_group["actual"] == 2500.0
 
     def test_strategy_select_box_shows_assigned_strategy(
         self, client: Any, targets_view_setup: dict[str, Any]
