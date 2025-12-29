@@ -81,30 +81,51 @@ class TestAllocationCalculationEngine:
         assert pytest.approx(result.loc[1, "Equities_actual"]) == 5000.0
 
     def test_aggregate_presentation_levels(self, engine: AllocationCalculationEngine) -> None:
-        """Verify aggregation returns all expected levels."""
+        """Verify aggregation returns all expected levels in single DataFrame."""
         data = {
-            "group_code": ["EQUITY", "EQUITY", "FIXED"],
-            "category_code": ["US", "INTL", "BONDS"],
-            "asset_class_name": ["US Equities", "Intl Stocks", "Bonds"],
-            "group_label": ["Equities", "Equities", "Fixed Income"],
-            "category_label": ["US Equities", "Intl Equities", "Fixed Income Bonds"],
-            "asset_class_id": [1, 2, 3],
-            "portfolio_actual": [100.0, 50.0, 150.0],
-            "portfolio_effective": [120.0, 60.0, 120.0],
-            "portfolio_actual_pct": [10.0, 5.0, 15.0],
-            "portfolio_effective_pct": [12.0, 6.0, 12.0],
+            "group_code": ["EQUITY", "EQUITY", "EQUITY", "FIXED"],
+            "category_code": ["US", "US", "INTL", "BONDS"],
+            "asset_class_name": ["US Large Cap", "US Small Cap", "Intl Stocks", "Bonds"],
+            "group_label": ["Equities", "Equities", "Equities", "Fixed Income"],
+            "category_label": ["US Equities", "US Equities", "Intl Equities", "Fixed Income Bonds"],
+            "asset_class_id": [1, 2, 3, 4],
+            "portfolio_actual": [50.0, 50.0, 50.0, 150.0],
+            "portfolio_effective": [60.0, 60.0, 60.0, 120.0],
+            "portfolio_actual_pct": [5.0, 5.0, 5.0, 15.0],
+            "portfolio_effective_pct": [6.0, 6.0, 6.0, 12.0],
         }
         df = pd.DataFrame(data).set_index(["group_code", "category_code", "asset_class_name"])
         result = engine.aggregate_presentation_levels(df)
 
-        assert "assets" in result
-        assert "category_subtotals" in result
-        assert pytest.approx(result["group_totals"].loc["EQUITY", "portfolio_actual"]) == 150.0
-        assert pytest.approx(result["grand_total"].iloc[0]["portfolio_actual"]) == 300.0
+        assert isinstance(result, pd.DataFrame)
+        assert "row_type" in result.columns
+
+        # Check all levels exist
+        row_types = result["row_type"].unique()
+        assert "asset" in row_types
+        assert "subtotal" in row_types
+        assert "group_total" in row_types
+        assert "grand_total" in row_types
+
+        # Verify values
+        # Grand total
+        grand_row = result[result["row_type"] == "grand_total"].iloc[0]
+        assert pytest.approx(grand_row["portfolio_actual"]) == 300.0
+
+        # Group total
+        group_row = result[
+            (result["row_type"] == "group_total") & (result["group_code"] == "EQUITY")
+        ].iloc[0]
+        assert pytest.approx(group_row["portfolio_actual"]) == 150.0
 
         # Verify variances are computed (now that engine does it)
-        # 100 - 120 = -20
-        assert pytest.approx(result["assets"].iloc[0]["portfolio_effective_variance"]) == -20.0
+        # 50 - 60 = -10 (US Large Cap)
+        # Find asset row for US Large Cap. Need to handle potential re-indexing.
+        # Asset rows have row_type="asset"
+        asset_row = result[(result["row_type"] == "asset") & (result["asset_class_id"] == 1)].iloc[
+            0
+        ]
+        assert pytest.approx(asset_row["portfolio_effective_variance"]) == -10.0
 
     def test_aggregate_presentation_levels_includes_variances(
         self, engine: AllocationCalculationEngine
@@ -118,6 +139,7 @@ class TestAllocationCalculationEngine:
             "portfolio_actual_pct": [10.0, 5.0],
             "portfolio_effective": [120.0, 60.0],
             "portfolio_effective_pct": [12.0, 6.0],
+            "asset_class_id": [1, 2],
             # Account columns
             "acc_1_actual": [100.0, 50.0],
             "acc_1_effective": [120.0, 60.0],
@@ -127,18 +149,20 @@ class TestAllocationCalculationEngine:
         df = pd.DataFrame(data).set_index(["group_code", "category_code", "asset_class_name"])
         result = engine.aggregate_presentation_levels(df)
 
-        # Check portfolio variances exist in assets
-        assert "portfolio_effective_variance" in result["assets"].columns
-        assert "portfolio_effective_variance_pct" in result["assets"].columns
+        # Check portfolio variances exist
+        assert "portfolio_effective_variance" in result.columns
+        assert "portfolio_effective_variance_pct" in result.columns
 
-        # Check values
-        asset_row = result["assets"].iloc[0]
+        # Check values for asset row
+        asset_row = result[(result["row_type"] == "asset") & (result["asset_class_id"] == 1)].iloc[
+            0
+        ]
         assert pytest.approx(asset_row["portfolio_effective_variance"]) == -20.0
         assert pytest.approx(asset_row["portfolio_effective_variance_pct"]) == -2.0
 
         # Check account variances exist
-        assert "acc_1_variance" in result["assets"].columns
-        assert "acc_1_variance_pct" in result["assets"].columns
+        assert "acc_1_variance" in result.columns
+        assert "acc_1_variance_pct" in result.columns
         assert pytest.approx(asset_row["acc_1_variance"]) == -20.0
         assert pytest.approx(asset_row["acc_1_variance_pct"]) == -2.0
 
@@ -188,9 +212,11 @@ class TestAllocationCalculationEngine:
         elapsed = time.time() - start
 
         assert elapsed < 1.0
+
+        grand_total_row = result[result["row_type"] == "grand_total"].iloc[0]
         assert (
             abs(
-                result["grand_total"].iloc[0]["portfolio_actual"]
+                grand_total_row["portfolio_actual"]
                 - float(large_portfolio_benchmark["total_value"])
             )
             < 1.0
@@ -341,19 +367,12 @@ class TestAllocationPresentation:
         df_assets = pd.DataFrame(asset_data)
         df_assets = df_assets.set_index(["group_code", "category_code", "asset_class_name"])
 
-        aggregated = {
-            "assets": df_assets,
-            "category_subtotals": pd.DataFrame(),
-            "group_totals": pd.DataFrame(),
-            "grand_total": pd.DataFrame(),
-        }
-
         accounts_by_type: dict[int, list[dict[str, Any]]] = {}
         target_strategies: dict[str, Any] = {"at_strategy_map": {}, "acc_strategy_map": {}}
 
         # Use private method _format_presentation_rows
         result = engine._format_presentation_rows(
-            aggregated_data=aggregated,
+            df=df_assets,
             accounts_by_type=accounts_by_type,
             target_strategies=target_strategies,
         )
@@ -393,28 +412,17 @@ class TestAllocationPresentation:
         }
         df = pd.DataFrame(data)
 
-        # 2. Mock aggregated data dictionary
-        aggregated_data = {
-            "assets": df,
-            "category_subtotals": pd.DataFrame(),
-            "group_totals": pd.DataFrame(),
-            "grand_total": pd.DataFrame(
-                [
-                    {
-                        "row_type": "grand_total",
-                        "portfolio_actual": 1000.0,
-                        "portfolio_explicit_target": 1000.0,
-                        "portfolio_effective": 1000.0,
-                        "portfolio_policy_variance": 0.0,
-                        "portfolio_effective_variance": 0.0,
-                    }
-                ]
-            ),
-        }
+        # Prepare DF for formatter
+        df["row_type"] = "asset"
+        df["group_code"] = "G"
+        df["category_code"] = "C"
+        df["group_label"] = "G"
+        df["category_label"] = "C"
+        df["asset_class_id"] = [1, 2]
 
-        # 4. Format Rows
+        # 3. Format
         rows = engine._format_presentation_rows(
-            aggregated_data=aggregated_data,
+            df=df,
             accounts_by_type={},
             target_strategies={},
         )
@@ -524,3 +532,105 @@ class TestAllocationCalculationEngineTargetContext:
         # Should have a non-zero portfolio total
         assert context["portfolio_total_value"] >= Decimal("0.00")
         assert isinstance(context["portfolio_total_value"], Decimal)
+
+
+@pytest.mark.services
+class TestDataFrameMetadata:
+    """Test DataFrame-based metadata methods."""
+
+    @pytest.fixture
+    def engine(self) -> AllocationCalculationEngine:
+        return AllocationCalculationEngine()
+
+    @pytest.fixture
+    def test_portfolio(self, test_user, base_system_data):
+        """Standard test portfolio with data."""
+        from decimal import Decimal
+
+        from portfolio.models import (
+            Account,
+            AllocationStrategy,
+            Portfolio,
+            TargetAllocation,
+        )
+
+        portfolio = Portfolio.objects.create(user=test_user, name="Metadata Test")
+
+        # Create Account
+        account = Account.objects.create(
+            user=test_user,
+            portfolio=portfolio,
+            name="Test Account",
+            account_type=base_system_data.type_taxable,
+            institution=base_system_data.institution,
+        )
+
+        # Create Strategy & Target
+        strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy")
+
+        # Create Asset Class (using category from system data if available, or just mocking it)
+        # Assuming base_system_data has categories. Let's look at the error again.
+        # It seems safer to create a fresh asset class.
+        from portfolio.models import AssetClass, AssetClassCategory
+
+        # Ensure we have a category
+        if hasattr(base_system_data, "us_large_cap"):
+            cat = base_system_data.us_large_cap
+        else:
+            cat = AssetClassCategory.objects.first() or AssetClassCategory.objects.create(
+                code="TEST", label="Test"
+            )
+
+        ac = AssetClass.objects.create(name="US Stock", category=cat)
+
+        TargetAllocation.objects.create(
+            strategy=strategy, asset_class=ac, target_percent=Decimal("60.00")
+        )
+
+        return {"user": test_user, "portfolio": portfolio, "account": account}
+
+    @pytest.mark.django_db
+    def test_get_asset_class_metadata_df(self, engine, test_portfolio):
+        """Test asset class metadata as DataFrame."""
+        user = test_portfolio["user"]
+        df = engine._get_asset_class_metadata_df(user)
+
+        assert not df.empty
+        assert "asset_class_id" in df.columns
+        assert "group_code" in df.columns
+        assert "is_cash" in df.columns
+        assert "asset_class_name" in df.columns
+
+        # Verify content
+        assert "US Stock" in df["asset_class_name"].values
+
+    @pytest.mark.django_db
+    def test_get_accounts_metadata_df(self, engine, test_portfolio):
+        """Test accounts metadata as DataFrame."""
+        user = test_portfolio["user"]
+        df = engine._get_accounts_metadata_df(user)
+
+        assert not df.empty
+        assert "account_id" in df.columns
+        assert "tax_treatment" in df.columns
+        assert "account_name" in df.columns
+
+        # Verify content
+        assert test_portfolio["account"].id in df["account_id"].values
+
+    @pytest.mark.django_db
+    def test_get_targets_df(self, engine, test_portfolio):
+        """Test targets as DataFrame."""
+        user = test_portfolio["user"]
+        df = engine._get_targets_df(user)
+
+        assert not df.empty
+        assert "target_percent" in df.columns
+        assert "strategy_id" in df.columns
+
+        # Verify content
+        from decimal import Decimal
+
+        # Check for float or Decimal depending on what DataFrame conversion does
+        values = df["target_percent"].values
+        assert any(v == 60.00 for v in values) or any(v == Decimal("60.00") for v in values)

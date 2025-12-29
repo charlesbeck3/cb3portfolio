@@ -29,6 +29,103 @@ class AllocationCalculationEngine:
     def __init__(self) -> None:
         logger.debug("initializing_allocation_engine")
 
+    def _get_asset_class_metadata_df(self, user: Any) -> pd.DataFrame:
+        """Get asset class metadata as DataFrame (NEW)."""
+        from portfolio.models import AssetClass
+
+        qs = AssetClass.objects.select_related("category", "category__parent").values(
+            "id",
+            "name",
+            "category__parent__code",
+            "category__parent__label",
+            "category__parent__sort_order",
+            "category__code",
+            "category__label",
+            "category__sort_order",
+        )
+
+        df = pd.DataFrame(list(qs))
+
+        if df.empty:
+            return pd.DataFrame()
+
+        df.columns = [
+            "asset_class_id",
+            "asset_class_name",
+            "group_code",
+            "group_label",
+            "group_sort_order",
+            "category_code",
+            "category_label",
+            "category_sort_order",
+        ]
+
+        df["is_cash"] = (df["category_code"] == "CASH") | (df["asset_class_name"] == "Cash")
+
+        return df
+
+    def _get_accounts_metadata_df(self, user: Any) -> pd.DataFrame:
+        """Get account metadata as DataFrame (NEW)."""
+        from portfolio.models import Account
+
+        qs = (
+            Account.objects.filter(user=user)
+            .select_related("account_type")
+            .values(
+                "id",
+                "name",
+                "account_type__code",
+                "account_type__label",
+                "account_type__tax_treatment",
+            )
+        )
+
+        df = pd.DataFrame(list(qs))
+
+        if df.empty:
+            return pd.DataFrame()
+
+        df.columns = [
+            "account_id",
+            "account_name",
+            "type_code",
+            "type_label",
+            "tax_treatment",
+        ]
+
+        return df
+
+    def _get_targets_df(self, user: Any) -> pd.DataFrame:
+        """Get all allocation targets as DataFrame (NEW)."""
+        from portfolio.models import TargetAllocation
+
+        qs = (
+            TargetAllocation.objects.filter(strategy__user=user)
+            .select_related("asset_class", "strategy")
+            .values(
+                "strategy__id",
+                "strategy__name",
+                "asset_class__id",
+                "asset_class__name",
+                "target_percent",
+            )
+        )
+
+        df = pd.DataFrame(list(qs))
+
+        if df.empty:
+            return pd.DataFrame()
+
+        df.columns = [
+            "strategy_id",
+            "strategy_name",
+            "asset_class_id",
+            "asset_class_name",
+            "target_percent",
+        ]
+
+        return df
+
     def calculate_allocations(
         self,
         holdings_df: pd.DataFrame,
@@ -247,13 +344,13 @@ class AllocationCalculationEngine:
         totals_df = account_totals.reset_index(name="Account_Total")
         df = df.merge(totals_df, on=["Account_ID"], how="left")
 
-        # Calculate target value and variance
-        df["Target_Value"] = df.apply(
-            lambda r: (r["Account_Total"] * (r["Target_Pct"] / r["Sec_Count"] / 100.0))
-            if r["Sec_Count"] > 0
-            else 0.0,
-            axis=1,
-        )
+        # Calculate target value and variance (Vectorized)
+        df["Target_Value"] = 0.0
+        mask = df["Sec_Count"] > 0
+        if mask.any():
+            df.loc[mask, "Target_Value"] = df.loc[mask, "Account_Total"] * (
+                df.loc[mask, "Target_Pct"] / df.loc[mask, "Sec_Count"] / 100.0
+            )
         df["Value_Variance"] = df["Value"] - df["Target_Value"]
 
         # Rename Security to Ticker if needed
@@ -265,9 +362,7 @@ class AllocationCalculationEngine:
     def build_holdings_dataframe(self, user: Any, account_id: int | None = None) -> pd.DataFrame:
         """
         Build holdings DataFrame with all necessary metadata for display.
-
-        This method constructs a complete holdings view with account, security,
-        and asset class hierarchy information.
+        REFACTORED: Eliminates manual loops and n+1 queries using pandas merge.
 
         Args:
             user: User object to filter holdings
@@ -282,77 +377,86 @@ class AllocationCalculationEngine:
 
             Returns empty DataFrame if no holdings found.
         """
-        from portfolio.models import Holding
-
-        # Build query with optimal prefetching
-        holdings_qs = Holding.objects.filter(account__user=user)
-        if account_id:
-            holdings_qs = holdings_qs.filter(account_id=account_id)
-
-        holdings_qs = holdings_qs.select_related(
-            "account",
-            "account__account_type",
-            "account__account_type__group",
-            "security",
-            "security__asset_class",
-            "security__asset_class__category",
-            "security__asset_class__category__parent",
-        )
-
-        if not holdings_qs.exists():
+        # 1. Get flat holdings (includes basic account/security info)
+        df_holdings = self._get_holdings_df(user, account_id)
+        if df_holdings.empty:
             return pd.DataFrame()
 
-        # Extract data with complete hierarchy
-        data = []
-        for h in holdings_qs:
-            ac = h.security.asset_class
-            category = ac.category if ac else None
-            parent = category.parent if category else None
+        # 2. Get asset metadata (hierarchy)
+        df_meta = self._get_asset_class_metadata_df(user)
 
-            # Determine hierarchy labels
-            if parent:
-                group_code = parent.code
-                group_label = parent.label
-                group_sort_order = parent.sort_order
-                category_code = category.code if category else "UNC"
-                category_label = category.label if category else "Unclassified"
-                category_sort_order = category.sort_order if category else 9999
-            elif category:
-                group_code = category.code
-                group_label = category.label
-                group_sort_order = category.sort_order
-                category_code = category.code
-                category_label = category.label
-                category_sort_order = category.sort_order
-            else:
-                group_code = "UNC"
-                group_label = "Unclassified"
-                group_sort_order = 9999
-                category_code = "UNC"
-                category_label = "Unclassified"
-                category_sort_order = 9999
-
-            data.append(
-                {
-                    "Account_ID": h.account_id,
-                    "Account_Name": h.account.name,
-                    "Account_Type": h.account.account_type.label,
-                    "Asset_Class": ac.name if ac else "Unclassified",
-                    "Asset_Category": category_label,
-                    "Asset_Group": group_label,
-                    "Group_Code": group_code,
-                    "Group_Sort_Order": group_sort_order,
-                    "Category_Code": category_code,
-                    "Category_Sort_Order": category_sort_order,
-                    "Ticker": h.security.ticker,
-                    "Security_Name": h.security.name,
-                    "Shares": float(h.shares),
-                    "Price": float(h.latest_price) if h.latest_price else 0.0,
-                    "Value": float(h.market_value),
-                }
+        # 3. Merge metadata onto holdings
+        if not df_meta.empty:
+            df = df_holdings.merge(
+                df_meta, on="asset_class_id", how="left", suffixes=("_holdings", "")
             )
+        else:
+            df = df_holdings
 
-        return pd.DataFrame(data)
+        # 4. Handle Missing Metadata (Unclassified)
+        fill_values = {
+            "group_code": "UNC",
+            "group_label": "Unclassified",
+            "group_sort_order": 9999,
+            "category_code": "UNC",
+            "category_label": "Unclassified",
+            "category_sort_order": 9999,
+            "asset_class_name": "Unclassified",
+            "account__account_type__group__name": "Uncategorized",
+        }
+        df = df.fillna(value=fill_values)
+
+        # 5. Rename columns to match legacy API (CamelCase)
+        # 5. Rename columns to match legacy API (CamelCase)
+        rename_map = {
+            "account_id": "Account_ID",
+            "account_name": "Account_Name",
+            "account_type_label": "Account_Type",
+            "account__account_type__group__name": "Account_Category",
+            "asset_class_name": "Asset_Class",
+            "asset_class_id": "Asset_Class_ID",
+            "category_label": "Asset_Category",
+            "group_label": "Asset_Group",
+            "group_code": "Group_Code",
+            "group_sort_order": "Group_Sort_Order",
+            "category_code": "Category_Code",
+            "category_sort_order": "Category_Sort_Order",
+            "ticker": "Ticker",
+            "security_name": "Security_Name",
+            "shares": "Shares",
+            "price": "Price",
+            "value": "Value",
+        }
+
+        df = df.rename(columns=rename_map)
+
+        # Select and order columns to match exact expected output
+        expected_cols = [
+            "Account_ID",
+            "Account_Name",
+            "Account_Type",
+            "Account_Category",
+            "Asset_Class",
+            "Asset_Class_ID",
+            "Asset_Category",
+            "Asset_Group",
+            "Group_Code",
+            "Group_Sort_Order",
+            "Category_Code",
+            "Category_Sort_Order",
+            "Ticker",
+            "Security_Name",
+            "Shares",
+            "Price",
+            "Value",
+        ]
+
+        # Ensure all columns exist (in case of missing data)
+        for col in expected_cols:
+            if col not in df.columns:
+                df[col] = None
+
+        return df[expected_cols]
 
     def calculate_holdings_with_targets(
         self, user: Any, account_id: int | None = None
@@ -402,10 +506,14 @@ class AllocationCalculationEngine:
         df_with_targets["Allocation_Variance_Pct"] = (
             df_with_targets["Allocation_Pct"] - df_with_targets["Target_Allocation_Pct"]
         )
-        # Calculate Share Targets and Variances
-        df_with_targets["Target_Shares"] = df_with_targets.apply(
-            lambda r: r["Target_Value"] / r["Price"] if r["Price"] > 0 else 0, axis=1
-        )
+        # Calculate Share Targets and Variances (Vectorized)
+        df_with_targets["Target_Shares"] = 0.0
+        price_mask = df_with_targets["Price"] > 0
+        if price_mask.any():
+            df_with_targets.loc[price_mask, "Target_Shares"] = (
+                df_with_targets.loc[price_mask, "Target_Value"]
+                / df_with_targets.loc[price_mask, "Price"]
+            )
         df_with_targets["Shares_Variance"] = (
             df_with_targets["Shares"] - df_with_targets["Target_Shares"]
         )
@@ -446,28 +554,38 @@ class AllocationCalculationEngine:
 
             All values are NUMERIC (no formatting).
         """
-        from portfolio.models import Portfolio
 
         logger.info("building_presentation_dataframe", user_id=user.id)
 
-        # Get holdings DataFrame
-        portfolio = Portfolio.objects.filter(user=user).first()
-        if not portfolio:
-            logger.info("no_portfolio_found", user=user.username)
-            return pd.DataFrame()
-
-        holdings_df = portfolio.to_dataframe()
-        if holdings_df.empty:
+        # Step 1: Get holdings using optimized method
+        df_flat = self.build_holdings_dataframe(user)
+        if df_flat.empty:
             logger.info("empty_holdings_dataframe")
             return pd.DataFrame()
 
         logger.info("processing_presentation_data", user=user.username)
 
-        # Step 1: Calculate actual allocations
-        allocations = self.calculate_allocations(holdings_df)
+        # Pivot to create MultiIndex DataFrame expected by calculate_allocations
+        df_pivot = df_flat.pivot_table(
+            index=["Account_Type", "Account_Category", "Account_Name", "Account_ID"],
+            columns=["Asset_Class", "Asset_Category", "Ticker"],
+            values="Value",
+            aggfunc="sum",
+        ).fillna(0.0)
+
+        # Pivot to create MultiIndex DataFrame expected by calculate_allocations
+        df_pivot = df_flat.pivot_table(
+            index=["Account_Type", "Account_Category", "Account_Name", "Account_ID"],
+            columns=["Asset_Class", "Asset_Category", "Ticker"],
+            values="Value",
+            aggfunc="sum",
+        ).fillna(0.0)
+
+        allocations = self.calculate_allocations(df_pivot)
 
         # Step 2: Get metadata
-        ac_metadata, hierarchy = self._get_asset_class_metadata(user)
+        # Step 2: Get metadata
+        df_ac_meta = self._get_asset_class_metadata_df(user)
         _account_list, accounts_by_type = self._get_account_metadata(user)
         target_strategies = self._get_target_strategies(user)
 
@@ -476,7 +594,7 @@ class AllocationCalculationEngine:
         account_totals = self._calculate_account_totals(allocations, accounts_by_type)
 
         # Step 4: Build base DataFrame with all asset classes (NO LOOPS)
-        df = self._build_asset_class_base_dataframe(ac_metadata, hierarchy)
+        df = self._build_asset_class_base_dataframe(df_ac_meta)
 
         # Step 5: Add portfolio calculations (VECTORIZED)
         df = self._add_portfolio_calculations(df, allocations, portfolio_total)
@@ -536,37 +654,20 @@ class AllocationCalculationEngine:
 
     def _build_asset_class_base_dataframe(
         self,
-        ac_metadata: dict[str, dict[str, Any]],
-        hierarchy: dict[str, dict[str, list[str]]],
+        df_meta: pd.DataFrame,
     ) -> pd.DataFrame:
         """
-        Build base DataFrame with all asset classes and metadata.
+        Build base DataFrame with all asset classes and metadata using vectorized DataFrame.
 
         Returns:
-            DataFrame with columns: group_code, group_label, category_code,
-            category_label, asset_class_name, asset_class_id, is_cash, row_type
+            DataFrame with metadata columns and row_type='asset'
         """
-        rows = []
-        for group_code in hierarchy:
-            for category_code in hierarchy[group_code]:
-                for ac_name in hierarchy[group_code][category_code]:
-                    meta = ac_metadata[ac_name]
-                    rows.append(
-                        {
-                            "group_code": group_code,
-                            "group_label": meta["group_label"],
-                            "group_sort_order": meta["group_sort_order"],
-                            "category_code": category_code,
-                            "category_label": meta["category_label"],
-                            "category_sort_order": meta["category_sort_order"],
-                            "asset_class_name": ac_name,
-                            "asset_class_id": meta["id"],
-                            "is_cash": category_code == "CASH" or ac_name == "Cash",
-                            "row_type": "asset",
-                        }
-                    )
+        if df_meta.empty:
+            return pd.DataFrame()
 
-        return pd.DataFrame(rows)
+        df = df_meta.copy()
+        df["row_type"] = "asset"
+        return df
 
     def _add_portfolio_calculations(
         self,
@@ -895,31 +996,13 @@ class AllocationCalculationEngine:
     def aggregate_presentation_levels(
         self,
         df: pd.DataFrame,
-    ) -> dict[str, pd.DataFrame]:
+    ) -> pd.DataFrame:
         """
-        Calculate all aggregation levels using pandas groupby.
-
-        REFACTORED: Eliminates all manual loops using vectorized operations.
-
-        Args:
-            df: Asset-level DataFrame from build_presentation_dataframe()
-
-        Returns:
-            Dict with DataFrames for each aggregation level:
-            - 'assets': Original asset-level data
-            - 'category_subtotals': Aggregated by category
-            - 'group_totals': Aggregated by group
-            - 'grand_total': Total across everything
-
-            All DataFrames have the same column structure with numeric values.
+        Calculate all aggregation levels and return single sorted DataFrame.
+        REFACTORED: efficient concatenation and vectorized variance calculation.
         """
         if df.empty:
-            return {
-                "assets": df,
-                "category_subtotals": pd.DataFrame(),
-                "group_totals": pd.DataFrame(),
-                "grand_total": pd.DataFrame(),
-            }
+            return pd.DataFrame()
 
         # Get numeric columns (exclude metadata)
         numeric_cols = [
@@ -928,119 +1011,153 @@ class AllocationCalculationEngine:
             if not col.startswith(("group_", "category_", "asset_class_", "row_", "is_"))
         ]
 
-        # Category subtotals: group by first two index levels
+        # 1. Base Assets
+        # Reset index to make group/category codes available as columns for concat
+        df_assets = df.reset_index()
+        df_assets["row_type"] = "asset"
+        df_assets["sort_rank"] = 0
+
+        # ... (Subtotal logic)
         category_counts = df.groupby(level=["group_code", "category_code"], sort=False).size()
+        non_redundant_categories = category_counts[category_counts > 1].index
+
+        # Calc sums
         category_subtotals = (
             df[numeric_cols].groupby(level=["group_code", "category_code"], sort=False).sum()
         )
-
-        # Filter redundant categories (only 1 asset)
-        non_redundant_categories = category_counts[category_counts > 1].index
+        # Filter
         category_subtotals = category_subtotals.loc[non_redundant_categories]
 
-        # Add metadata (VECTORIZED - NO LOOP)
         if not category_subtotals.empty:
-            metadata_cols = ["group_label", "category_label", "group_code", "category_code"]
-            # Filter to only existing columns to avoid KeyError (some might be in index)
+            metadata_cols = [
+                "group_label",
+                "category_label",
+                "group_code",
+                "category_code",
+                "group_sort_order",
+                "category_sort_order",
+            ]
             existing_meta = [c for c in metadata_cols if c in df.columns]
-            category_metadata = (
+            category_meta = (
                 df[existing_meta].groupby(level=["group_code", "category_code"], sort=False).first()
             )
-            category_subtotals = category_subtotals.join(category_metadata)
+            category_subtotals = category_subtotals.join(category_meta)
             category_subtotals["row_type"] = "subtotal"
+            category_subtotals["sort_rank"] = 1
+            # Reset index to align columns
+            category_subtotals = category_subtotals.reset_index()
 
-        # Group totals: group by first index level only
+        # ... (Group Total logic)
         group_counts = df.groupby(level="group_code", sort=False).size()
-        group_totals = df[numeric_cols].groupby(level="group_code", sort=False).sum()
-
-        # Filter redundant groups (only 1 asset child)
         non_redundant_groups = group_counts[group_counts > 1].index
+
+        group_totals = df[numeric_cols].groupby(level="group_code", sort=False).sum()
         group_totals = group_totals.loc[non_redundant_groups]
 
-        # Add metadata (VECTORIZED - NO LOOP)
         if not group_totals.empty:
-            metadata_cols = ["group_label", "group_code"]
+            metadata_cols = ["group_label", "group_code", "group_sort_order"]
             existing_meta = [c for c in metadata_cols if c in df.columns]
-            group_metadata = df[existing_meta].groupby(level="group_code", sort=False).first()
-            group_totals = group_totals.join(group_metadata)
+            group_meta = df[existing_meta].groupby(level="group_code", sort=False).first()
+            group_totals = group_totals.join(group_meta)
             group_totals["row_type"] = "group_total"
+            group_totals["sort_rank"] = 2
+            # Fill category info max for sorting
+            group_totals["category_sort_order"] = 99999
+            group_totals["category_code"] = "ZZZ"
+            group_totals["category_label"] = "Total"
+            group_totals = group_totals.reset_index()
 
-        # Grand total: sum all numeric columns
+        # ... (Grand Total)
         grand_total = df[numeric_cols].sum().to_frame().T
         grand_total["row_type"] = "grand_total"
-        grand_total.index = ["TOTAL"]
+        grand_total["sort_rank"] = 3
+        grand_total["group_sort_order"] = 99999
+        grand_total["group_code"] = "ZZZ"
+        grand_total["group_label"] = "Total"
+        grand_total["category_sort_order"] = 99999
+        grand_total["category_code"] = "ZZZ"
+        grand_total["category_label"] = ""
+        # grand_total has no MultiIndex, it's flat
 
-        aggregated = {
-            "assets": df,
-            "category_subtotals": category_subtotals,
-            "group_totals": group_totals,
-            "grand_total": grand_total,
-        }
+        # Concat
+        dfs_to_concat = [df_assets]
+        if not category_subtotals.empty:
+            dfs_to_concat.append(category_subtotals)
+        if not group_totals.empty:
+            dfs_to_concat.append(group_totals)
+        dfs_to_concat.append(grand_total)
 
-        # ADD: Calculate variance columns for all DataFrames
-        for _df_name, df_data in aggregated.items():
-            if not df_data.empty:
-                # Portfolio variances
-                if "portfolio_effective" in df_data.columns:
-                    df_data["portfolio_effective_variance"] = (
-                        df_data["portfolio_actual"] - df_data["portfolio_effective"]
+        combined_df = pd.concat(dfs_to_concat, ignore_index=True)
+
+        # Calculate Variance columns on the combined DataFrame
+        df_data = combined_df  # alias
+
+        # Portfolio variances
+        if "portfolio_effective" in df_data.columns:
+            df_data["portfolio_effective_variance"] = (
+                df_data["portfolio_actual"] - df_data["portfolio_effective"]
+            )
+            df_data["portfolio_effective_variance_pct"] = (
+                df_data["portfolio_actual_pct"] - df_data["portfolio_effective_pct"]
+            )
+
+        # Policy variances (if policy columns exist)
+        if "portfolio_explicit_target" in df_data.columns:
+            df_data["portfolio_policy_variance"] = (
+                df_data["portfolio_actual"] - df_data["portfolio_explicit_target"]
+            )
+            df_data["portfolio_policy_variance_pct"] = (
+                df_data["portfolio_actual_pct"] - df_data["portfolio_explicit_target_pct"]
+            )
+
+        # Account-level variances (for each account/type column)
+        # Pattern: {prefix}_actual vs {prefix}_effective or {prefix}_policy
+        # Identify prefixes from columns
+        prefixes = set()
+        for col in df_data.columns:
+            if col.endswith("_actual"):
+                prefixes.add(col[:-7])
+
+        for prefix in prefixes:
+            # Effective Variance (for Accounts and Account Types)
+            effective_col = f"{prefix}_effective"
+            if effective_col in df_data.columns:
+                df_data[f"{prefix}_variance"] = df_data[f"{prefix}_actual"] - df_data[effective_col]
+                # Percentage variance
+                actual_pct_col = f"{prefix}_actual_pct"
+                effective_pct_col = f"{prefix}_effective_pct"
+                if actual_pct_col in df_data.columns and effective_pct_col in df_data.columns:
+                    df_data[f"{prefix}_variance_pct"] = (
+                        df_data[actual_pct_col] - df_data[effective_pct_col]
                     )
-                    df_data["portfolio_effective_variance_pct"] = (
-                        df_data["portfolio_actual_pct"] - df_data["portfolio_effective_pct"]
+
+            # Policy Variance
+            policy_col = f"{prefix}_policy"
+            if policy_col in df_data.columns:
+                df_data[f"{prefix}_policy_variance"] = (
+                    df_data[f"{prefix}_actual"] - df_data[policy_col]
+                )
+                actual_pct_col = f"{prefix}_actual_pct"
+                policy_pct_col = f"{prefix}_policy_pct"
+                if actual_pct_col in df_data.columns and policy_pct_col in df_data.columns:
+                    df_data[f"{prefix}_policy_variance_pct"] = (
+                        df_data[actual_pct_col] - df_data[policy_pct_col]
                     )
 
-                # Policy variances (if policy columns exist)
-                if "portfolio_explicit_target" in df_data.columns:
-                    df_data["portfolio_policy_variance"] = (
-                        df_data["portfolio_actual"] - df_data["portfolio_explicit_target"]
-                    )
-                    df_data["portfolio_policy_variance_pct"] = (
-                        df_data["portfolio_actual_pct"] - df_data["portfolio_explicit_target_pct"]
-                    )
+        # Final Sort
+        combined_df = combined_df.sort_values(
+            by=[
+                "group_sort_order",
+                "group_code",
+                "category_sort_order",
+                "category_code",
+                "sort_rank",
+                "asset_class_name",
+            ],
+            ascending=[True, True, True, True, True, True],
+        )
 
-                # Account-level variances (for each account/type column)
-                # Pattern: {prefix}_actual vs {prefix}_effective or {prefix}_policy
-                for col in df_data.columns:
-                    if col.endswith("_actual"):
-                        prefix = col[:-7]  # Remove '_actual'
-
-                        # Effective Variance (for Accounts and Account Types)
-                        effective_col = f"{prefix}_effective"
-                        if effective_col in df_data.columns:
-                            df_data[f"{prefix}_variance"] = df_data[col] - df_data[effective_col]
-                            # Percentage variance
-                            actual_pct_col = f"{prefix}_actual_pct"
-                            effective_pct_col = f"{prefix}_effective_pct"
-                            if (
-                                actual_pct_col in df_data.columns
-                                and effective_pct_col in df_data.columns
-                            ):
-                                df_data[f"{prefix}_variance_pct"] = (
-                                    df_data[actual_pct_col] - df_data[effective_pct_col]
-                                )
-
-                        # Policy Variance (already calculated in _add_account_calculations but ensuring it exists for aggregates)
-                        # Actually, policy variance is linearly additive ($), but percentages are not additive in the same way?
-                        # Wait, aggregation logic:
-                        # Sum of (Actual - Policy) for assets should equal (Sum Actions - Sum Policy) for subtotal.
-                        # Since we summed `_actual` and `_policy` columns, we can just recalculate the difference.
-                        policy_col = f"{prefix}_policy"
-                        if policy_col in df_data.columns:
-                            df_data[f"{prefix}_policy_variance"] = (
-                                df_data[col] - df_data[policy_col]
-                            )
-                            # Percentage variance recalculation for aggregates
-                            actual_pct_col = f"{prefix}_actual_pct"
-                            policy_pct_col = f"{prefix}_policy_pct"
-                            if (
-                                actual_pct_col in df_data.columns
-                                and policy_pct_col in df_data.columns
-                            ):
-                                df_data[f"{prefix}_policy_variance_pct"] = (
-                                    df_data[actual_pct_col] - df_data[policy_pct_col]
-                                )
-
-        return aggregated
+        return combined_df
 
     def _calculate_account_totals(
         self,
@@ -1103,55 +1220,6 @@ class AllocationCalculationEngine:
 
         return {account.id: account.get_target_allocations_by_name() for account in accounts}
 
-    def _get_asset_class_metadata(
-        self,
-        user: Any,
-    ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, list[str]]]]:
-        """
-        Gather asset class hierarchy metadata.
-
-        Returns:
-            (ac_metadata, hierarchy)
-        """
-        from collections import defaultdict
-
-        from portfolio.models import AssetClass
-
-        asset_classes = AssetClass.objects.select_related("category", "category__parent").order_by(
-            "category__parent__sort_order", "category__sort_order", "name"
-        )
-
-        ac_metadata = {}
-        hierarchy: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
-
-        for ac in asset_classes:
-            if ac.category.parent:
-                group_code = ac.category.parent.code
-                group_label = ac.category.parent.label
-                group_sort_order = ac.category.parent.sort_order
-            else:
-                group_code = ac.category.code
-                group_label = ac.category.label
-                group_sort_order = ac.category.sort_order
-
-            cat_code = ac.category.code
-            cat_label = ac.category.label
-            cat_sort_order = ac.category.sort_order
-
-            ac_metadata[ac.name] = {
-                "id": ac.id,
-                "group_code": group_code,
-                "group_label": group_label,
-                "group_sort_order": group_sort_order,
-                "category_code": cat_code,
-                "category_label": cat_label,
-                "category_sort_order": cat_sort_order,
-            }
-
-            hierarchy[group_code][cat_code].append(ac.name)
-
-        return ac_metadata, dict(hierarchy)
-
     def _get_account_metadata(
         self,
         user: Any,
@@ -1210,7 +1278,6 @@ class AllocationCalculationEngine:
             Account,
             AccountTypeStrategyAssignment,
             Portfolio,
-            TargetAllocation,
         )
 
         result: dict[str, Any] = {
@@ -1252,15 +1319,27 @@ class AllocationCalculationEngine:
                 acc_strategy_map[acc.id] = acc.allocation_strategy_id
                 strategy_ids.add(acc.allocation_strategy_id)
 
-        # 2. Fetch all target allocations for these strategies
-        target_allocations = TargetAllocation.objects.filter(
-            strategy_id__in=strategy_ids
-        ).select_related("asset_class")
+        # 2. Fetch all target allocations for these strategies using DataFrame (Optimized)
+        df_targets = self._get_targets_df(user)
 
         # Build map: strategy_id -> {ac_id: target_pct}
         strategy_targets: dict[int, dict[int, Decimal]] = defaultdict(dict)
-        for ta in target_allocations:
-            strategy_targets[ta.strategy_id][ta.asset_class_id] = ta.target_percent
+
+        if not df_targets.empty:
+            # Filter for relevant strategies
+            # Ensure strategy_id matching types (int)
+            mask = df_targets["strategy_id"].isin(strategy_ids)
+            filtered_targets = df_targets[mask]
+
+            for _, row in filtered_targets.iterrows():
+                # Extract values (converting to Decimal if needed, though likely already Decimal from ORM)
+                sid = row["strategy_id"]
+                acid = row["asset_class_id"]
+                # Handle potential float conversion by pandas
+                val = row["target_percent"]
+                if not isinstance(val, Decimal):
+                    val = Decimal(str(val))
+                strategy_targets[sid][acid] = val
 
         # 3. Map targets to the result structure
         if portfolio_strategy_id:
@@ -1335,6 +1414,73 @@ class AllocationCalculationEngine:
 
         return variances
 
+    def _get_holdings_df(self, user: Any, account_id: int | None = None) -> pd.DataFrame:
+        """Get holdings as DataFrame - NO PYTHON LOOPS (NEW)."""
+        from django.db.models import OuterRef, Subquery
+
+        from portfolio.models import Holding, SecurityPrice
+
+        qs = Holding.objects.filter(account__user=user)
+
+        if account_id:
+            qs = qs.filter(account_id=account_id)
+
+        # Subquery for latest price to avoid N+1 and duplicates
+        latest_price = Subquery(
+            SecurityPrice.objects.filter(security_id=OuterRef("security_id")).values("price")[:1]
+        )
+
+        qs = (
+            qs.annotate(latest_price=latest_price)
+            .select_related(
+                "account",
+                "account__account_type",
+                "security",
+                "security__asset_class",
+            )
+            .values(
+                "account_id",
+                "account__name",
+                "account__account_type__code",
+                "account__account_type__label",
+                "account__account_type__group__name",
+                "security__ticker",
+                "security__name",
+                "security__asset_class_id",
+                "security__asset_class__name",
+                "shares",
+                "latest_price",
+            )
+        )
+
+        # Use iterator for memory efficiency if needed, but list is fine for reasonable size
+        data = list(qs)
+        df = pd.DataFrame(data)
+
+        if df.empty:
+            return pd.DataFrame()
+
+        df.columns = [
+            "account_id",
+            "account_name",
+            "account_type_code",
+            "account_type_label",
+            "account__account_type__group__name",
+            "ticker",
+            "security_name",
+            "asset_class_id",
+            "asset_class_name",
+            "shares",
+            "price",
+        ]
+
+        # Handle null prices and calculate value
+        df["price"] = df["price"].fillna(0.0).astype(float)
+        df["shares"] = df["shares"].astype(float)
+        df["value"] = df["shares"] * df["price"]
+
+        return df
+
     def get_account_totals(self, user: Any) -> dict[int, Decimal]:
         """
         Get current total value for all user accounts.
@@ -1359,13 +1505,13 @@ class AllocationCalculationEngine:
             {1: Decimal('50000.00'), 2: Decimal('75000.00')}
         """
         # Build holdings DataFrame (reuses existing efficient query)
-        df = self._build_holdings_dataframe(user)
+        df = self._get_holdings_df(user)
 
         if df.empty:
             return {}
 
         # Pandas vectorized aggregation - much faster than Python loops
-        account_totals = df.groupby(level="Account_ID")["Value"].sum()
+        account_totals = df.groupby("account_id")["value"].sum()
 
         # Convert to Decimal for consistency with domain models
         return {
@@ -1384,38 +1530,6 @@ class AllocationCalculationEngine:
         """
         account_totals = self.get_account_totals(user)
         return sum(account_totals.values(), Decimal("0.00"))
-
-    def _build_holdings_dataframe(self, user: Any) -> pd.DataFrame:
-        """
-        Build a flat DataFrame of holdings for the user.
-        Exposed internally to support different aggregation types.
-        """
-        from portfolio.models import Holding
-
-        holdings = Holding.objects.filter(account__user=user).select_related(
-            "account", "security__asset_class"
-        )
-
-        if not holdings.exists():
-            return pd.DataFrame()
-
-        data = []
-        for h in holdings:
-            price = h.latest_price or 0
-            value = float(h.shares * price)
-            data.append(
-                {
-                    "Account_ID": h.account_id,
-                    "Asset_Class": h.security.asset_class.name
-                    if h.security.asset_class
-                    else "Unclassified",
-                    "Value": value,
-                }
-            )
-
-        df = pd.DataFrame(data)
-        df = df.set_index(["Account_ID", "Asset_Class"])
-        return df
 
     def _empty_allocations(self) -> dict[str, pd.DataFrame]:
         """Return empty DataFrames for empty portfolio."""
@@ -1444,15 +1558,16 @@ class AllocationCalculationEngine:
             logger.info("no_holdings_for_presentation", user_id=user.id)
             return []
 
-        # Step 2: Aggregate at all levels (includes variance calculations)
-        aggregated = self.aggregate_presentation_levels(df)
+        # Step 2: Aggregate at all levels and sort (includes variance calculations)
+        # Returns single sorted DataFrame
+        aggregated_df = self.aggregate_presentation_levels(df)
 
         # Step 3: Format for display
         _, accounts_by_type = self._get_account_metadata(user)
         strategies = self._get_target_strategies(user)
 
         return self._format_presentation_rows(
-            aggregated_data=aggregated,
+            df=aggregated_df,
             accounts_by_type=accounts_by_type,
             target_strategies=strategies,
         )
@@ -1482,50 +1597,21 @@ class AllocationCalculationEngine:
 
     def _format_presentation_rows(
         self,
-        aggregated_data: dict[str, pd.DataFrame],
+        df: pd.DataFrame,
         accounts_by_type: dict[int, list[dict[str, Any]]],
         target_strategies: dict[str, Any],
     ) -> list[dict[str, Any]]:
         logger.info("formatting_presentation_rows")
         """
-        Format aggregated numeric DataFrames into display-ready rows.
+        Format sorted aggregation DataFrame into display-ready rows.
         """
-        df_assets = aggregated_data["assets"]
-        df_subtotals = aggregated_data["category_subtotals"]
-        df_group_totals = aggregated_data["group_totals"]
-        df_grand_total = aggregated_data["grand_total"]
-
-        if df_assets.empty:
+        if df.empty:
             return []
 
-        # Step 1: Convert assets to dicts (using fast to_dict('records'))
-        asset_rows = self._dataframe_rows_to_dicts(df_assets, accounts_by_type, target_strategies)
-
-        # Step 2: Convert aggregation rows to dicts
-        subtotal_rows = (
-            self._dataframe_rows_to_dicts(df_subtotals, accounts_by_type, target_strategies)
-            if not df_subtotals.empty
-            else []
-        )
-
-        group_rows = (
-            self._dataframe_rows_to_dicts(df_group_totals, accounts_by_type, target_strategies)
-            if not df_group_totals.empty
-            else []
-        )
-
-        grand_rows = (
-            self._dataframe_rows_to_dicts(df_grand_total, accounts_by_type, target_strategies)
-            if not df_grand_total.empty
-            else []
-        )
-
-        # Step 3: Interleave rows in hierarchical order
-        result = self._interleave_hierarchical_rows(
-            asset_rows, subtotal_rows, group_rows, grand_rows
-        )
-
-        return result
+        # Convert sorted DataFrame rows to dicts
+        # Since df is already sorted by aggregate_presentation_levels,
+        # we just need to format each row.
+        return self._dataframe_rows_to_dicts(df, accounts_by_type, target_strategies)
 
     def _dataframe_rows_to_dicts(
         self,
@@ -1567,9 +1653,12 @@ class AllocationCalculationEngine:
             elif row_type == "subtotal":
                 asset_class_name = f"{row.get('category_label', '')} Total"
 
+        raw_acid = row.get("asset_class_id", 0)
+        acid = int(raw_acid) if pd.notna(raw_acid) else 0
+
         result = {
             "row_type": row_type,
-            "asset_class_id": int(row.get("asset_class_id", 0)),
+            "asset_class_id": acid,
             "asset_class_name": asset_class_name,
             "group_code": row.get("group_code", ""),
             "group_label": row.get("group_label", ""),
@@ -1654,38 +1743,6 @@ class AllocationCalculationEngine:
             )
 
         result["account_types"] = account_type_columns
-        return result
-
-    def _interleave_hierarchical_rows(
-        self,
-        asset_rows: list[dict[str, Any]],
-        subtotal_rows: list[dict[str, Any]],
-        group_rows: list[dict[str, Any]],
-        grand_rows: list[dict[str, Any]],
-    ) -> list[dict[str, Any]]:
-        """
-        Interleave asset/subtotal/group/grand rows in hierarchical order.
-        """
-        subtotals_by_key = {(r["group_code"], r["category_code"]): r for r in subtotal_rows}
-        groups_by_key = {r["group_code"]: r for r in group_rows}
-
-        from collections import defaultdict
-
-        grouped: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
-        for row in asset_rows:
-            grouped[row["group_code"]][row["category_code"]].append(row)
-
-        result = []
-        for group_code in grouped:
-            cat_dict = grouped[group_code]
-            for category_code in cat_dict:
-                result.extend(cat_dict[category_code])
-                if (group_code, category_code) in subtotals_by_key:
-                    result.append(subtotals_by_key[(group_code, category_code)])
-            if group_code in groups_by_key:
-                result.append(groups_by_key[group_code])
-
-        result.extend(grand_rows)
         return result
 
     def _format_holdings_rows(
