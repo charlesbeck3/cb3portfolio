@@ -23,25 +23,22 @@ class PortfolioExtrasTests(TestCase):
         self.assertEqual(percentage_of("invalid", 100), Decimal("0"))
 
     def test_accounting_amount(self) -> None:
-        self.assertIn("1,234", accounting_amount(1234))
-        self.assertIn("visibility: hidden", accounting_amount(1234))
-        self.assertIn("1,234.00", accounting_amount(1234, 2))
+        self.assertEqual(accounting_amount(1234), "$1,234")
+        self.assertEqual(accounting_amount(1234, 2), "$1,234.00")
         self.assertEqual(accounting_amount(-1234), "($1,234)")
         self.assertEqual(accounting_amount(-1234.56, 2), "($1,234.56)")
         # Invalid
         self.assertEqual(accounting_amount("invalid"), "-")
 
     def test_accounting_percent(self) -> None:
-        self.assertIn("12.5%", accounting_percent(12.5))
-        self.assertIn("visibility: hidden", accounting_percent(12.5))
-        self.assertIn("12.50%", accounting_percent(12.5, 2))
+        self.assertEqual(accounting_percent(12.5), "12.5%")
+        self.assertEqual(accounting_percent(12.5, 2), "12.50%")
         self.assertEqual(accounting_percent(-12.5), "(12.5%)")
         # Invalid
         self.assertEqual(accounting_percent("invalid"), "-")
 
     def test_accounting_number(self) -> None:
-        self.assertIn("1,234.56", accounting_number(1234.56))
-        self.assertIn("visibility: hidden", accounting_number(1234.56))
+        self.assertEqual(accounting_number(1234.56), "1,234.56")
         self.assertEqual(accounting_number(-1234.56), "(1,234.56)")
         # Invalid
         self.assertEqual(accounting_number("invalid"), "-")

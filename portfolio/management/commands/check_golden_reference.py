@@ -618,7 +618,6 @@ class Command(BaseCommand, PortfolioTestMixin):
             aggregated_data=aggregated,
             accounts_by_type=accounts_by_type,
             target_strategies=strategies_data,
-            mode="percent",
         )
 
         self.stdout.write(self.style.MIGRATE_LABEL("REFACTORED ALLOCATION TABLE (PERCENT MODE)"))
@@ -631,9 +630,9 @@ class Command(BaseCommand, PortfolioTestMixin):
                 {
                     "Level": row["row_type"],
                     "Asset Class": row["asset_class_name"],
-                    "Current": row["portfolio"]["actual"],
-                    "Target": row["portfolio"]["effective"],
-                    "Var": row["portfolio"]["effective_variance"],
+                    "Current": f"{row['portfolio']['actual_pct']:.1f}%",
+                    "Target": f"{row['portfolio']['effective_pct']:.1f}%",
+                    "Var": f"{row['portfolio']['effective_variance_pct']:+.1f}%",
                 }
             )
 

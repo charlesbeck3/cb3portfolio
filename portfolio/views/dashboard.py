@@ -38,18 +38,18 @@ class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             _, accounts_by_type = engine._get_account_metadata(user)
             strategies = engine._get_target_strategies(user)
 
-            context["allocation_rows_money"] = formatter.format_presentation_rows(
+            allocation_rows = formatter.format_presentation_rows(
                 aggregated_data=aggregated,
                 accounts_by_type=accounts_by_type,
                 target_strategies=strategies,
-                mode="dollar",
             )
-            context["allocation_rows_percent"] = formatter.format_presentation_rows(
-                aggregated_data=aggregated,
-                accounts_by_type=accounts_by_type,
-                target_strategies=strategies,
-                mode="percent",
-            )
+            # Pass same raw data to both, template will handle formatting based on mode
+            context["allocation_rows_money"] = allocation_rows
+            context["allocation_rows_percent"] = allocation_rows
+
+            # Extract account types for column structure (required by index.html)
+            if allocation_rows:
+                context["account_types"] = allocation_rows[0].get("account_types", [])
         else:
             context["allocation_rows_money"] = []
             context["allocation_rows_percent"] = []

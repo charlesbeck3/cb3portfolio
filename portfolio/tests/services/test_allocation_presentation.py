@@ -4,7 +4,6 @@ Tests for allocation presentation formatting.
 Tests: portfolio/services/allocation_presentation.py
 """
 
-from decimal import Decimal
 from typing import Any
 
 import pandas as pd
@@ -22,33 +21,10 @@ class TestAllocationPresentationFormatter:
     def formatter(self) -> AllocationPresentationFormatter:
         return AllocationPresentationFormatter()
 
-    def test_format_value_percent_mode(self, formatter: AllocationPresentationFormatter) -> None:
-        """Verify percent formatting."""
-        assert formatter._format_value(42.5, "percent") == "42.5%"
-        assert formatter._format_value(0.0, "percent") == "0.0%"
-
-    def test_format_value_dollar_mode(self, formatter: AllocationPresentationFormatter) -> None:
-        """Verify dollar formatting."""
-        assert formatter._format_value(1234.56, "dollar") == "$1,235"
-        assert formatter._format_value(0.0, "dollar") == "$0"
-
-    def test_format_variance_with_sign(self, formatter: AllocationPresentationFormatter) -> None:
-        """Verify variance formatting includes sign."""
-        assert formatter._format_variance(5.2, "percent") == "+5.2%"
-        assert formatter._format_variance(-3.1, "percent") == "-3.1%"
-        assert formatter._format_variance(0.0, "percent") == "+0.0%"
-
-    def test_format_money_accounting_style(
-        self, formatter: AllocationPresentationFormatter
-    ) -> None:
-        """Verify money formatting uses accounting style for negatives."""
-        assert formatter._format_money(Decimal("1234.56")) == "$1,235"
-        assert formatter._format_money(Decimal("-1234.56")) == "($1,235)"
-
     def test_format_presentation_rows_structure(
         self, formatter: AllocationPresentationFormatter
     ) -> None:
-        """Verify formatted rows have correct structure."""
+        """Verify formatted rows have correct structure and raw values."""
         asset_data = {
             "group_code": ["EQUITY"],
             "category_code": ["US"],
@@ -83,15 +59,18 @@ class TestAllocationPresentationFormatter:
             aggregated_data=aggregated,
             accounts_by_type=accounts_by_type,
             target_strategies=target_strategies,
-            mode="percent",
         )
 
         assert isinstance(result, list)
         assert len(result) == 1
         row = result[0]
         assert row["asset_class_name"] == "US Equities"
-        assert isinstance(row["portfolio"]["actual"], str)
-        assert "%" in row["portfolio"]["actual"]
+
+        # Verify raw numeric values are present
+        assert isinstance(row["portfolio"]["actual"], float)
+        assert row["portfolio"]["actual"] == 100.0
+        assert row["portfolio"]["actual_pct"] == 10.0
+        assert row["portfolio"]["effective"] == 120.0
 
     def test_policy_variance_available_in_presentation_rows(
         self, formatter: AllocationPresentationFormatter
@@ -99,20 +78,17 @@ class TestAllocationPresentationFormatter:
         """
         Verify that portfolio['policy_variance'] is available in the formatted rows.
         """
-        # Setup: Create a mock aggregated_data structure similar to what the engine produces
-        # We need a dataframe with portfolio_actual and portfolio_explicit_target columns
-
-        # 1. Mock DataFrame with necessary columns for policy variance calculation
+        # 1. Mock DataFrame with necessary columns
         data = {
             "asset_class_name": ["Stocks", "Bonds"],
             "portfolio_actual": [600.0, 400.0],
             "portfolio_actual_pct": [60.0, 40.0],
             "portfolio_explicit_target": [500.0, 500.0],  # 50/50 target
             "portfolio_explicit_target_pct": [50.0, 50.0],
-            # Calculated fields that engine normally produces
-            "portfolio_policy_variance": [100.0, -100.0],  # 600-500, 400-500
+            # Calculated fields
+            "portfolio_policy_variance": [100.0, -100.0],
             "portfolio_policy_variance_pct": [10.0, -10.0],
-            # Effective fields (for completeness, though not the focus)
+            # Effective fields
             "portfolio_effective": [550.0, 450.0],
             "portfolio_effective_pct": [55.0, 45.0],
             "portfolio_effective_variance": [50.0, -50.0],
@@ -139,16 +115,14 @@ class TestAllocationPresentationFormatter:
             ),
         }
 
-        # We need to mock accounts_by_type and target_strategies as they are required args
         accounts_by_type: dict[int, list[dict[str, Any]]] = {}
         target_strategies: dict[str, Any] = {}
 
-        # 4. Format Rows
+        # 4. Format Rows (no mode needed)
         rows = formatter.format_presentation_rows(
             aggregated_data=aggregated_data,
             accounts_by_type=accounts_by_type,
             target_strategies=target_strategies,
-            mode="dollar",
         )
 
         # 5. Verify Results
@@ -158,9 +132,9 @@ class TestAllocationPresentationFormatter:
         equity_row = next(r for r in rows if r["asset_class_name"] == "Stocks")
         assert "portfolio" in equity_row
         assert "policy_variance" in equity_row["portfolio"]
-        # The formatter formats this as string
-        assert equity_row["portfolio"]["policy_variance"] == "$100"
-        assert equity_row["portfolio"]["policy_variance_raw"] == 100.0
+        # The formatter returns raw float
+        assert equity_row["portfolio"]["policy_variance"] == 100.0
+        assert equity_row["portfolio"]["policy_variance_pct"] == 10.0
 
     def test_formatter_exposes_policy_variance(
         self, formatter: AllocationPresentationFormatter
@@ -174,20 +148,16 @@ class TestAllocationPresentationFormatter:
             "portfolio_actual": 100.0,
             "portfolio_explicit_target": 80.0,
             "portfolio_policy_variance": 20.0,
-            "portfolio_policy_variance_fmt": "+$20",
             "portfolio_effective_variance": 10.0,
-            "portfolio_effective_variance_fmt": "+$10",
         }
 
+        # No mode needed
         result = formatter._build_row_dict_from_formatted_data(
             row=row_data,
             accounts_by_type={},
             target_strategies={},
-            mode="dollar",
         )
 
-        # Verify the dict structure that the template receives
-        assert result["portfolio"]["policy_variance"] == "+$20"
-        assert result["portfolio"]["policy_variance_raw"] == 20.0
-        assert result["portfolio"]["effective_variance"] == "+$10"
-        assert result["portfolio"]["effective_variance_raw"] == 10.0
+        # Verify the dict structure
+        assert result["portfolio"]["policy_variance"] == 20.0
+        assert result["portfolio"]["effective_variance"] == 10.0

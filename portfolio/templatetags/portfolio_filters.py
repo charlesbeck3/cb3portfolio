@@ -2,7 +2,6 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django import template
-from django.utils.safestring import mark_safe
 
 register = template.Library()
 
@@ -40,7 +39,7 @@ def _format_accounting(value: Any, decimals: int = 0, prefix: str = "", suffix: 
     if is_negative:
         return f"({result})"
 
-    return mark_safe(f'{result}<span style="visibility: hidden">)</span>')  # noqa: S308
+    return result
 
 
 @register.filter

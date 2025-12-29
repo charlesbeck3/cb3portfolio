@@ -40,18 +40,13 @@ class TargetAllocationViewService:
             _, accounts_by_type = engine._get_account_metadata(user)
             strategies_data = engine._get_target_strategies(user)
 
-            allocation_rows_percent = formatter.format_presentation_rows(
+            allocation_rows = formatter.format_presentation_rows(
                 aggregated_data=aggregated,
                 accounts_by_type=accounts_by_type,
                 target_strategies=strategies_data,
-                mode="percent",
             )
-            allocation_rows_money = formatter.format_presentation_rows(
-                aggregated_data=aggregated,
-                accounts_by_type=accounts_by_type,
-                target_strategies=strategies_data,
-                mode="dollar",
-            )
+            allocation_rows_percent = allocation_rows
+            allocation_rows_money = allocation_rows
 
             # Calculate portfolio total for display
             portfolio_total = Decimal(float(aggregated["grand_total"].iloc[0]["portfolio_actual"]))
