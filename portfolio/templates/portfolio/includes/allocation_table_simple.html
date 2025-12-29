@@ -43,7 +43,7 @@
                 <td class="text-end pe-2 table-active col-mode-effective {% if row.is_grand_total %}text-white{% endif %}">{{ row.portfolio.effective|safe }}</td>
                 <td class="text-end pe-2 table-active fw-bold variance-col {{ row.portfolio.effective_variance_raw|variance_css_class }} {% if row.is_grand_total %}text-white{% endif %}"
                     data-effective-variance="{{ row.portfolio.effective_variance|safe }}"
-                    data-policy-variance="{{ row.portfolio.effective_variance|safe }}"> <!-- Portfolio only has effective variance currently, or we might need to clarify if it has policy variance -->
+                    data-policy-variance="{{ row.portfolio.policy_variance|safe }}"> <!-- Portfolio only has effective variance currently, or we might need to clarify if it has policy variance -->
                     <span class="variance-value">{{ row.portfolio.effective_variance|safe }}</span>
                 </td>
             </tr>
