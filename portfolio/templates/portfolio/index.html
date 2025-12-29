@@ -64,30 +64,6 @@
                     </div>
                 </div>
 
-                <!-- New Pandas Engine Tables -->
-                {% if allocation_by_asset_class %}
-                <div class="card mt-3">
-                    <div class="card-header bg-info text-white">
-                        Pandas Engine Allocations (Debug)
-                    </div>
-                    <div class="card-body">
-                        <h4 class="mt-2">By Asset Class</h4>
-                        <div class="table-responsive">
-                            {{ allocation_by_asset_class|safe }}
-                        </div>
-
-                        <h4 class="mt-4">By Account Type</h4>
-                        <div class="table-responsive">
-                            {{ allocation_by_account_type|safe }}
-                        </div>
-
-                        <h4 class="mt-4">By Account</h4>
-                        <div class="table-responsive">
-                            {{ allocation_by_account|safe }}
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
             </div>
         </div>
     </div>
