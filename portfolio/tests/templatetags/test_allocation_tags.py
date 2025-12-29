@@ -9,8 +9,6 @@ from decimal import Decimal
 import pytest
 
 from portfolio.templatetags.allocation_tags import (
-    accounting_format,
-    accounting_percent,
     row_css_class,
     variance_css_class,
 )
@@ -43,17 +41,3 @@ class TestAllocationTags:
         assert variance_css_class("($1,000)") == "variance-negative"
         assert variance_css_class("$500") == "variance-positive"
         assert variance_css_class("invalid") == ""
-
-    def test_accounting_format(self) -> None:
-        """Verify numeric formatting in accounting style."""
-        assert accounting_format(1234.567, 2) == "1,234.57"
-        assert accounting_format(Decimal("1000"), 0) == "1,000"
-        assert accounting_format(None) == "-"
-        assert accounting_format("Already String") == "Already String"
-
-    def test_accounting_percent(self) -> None:
-        """Verify percentage formatting in accounting style."""
-        assert accounting_percent(12.34, 1) == "12.3%"
-        assert accounting_percent(50, 0) == "50%"
-        assert accounting_percent(None) == "-"
-        assert accounting_percent("Already String") == "Already String"

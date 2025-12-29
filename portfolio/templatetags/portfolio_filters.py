@@ -22,48 +22,67 @@ def percentage_of(value: Any, total: Any) -> Decimal:
         return Decimal("0")
 
 
-def _format_accounting(value: Any, decimals: int = 0, prefix: str = "", suffix: str = "") -> str:
+@register.filter
+def money(value: Any, decimals: int = 0) -> str:
+    """
+    Format as $1,234 or ($1,234) for negatives.
+
+    Args:
+        decimals: Number of decimal places (default: 0)
+
+    Examples:
+        {{ 1234.56|money }}    -> $1,235
+        {{ -1234.56|money }}   -> ($1,235)
+        {{ 1234.56|money:2 }}  -> $1,234.56
+    """
     try:
-        val_f = float(str(value))
+        val = float(value)
+        is_neg = val < 0
+        formatted = f"${abs(val):,.{decimals}f}"
+        return f"({formatted})" if is_neg else formatted
     except (ValueError, TypeError):
-        return "-"
-
-    is_negative = val_f < 0
-    abs_val = abs(val_f)
-
-    fmt = f"{{:,.{decimals}f}}"
-    formatted_num = fmt.format(abs_val)
-
-    result = f"{prefix}{formatted_num}{suffix}"
-
-    if is_negative:
-        return f"({result})"
-
-    return result
+        return str(value)
 
 
 @register.filter
-def accounting_amount(value: Any, decimals: int = 0) -> str:
+def percent(value: Any, decimals: int = 1) -> str:
     """
-    Format currency in accounting style: (1,234.00) for negative, 1,234.00 for positive (aligned).
-    """
+    Format as 12.5% or (12.5%) for negatives.
 
-    return _format_accounting(value, decimals, prefix="$")
+    Args:
+        decimals: Number of decimal places (default: 1)
+
+    Examples:
+        {{ 12.5|percent }}     -> 12.5%
+        {{ -12.5|percent }}    -> (12.5%)
+        {{ 12.345|percent:2 }} -> 12.35%
+    """
+    try:
+        val = float(value)
+        is_neg = val < 0
+        formatted = f"{abs(val):.{decimals}f}%"
+        return f"({formatted})" if is_neg else formatted
+    except (ValueError, TypeError):
+        return str(value)
 
 
 @register.filter
-def accounting_number(value: Any, decimals: int = 2) -> str:
+def number(value: Any, decimals: int = 0) -> str:
     """
-    Format number in accounting style: (1,234.00).
+    Format as 1,234 or (1,234) for negatives.
+
+    Args:
+        decimals: Number of decimal places (default: 0)
+
+    Examples:
+        {{ 1234.56|number }}   -> 1,235
+        {{ -1234.56|number }}  -> (1,235)
+        {{ 1234.56|number:2 }} -> 1,234.56
     """
-
-    return _format_accounting(value, decimals)
-
-
-@register.filter
-def accounting_percent(value: Any, decimals: int = 1) -> str:
-    """
-    Format percent in accounting style: (12.5%).
-    """
-
-    return _format_accounting(value, decimals, suffix="%")
+    try:
+        val = float(value)
+        is_neg = val < 0
+        formatted = f"{abs(val):,.{decimals}f}"
+        return f"({formatted})" if is_neg else formatted
+    except (ValueError, TypeError):
+        return str(value)

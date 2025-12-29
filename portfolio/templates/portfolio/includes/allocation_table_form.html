@@ -1,4 +1,5 @@
 {% load allocation_tags %}
+{% load portfolio_filters %}
 {% with account_types=rows.0.account_types %}
 <table class="table table-bordered table-striped table-hover mb-0 align-middle target-allocation-table" id="{{ table_id }}">
     <thead class="table-light">
@@ -36,6 +37,7 @@
                         <div class="fw-normal mt-1">
                             {% if mode == 'percent' %}
                             <select name="strategy_acc_{{ acc.id }}" class="form-select form-select-sm d-inline-block w-auto py-0 px-2" style="font-size: 0.75rem;">
+                                <option value="">-- Use Default (Type Strategy) --</option>
                                 <option value="">-- Use Default (Type Strategy) --</option>
                                 {% for s in strategies %}
                                     <option value="{{ s.id }}" {% if acc.allocation_strategy_id == s.id %}selected{% endif %}>{{ s.name }}</option>
@@ -82,48 +84,104 @@
             <td class="ps-4">{{ row.asset_class_name }}</td>
 
             {% for group in row.account_types %}
-                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ group.actual|safe }}</td>
-
-                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% endif %} col-mode-policy d-none">
-                    {{ group.policy|default:"--"|safe }}
+                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">
+                    {% if mode == 'percent' %}
+                        <span class="percent">{{ group.actual_pct|percent }}</span>
+                    {% else %}
+                        <span class="money">{{ group.actual|money }}</span>
+                    {% endif %}
                 </td>
 
-                <td class="text-end pe-1 small fw-bold {% if row.is_grand_total %}text-white{% else %}text-muted{% endif %} col-mode-effective">{{ group.effective|safe }}</td>
-                <td class="text-end pe-1 small fw-bold variance-col {{ group.effective_variance_raw|variance_css_class }}"
-                    data-effective-variance="{{ group.effective_variance|safe }}"
-                    data-policy-variance="{{ group.policy_variance|safe }}"
+                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% endif %} col-mode-policy d-none">
+                     {% if mode == 'percent' %}
+                        <span class="percent">{{ group.policy_pct|default:0|percent }}</span>
+                     {% else %}
+                        <span class="money">{{ group.policy|default:0|money }}</span>
+                     {% endif %}
+                </td>
+
+                <td class="text-end pe-1 small fw-bold {% if row.is_grand_total %}text-white{% else %}text-muted{% endif %} col-mode-effective">
+                    {% if mode == 'percent' %}
+                        <span class="percent">{{ group.effective_pct|percent }}</span>
+                    {% else %}
+                        <span class="money">{{ group.effective|money }}</span>
+                    {% endif %}
+                </td>
+                <td class="text-end pe-1 small fw-bold variance-col {{ group.effective_variance|variance_css_class }}"
+                    data-effective-variance="{% if mode == 'percent' %}{{ group.effective_variance_pct|percent }}{% else %}{{ group.effective_variance|money }}{% endif %}"
+                    data-policy-variance="{% if mode == 'percent' %}{{ group.policy_variance_pct|percent }}{% else %}{{ group.policy_variance|money }}{% endif %}"
                     data-effective-variance-pct="{{ group.effective_variance_pct }}"
                     data-policy-variance-pct="{{ group.policy_variance_pct }}">
-                    <span class="variance-value">{{ group.effective_variance|safe }}</span>
+                    <span class="variance-value">
+                        {% if mode == 'percent' %}
+                            <span class="percent">{{ group.effective_variance_pct|percent }}</span>
+                        {% else %}
+                            <span class="money">{{ group.effective_variance|money }}</span>
+                        {% endif %}
+                    </span>
                 </td>
 
                 {% for acc in group.accounts %}
-                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">{{ acc.actual|safe }}</td>
                     <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">
-                        {{ acc.policy|safe }}
+                        {% if mode == 'percent' %}
+                            <span class="percent">{{ acc.actual_pct|percent }}</span>
+                        {% else %}
+                            <span class="money">{{ acc.actual|money }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">
+                        {% if mode == 'percent' %}
+                            <span class="percent">{{ acc.policy_pct|percent }}</span>
+                        {% else %}
+                            <span class="money">{{ acc.policy|money }}</span>
+                        {% endif %}
                     </td>
                     <td class="text-end pe-2 small table-warning d-none col-acc-{{ group.id }}">
                          <!-- Individual accounts only have policy variance -->
-                         <span class="variance-value">{{ acc.policy_variance|safe }}</span>
+                         <span class="variance-value">
+                            {% if mode == 'percent' %}
+                                <span class="percent">{{ acc.policy_variance_pct|percent }}</span>
+                            {% else %}
+                                <span class="money">{{ acc.policy_variance|money }}</span>
+                            {% endif %}
+                         </span>
                     </td>
                 {% endfor %}
             {% endfor %}
 
-            <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">{{ row.portfolio.actual|safe }}</td>
+            <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">
+                {% if mode == 'percent' %}
+                    <span class="percent">{{ row.portfolio.actual_pct|percent }}</span>
+                {% else %}
+                    <span class="money">{{ row.portfolio.actual|money }}</span>
+                {% endif %}
+            </td>
             <td class="text-end pe-1 table-active small {% if row.is_grand_total %}text-white{% else %}text-muted{% endif %} col-mode-policy d-none"
                 {% if row.is_cash %}id="cash-exp-target"
                 {% elif row.is_subtotal %}id="sub-total-exp-target-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-exp-target-{{ row.asset_class_id }}"{% endif %}
-            >{{ row.portfolio.explicit_target|safe }}</td>
+            >
+                {% if mode == 'percent' %}
+                    <span class="percent">{{ row.portfolio.explicit_target_pct|percent }}</span>
+                {% else %}
+                    <span class="money">{{ row.portfolio.explicit_target|money }}</span>
+                {% endif %}
+            </td>
             <td class="text-end pe-1 table-active small {% if row.is_grand_total %}text-white{% endif %} col-mode-effective"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-total"
                 {% elif row.is_subtotal %}id="sub-total-target-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-total-{{ row.asset_class_id }}"{% endif %}
-            >{{ row.portfolio.effective|safe }}</td>
-            <td class="text-end pe-2 table-active fw-bold variance-col {{ row.portfolio.effective_variance_raw|variance_css_class }}"
-                data-effective-variance="{{ row.portfolio.effective_variance|safe }}"
-                data-policy-variance="{{ row.portfolio.policy_variance|safe }}"
+            >
+                {% if mode == 'percent' %}
+                    <span class="percent">{{ row.portfolio.effective_pct|percent }}</span>
+                {% else %}
+                    <span class="money">{{ row.portfolio.effective|money }}</span>
+                {% endif %}
+            </td>
+            <td class="text-end pe-2 table-active fw-bold variance-col {{ row.portfolio.effective_variance|variance_css_class }}"
+                data-effective-variance="{% if mode == 'percent' %}{{ row.portfolio.effective_variance_pct|percent }}{% else %}{{ row.portfolio.effective_variance|money }}{% endif %}"
+                data-policy-variance="{% if mode == 'percent' %}{{ row.portfolio.policy_variance_pct|percent }}{% else %}{{ row.portfolio.policy_variance|money }}{% endif %}"
                 data-effective-variance-pct="{{ row.portfolio.effective_variance_pct }}"
                 data-policy-variance-pct="{{ row.portfolio.policy_variance_pct }}"
                 data-category-code="{{ row.category_code }}"
@@ -131,7 +189,13 @@
                 {% elif row.is_subtotal %}id="sub-total-var-{{ row.category_code }}"
                 {% elif not row.is_group_total and not row.is_grand_total %}id="row-var-{{ row.asset_class_id }}"{% endif %}
             >
-                <span class="variance-value">{{ row.portfolio.effective_variance|safe }}</span>
+                <span class="variance-value">
+                    {% if mode == 'percent' %}
+                        <span class="percent">{{ row.portfolio.effective_variance_pct|percent }}</span>
+                    {% else %}
+                        <span class="money">{{ row.portfolio.effective_variance|money }}</span>
+                    {% endif %}
+                </span>
             </td>
         </tr>
         {% endfor %}

@@ -237,3 +237,23 @@ body.sidebar-collapsed #main-content-column {
         font-size: 0.7rem;
     }
 }
+
+/* Number alignment styles for accounting format */
+.money, .percent, .number {
+    display: inline-block;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.money {
+    min-width: 8ch;
+}
+
+.percent {
+    min-width: 6ch;
+}
+
+.number {
+    min-width: 6ch;
+}

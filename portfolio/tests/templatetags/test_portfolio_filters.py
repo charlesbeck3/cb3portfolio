@@ -9,9 +9,6 @@ from decimal import Decimal
 import pytest
 
 from portfolio.templatetags.portfolio_filters import (
-    accounting_amount,
-    accounting_number,
-    accounting_percent,
     percentage_of,
 )
 
@@ -27,32 +24,63 @@ class TestPortfolioFilters:
         assert percentage_of(10, 0) == Decimal("0")
         assert percentage_of("invalid", 100) == Decimal("0")
 
-    def test_accounting_amount(self) -> None:
-        """Verify currency formatting in accounting style."""
-        # Note: _format_accounting produces mark_safe strings with hidden span for alignment
-        res = accounting_amount(1234.56, 2)
-        assert "$1,234.56" in res
 
-        res_neg = accounting_amount(-1234.56, 2)
-        assert res_neg == "($1,234.56)"
+@pytest.mark.templatetags
+@pytest.mark.unit
+class TestSimpleFilters:
+    """Tests for simple money, percent, and number filters."""
 
-    def test_accounting_number(self) -> None:
-        """Verify number formatting in accounting style."""
-        res = accounting_number(1234.567, 2)
-        assert "1,234.57" in res
+    def test_money_positive(self) -> None:
+        """Verify money formatting for positive values."""
+        from portfolio.templatetags.portfolio_filters import money
 
-        res_neg = accounting_number(-1234.567, 2)
-        assert res_neg == "(1,234.57)"
+        assert money(1234.56) == "$1,235"
+        assert money(1234) == "$1,234"
+        assert money(0) == "$0"
+        # Test with decimals
+        assert money(1234.56, 2) == "$1,234.56"
 
-    def test_accounting_percent(self) -> None:
-        """Verify percentage formatting in accounting style."""
-        res = accounting_percent(12.34, 1)
-        assert "12.3%" in res
+    def test_money_negative(self) -> None:
+        """Verify money formatting for negative values."""
+        from portfolio.templatetags.portfolio_filters import money
 
-        res_neg = accounting_percent(-12.34, 1)
-        assert res_neg == "(12.3%)"
+        assert money(-1234.56) == "($1,235)"
+        assert money(-1234) == "($1,234)"
+        # Test with decimals
+        assert money(-1234.56, 2) == "($1,234.56)"
 
-    def test_invalid_inputs(self) -> None:
-        """Verify handling of invalid numeric inputs."""
-        assert accounting_amount("invalid") == "-"
-        assert accounting_number(None) == "-"
+    def test_money_invalid(self) -> None:
+        """Verify money handles invalid inputs."""
+        from portfolio.templatetags.portfolio_filters import money
+
+        assert money("invalid") == "invalid"
+        assert money(None) == "None"
+
+    def test_percent_default_decimals(self) -> None:
+        """Verify percent formatting with default 1 decimal."""
+        from portfolio.templatetags.portfolio_filters import percent
+
+        assert percent(12.5) == "12.5%"
+        assert percent(-12.5) == "(12.5%)"
+        assert percent(0) == "0.0%"
+
+    def test_percent_custom_decimals(self) -> None:
+        """Verify percent formatting with custom decimals."""
+        from portfolio.templatetags.portfolio_filters import percent
+
+        assert percent(12.345, 2) == "12.35%"
+        assert percent(-12.345, 0) == "(12%)"
+
+    def test_number_no_decimals(self) -> None:
+        """Verify number formatting with no decimals."""
+        from portfolio.templatetags.portfolio_filters import number
+
+        assert number(1234.56) == "1,235"
+        assert number(-1234.56) == "(1,235)"
+
+    def test_number_with_decimals(self) -> None:
+        """Verify number formatting with decimals."""
+        from portfolio.templatetags.portfolio_filters import number
+
+        assert number(1234.567, 2) == "1,234.57"
+        assert number(-1234.567, 2) == "(1,234.57)"
