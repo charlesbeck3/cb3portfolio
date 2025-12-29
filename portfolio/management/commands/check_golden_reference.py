@@ -19,13 +19,11 @@ from portfolio.models import (
     TargetAllocation,
 )
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
-from portfolio.services.allocation_presentation import AllocationPresentationFormatter
-from portfolio.tests.base import PortfolioTestMixin
 
 User = get_user_model()
 
 
-class Command(BaseCommand, PortfolioTestMixin):
+class Command(BaseCommand):
     help = "Visually spot check the golden reference holdings and calculations."
 
     def handle(self, *args: Any, **options: Any) -> None:
@@ -90,6 +88,42 @@ class Command(BaseCommand, PortfolioTestMixin):
                 for ac_name, pct in targets.items()
             ]
         return result
+
+    def setup_system_data(self) -> None:
+        """Seed system data and populate instance variables."""
+        from portfolio.models import (
+            AccountType,
+            AssetClass,
+            Institution,
+        )
+        from portfolio.services.seeder import SystemSeederService
+
+        # Run seeder
+        SystemSeederService().run()
+
+        # Populate Institution
+        self.institution = Institution.objects.get(name="Vanguard")
+
+        # Populate Account Types
+        self.type_roth = AccountType.objects.get(code="ROTH_IRA")
+        self.type_trad = AccountType.objects.get(code="TRADITIONAL_IRA")
+        self.type_taxable = AccountType.objects.get(code="TAXABLE")
+
+        # Populate Asset Classes
+        self.asset_class_us_equities = AssetClass.objects.get(name="US Equities")
+        self.asset_class_intl_developed = AssetClass.objects.get(
+            name="International Developed Equities"
+        )
+        self.asset_class_intl_emerging = AssetClass.objects.get(
+            name="International Emerging Equities"
+        )
+        self.asset_class_treasuries_short = AssetClass.objects.get(name="US Treasuries - Short")
+        self.asset_class_treasuries_interm = AssetClass.objects.get(
+            name="US Treasuries - Intermediate"
+        )
+        self.asset_class_tips = AssetClass.objects.get(name="Inflation Adjusted Bond")
+        self.asset_class_us_real_estate = AssetClass.objects.get(name="US Real Estate")
+        self.asset_class_cash = AssetClass.objects.get(name=AssetClass.CASH_NAME)
 
     def setup_golden_reference_scenario(self) -> None:
         """Replicates the setup from test_golden_reference.py"""
@@ -598,27 +632,13 @@ class Command(BaseCommand, PortfolioTestMixin):
         self.stdout.write("=" * 80 + "\n")
 
         engine = AllocationCalculationEngine()
-        formatter = AllocationPresentationFormatter()
 
-        # Step 1: Build numeric DataFrame
-        df = engine.build_presentation_dataframe(user=user)
+        # Single clean API call
+        rows = engine.get_presentation_rows(user=user)
 
-        if df.empty:
-            self.stdout.write(self.style.WARNING("Engine returned empty DataFrame."))
+        if not rows:
+            self.stdout.write(self.style.WARNING("Engine returned empty rows."))
             return
-
-        # Step 2: Aggregate at all levels
-        aggregated = engine.aggregate_presentation_levels(df)
-
-        # Step 3: Format for display
-        _, accounts_by_type = engine._get_account_metadata(user)
-        strategies_data = engine._get_target_strategies(user)
-
-        rows = formatter.format_presentation_rows(
-            aggregated_data=aggregated,
-            accounts_by_type=accounts_by_type,
-            target_strategies=strategies_data,
-        )
 
         self.stdout.write(self.style.MIGRATE_LABEL("REFACTORED ALLOCATION TABLE (PERCENT MODE)"))
 

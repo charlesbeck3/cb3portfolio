@@ -91,7 +91,8 @@ class TestAllocationCalculationEngine:
             "asset_class_id": [1, 2, 3],
             "portfolio_actual": [100.0, 50.0, 150.0],
             "portfolio_effective": [120.0, 60.0, 120.0],
-            "portfolio_effective_variance": [-20.0, -10.0, 30.0],
+            "portfolio_actual_pct": [10.0, 5.0, 15.0],
+            "portfolio_effective_pct": [12.0, 6.0, 12.0],
         }
         df = pd.DataFrame(data).set_index(["group_code", "category_code", "asset_class_name"])
         result = engine.aggregate_presentation_levels(df)
@@ -100,6 +101,46 @@ class TestAllocationCalculationEngine:
         assert "category_subtotals" in result
         assert pytest.approx(result["group_totals"].loc["EQUITY", "portfolio_actual"]) == 150.0
         assert pytest.approx(result["grand_total"].iloc[0]["portfolio_actual"]) == 300.0
+
+        # Verify variances are computed (now that engine does it)
+        # 100 - 120 = -20
+        assert pytest.approx(result["assets"].iloc[0]["portfolio_effective_variance"]) == -20.0
+
+    def test_aggregate_presentation_levels_includes_variances(
+        self, engine: AllocationCalculationEngine
+    ) -> None:
+        """Verify all variance columns are calculated by engine."""
+        data = {
+            "group_code": ["EQUITY", "EQUITY"],
+            "category_code": ["US", "INTL"],
+            "asset_class_name": ["US Equities", "Intl Stocks"],
+            "portfolio_actual": [100.0, 50.0],
+            "portfolio_actual_pct": [10.0, 5.0],
+            "portfolio_effective": [120.0, 60.0],
+            "portfolio_effective_pct": [12.0, 6.0],
+            # Account columns
+            "acc_1_actual": [100.0, 50.0],
+            "acc_1_effective": [120.0, 60.0],
+            "acc_1_actual_pct": [10.0, 5.0],
+            "acc_1_effective_pct": [12.0, 6.0],
+        }
+        df = pd.DataFrame(data).set_index(["group_code", "category_code", "asset_class_name"])
+        result = engine.aggregate_presentation_levels(df)
+
+        # Check portfolio variances exist in assets
+        assert "portfolio_effective_variance" in result["assets"].columns
+        assert "portfolio_effective_variance_pct" in result["assets"].columns
+
+        # Check values
+        asset_row = result["assets"].iloc[0]
+        assert pytest.approx(asset_row["portfolio_effective_variance"]) == -20.0
+        assert pytest.approx(asset_row["portfolio_effective_variance_pct"]) == -2.0
+
+        # Check account variances exist
+        assert "acc_1_variance" in result["assets"].columns
+        assert "acc_1_variance_pct" in result["assets"].columns
+        assert pytest.approx(asset_row["acc_1_variance"]) == -20.0
+        assert pytest.approx(asset_row["acc_1_variance_pct"]) == -2.0
 
     @pytest.mark.django_db
     def test_get_account_totals(
@@ -267,3 +308,148 @@ class TestAllocationCalculationEngine:
         assert df.iloc[0]["Group_Sort_Order"] == 10
         assert df.iloc[2]["Group_Sort_Order"] == 10
         assert df.iloc[3]["Group_Sort_Order"] == 20
+
+
+@pytest.mark.services
+@pytest.mark.presentation
+class TestAllocationPresentation:
+    """Test the formatting of calculation results for display (migrated from Formatter)."""
+
+    @pytest.fixture
+    def engine(self) -> AllocationCalculationEngine:
+        return AllocationCalculationEngine()
+
+    def test_format_presentation_rows_structure(self, engine: AllocationCalculationEngine) -> None:
+        """Verify formatted rows have correct structure and raw values."""
+        asset_data = {
+            "group_code": ["EQUITY"],
+            "category_code": ["US"],
+            "asset_class_name": ["US Equities"],
+            "asset_class_id": [1],
+            "group_label": ["Equities"],
+            "category_label": ["US Equities"],
+            "is_cash": [False],
+            "row_type": ["asset"],
+            "portfolio_actual": [100.0],
+            "portfolio_actual_pct": [10.0],
+            "portfolio_effective": [120.0],
+            "portfolio_effective_pct": [12.0],
+            "portfolio_effective_variance": [-20.0],
+            "portfolio_effective_variance_pct": [-2.0],
+        }
+
+        df_assets = pd.DataFrame(asset_data)
+        df_assets = df_assets.set_index(["group_code", "category_code", "asset_class_name"])
+
+        aggregated = {
+            "assets": df_assets,
+            "category_subtotals": pd.DataFrame(),
+            "group_totals": pd.DataFrame(),
+            "grand_total": pd.DataFrame(),
+        }
+
+        accounts_by_type: dict[int, list[dict[str, Any]]] = {}
+        target_strategies: dict[str, Any] = {"at_strategy_map": {}, "acc_strategy_map": {}}
+
+        # Use private method _format_presentation_rows
+        result = engine._format_presentation_rows(
+            aggregated_data=aggregated,
+            accounts_by_type=accounts_by_type,
+            target_strategies=target_strategies,
+        )
+
+        assert isinstance(result, list)
+        assert len(result) == 1
+        row = result[0]
+        assert row["asset_class_name"] == "US Equities"
+
+        # Verify raw numeric values are present
+        assert isinstance(row["portfolio"]["actual"], float)
+        assert row["portfolio"]["actual"] == 100.0
+        assert row["portfolio"]["actual_pct"] == 10.0
+        assert row["portfolio"]["effective"] == 120.0
+
+    def test_policy_variance_available_in_presentation_rows(
+        self, engine: AllocationCalculationEngine
+    ) -> None:
+        """
+        Verify that portfolio['policy_variance'] is available in the formatted rows.
+        """
+        # 1. Mock DataFrame with necessary columns
+        data = {
+            "asset_class_name": ["Stocks", "Bonds"],
+            "portfolio_actual": [600.0, 400.0],
+            "portfolio_actual_pct": [60.0, 40.0],
+            "portfolio_explicit_target": [500.0, 500.0],  # 50/50 target
+            "portfolio_explicit_target_pct": [50.0, 50.0],
+            # Calculated fields
+            "portfolio_policy_variance": [100.0, -100.0],
+            "portfolio_policy_variance_pct": [10.0, -10.0],
+            # Effective fields
+            "portfolio_effective": [550.0, 450.0],
+            "portfolio_effective_pct": [55.0, 45.0],
+            "portfolio_effective_variance": [50.0, -50.0],
+            "portfolio_effective_variance_pct": [5.0, -5.0],
+        }
+        df = pd.DataFrame(data)
+
+        # 2. Mock aggregated data dictionary
+        aggregated_data = {
+            "assets": df,
+            "category_subtotals": pd.DataFrame(),
+            "group_totals": pd.DataFrame(),
+            "grand_total": pd.DataFrame(
+                [
+                    {
+                        "row_type": "grand_total",
+                        "portfolio_actual": 1000.0,
+                        "portfolio_explicit_target": 1000.0,
+                        "portfolio_effective": 1000.0,
+                        "portfolio_policy_variance": 0.0,
+                        "portfolio_effective_variance": 0.0,
+                    }
+                ]
+            ),
+        }
+
+        # 4. Format Rows
+        rows = engine._format_presentation_rows(
+            aggregated_data=aggregated_data,
+            accounts_by_type={},
+            target_strategies={},
+        )
+
+        # 5. Verify Results
+        assert len(rows) > 0
+
+        # check asset rows
+        equity_row = next(r for r in rows if r["asset_class_name"] == "Stocks")
+        assert "portfolio" in equity_row
+        assert "policy_variance" in equity_row["portfolio"]
+        # The formatter returns raw float
+        assert equity_row["portfolio"]["policy_variance"] == 100.0
+        assert equity_row["portfolio"]["policy_variance_pct"] == 10.0
+
+    def test_formatter_exposes_policy_variance_row_build(
+        self, engine: AllocationCalculationEngine
+    ) -> None:
+        """
+        Directly test the _build_row_dict_from_formatted_data method.
+        """
+        row_data = {
+            "asset_class_name": "Test Asset",
+            "portfolio_actual": 100.0,
+            "portfolio_explicit_target": 80.0,
+            "portfolio_policy_variance": 20.0,
+            "portfolio_effective_variance": 10.0,
+        }
+
+        result = engine._build_row_dict_from_formatted_data(
+            row=row_data,
+            accounts_by_type={},
+            target_strategies={},
+        )
+
+        # Verify the dict structure
+        assert result["portfolio"]["policy_variance"] == 20.0
+        assert result["portfolio"]["effective_variance"] == 10.0

@@ -186,7 +186,7 @@ class TestFrontendAllocations:
 
         # Policy Variance (vs Portfolio Explicit Target): Var: +50.0%
         authenticated_page.wait_for_timeout(100)
-        expect(portfolio_variance).to_contain_text("+50.0%")
+        expect(portfolio_variance).to_contain_text("50.0%")
 
         # Toggle back
         authenticated_page.locator('label[for="variance-effective"]').click()

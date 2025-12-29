@@ -12,7 +12,6 @@ from portfolio.models import (
     AllocationStrategy,
 )
 from portfolio.services.allocation_calculations import AllocationCalculationEngine
-from portfolio.services.allocation_presentation import AllocationPresentationFormatter
 from users.models import CustomUser
 
 logger = structlog.get_logger(__name__)
@@ -22,40 +21,33 @@ class TargetAllocationViewService:
     def build_context(self, *, user: CustomUser) -> dict[str, Any]:
         logger.info("building_target_allocation_context", user_id=cast(Any, user).id)
         engine = AllocationCalculationEngine()
-        formatter = AllocationPresentationFormatter()
 
-        # Step 1: Build numeric DataFrame
-        df = engine.build_presentation_dataframe(user=user)
+        # Single clean API call
+        allocation_rows = engine.get_presentation_rows(user=user)
 
-        allocation_rows_percent = []
-        allocation_rows_money = []
         portfolio_total = Decimal("0.00")
-
-        if not df.empty:
-            # Step 2: Aggregate at all levels
-            aggregated = engine.aggregate_presentation_levels(df)
-
-            # Step 3: Format for display
-            # Get metadata for formatting
-            _, accounts_by_type = engine._get_account_metadata(user)
-            strategies_data = engine._get_target_strategies(user)
-
-            allocation_rows = formatter.format_presentation_rows(
-                aggregated_data=aggregated,
-                accounts_by_type=accounts_by_type,
-                target_strategies=strategies_data,
-            )
-            allocation_rows_percent = allocation_rows
-            allocation_rows_money = allocation_rows
-
-            # Calculate portfolio total for display
-            portfolio_total = Decimal(float(aggregated["grand_total"].iloc[0]["portfolio_actual"]))
+        if allocation_rows:
+            # Find grand total row to extract total portfolio value
+            # It should be the last row, but search explicitly to be safe
+            grand_total_row = next((r for r in allocation_rows if r.get("is_grand_total")), None)
+            if grand_total_row and "portfolio" in grand_total_row:
+                portfolio_total = Decimal(str(grand_total_row["portfolio"]["actual"]))
 
         strategies = AllocationStrategy.objects.filter(user=user).order_by("name")
 
         return {
-            "allocation_rows_percent": allocation_rows_percent,
-            "allocation_rows_money": allocation_rows_money,
+            "allocation_rows_percent": allocation_rows,
+            "allocation_rows_money": allocation_rows,
+            # Pass same rows, template handles formatting
+            "strategies": strategies,
+            "portfolio_total_value": portfolio_total,
+        }
+
+        strategies = AllocationStrategy.objects.filter(user=user).order_by("name")
+
+        return {
+            "allocation_rows_percent": allocation_rows,
+            "allocation_rows_money": allocation_rows,
             "strategies": strategies,
             "portfolio_total_value": portfolio_total,
         }

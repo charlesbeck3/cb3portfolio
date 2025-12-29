@@ -26,21 +26,13 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
 
         account_id = kwargs.get("account_id")
 
-        # Initialize engine and formatter (CONSISTENT WITH DASHBOARD/TARGETS)
+        # Initialize engine (CONSISTENT WITH DASHBOARD/TARGETS)
         from portfolio.services.allocation_calculations import AllocationCalculationEngine
-        from portfolio.services.allocation_presentation import AllocationPresentationFormatter
 
         engine = AllocationCalculationEngine()
-        formatter = AllocationPresentationFormatter()
 
-        # Step 1: Build numeric DataFrame with targets
-        holdings_df = engine.calculate_holdings_with_targets(user, account_id)
-
-        if holdings_df.empty:
-            context["holdings_rows"] = []
-        else:
-            # Step 2: Format for display
-            context["holdings_rows"] = formatter.format_holdings_rows(holdings_df)
+        # Single clean API call
+        context["holdings_rows"] = engine.get_holdings_rows(user=user, account_id=account_id)
 
         # Add sidebar context (same as before)
         context.update(self.get_sidebar_context())
