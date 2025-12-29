@@ -43,3 +43,4 @@ staticfiles/
 # Logs
 logs/
 *.log
+coverage.xml
