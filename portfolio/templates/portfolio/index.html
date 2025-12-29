@@ -48,7 +48,7 @@
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
-                            {% include "portfolio/includes/allocation_table_simple.html" with rows=allocation_rows_money mode="dollar" table_id="dashboard-table-dollar" %}
+                            {% include "portfolio/includes/allocation_table_readonly.html" with rows=allocation_rows_money mode="dollar" table_id="dashboard-table-dollar" %}
                         </div>
                     </div>
                 </div>
@@ -59,7 +59,7 @@
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
-                             {% include "portfolio/includes/allocation_table_simple.html" with rows=allocation_rows_percent mode="percent" table_id="dashboard-table-percent" %}
+                             {% include "portfolio/includes/allocation_table_readonly.html" with rows=allocation_rows_percent mode="percent" table_id="dashboard-table-percent" %}
                         </div>
                     </div>
                 </div>

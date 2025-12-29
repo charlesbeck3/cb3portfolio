@@ -109,6 +109,8 @@ git diff
 
 ### Write Failing Test First
 
+In the correct file that matches the associated code that is being exercised, create the test.
+
 ```python
 def test_[issue_description]():
     """
