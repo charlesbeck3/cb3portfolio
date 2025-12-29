@@ -15,6 +15,10 @@ from typing import Any, cast
 import pandas as pd
 import structlog
 
+# Opt-in to future downcasting behavior to suppress FutureWarnings from fillna()
+# that would previously downcast object-dtype arrays silently.
+pd.set_option("future.no_silent_downcasting", True)
+
 logger = structlog.get_logger(__name__)
 
 

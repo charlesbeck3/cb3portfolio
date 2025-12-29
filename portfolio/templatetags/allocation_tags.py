@@ -16,11 +16,21 @@ def row_css_class(row_type: str) -> str:
     """
     Get CSS class for row type.
 
+    Used in templates to apply different styling to different row types
+    (e.g., bolding subtotals or highlights for grand totals).
+
     Args:
         row_type: One of 'asset', 'subtotal', 'group_total', 'grand_total'
 
     Returns:
-        CSS class name
+        CSS class name string:
+        - 'subtotal' -> 'subtotal'
+        - 'group_total' -> 'group-total'
+        - 'grand_total' -> 'grand-total'
+        - others -> ''
+
+    Example:
+        <tr class="{{ row.row_type|row_css_class }}">
     """
     css_map = {
         "asset": "",
@@ -32,33 +42,39 @@ def row_css_class(row_type: str) -> str:
 
 
 @register.filter
-def variance_css_class(variance: float | Decimal | str) -> str:
+def variance_css_class(variance: float | Decimal | None) -> str:
     """
     Get CSS class for variance value (positive/negative coloring).
 
+    This filter determines the visual styling based on the numeric sign
+    of the variance. Positive variances (over target) are colored green,
+    negative variances (under target) are colored red.
+
+    Architectural Pattern:
+    Engine (raw numeric) -> Filter (CSS class mapping) -> Template (display)
+
     Args:
-        variance: Numeric variance value
+        variance: Numeric variance value (float, Decimal, or None)
 
     Returns:
-        CSS class for styling
-    """
-    if isinstance(variance, str):
-        # Handle formatted strings like "+5.2%" or "($1,000)"
-        variance = (
-            variance.replace("$", "")
-            .replace(",", "")
-            .replace("%", "")
-            .replace("(", "-")
-            .replace(")", "")
-            .strip()
-        )
-        try:
-            variance = float(variance)
-        except (ValueError, AttributeError):
-            return ""
+        CSS class string:
+        - > 0 -> 'variance-positive'
+        - < 0 -> 'variance-negative'
+        - otherwise -> ''
 
-    if variance > 0:
-        return "variance-positive"
-    elif variance < 0:
-        return "variance-negative"
+    Example:
+        <td class="{{ row.variance_pct|variance_css_class }}">
+    """
+    if variance is None:
+        return ""
+
+    try:
+        if variance > 0:
+            return "variance-positive"
+        elif variance < 0:
+            return "variance-negative"
+    except (TypeError, ValueError):
+        # Handle cases where variance might not be comparable
+        return ""
+
     return ""
