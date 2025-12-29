@@ -274,7 +274,7 @@ class AllocationPresentationFormatter:
         }
 
         account_type_columns = []
-        for type_id, type_accounts in sorted(accounts_by_type.items()):
+        for type_id, type_accounts in accounts_by_type.items():
             if not type_accounts:
                 continue
             type_code = type_accounts[0]["type_code"]
@@ -771,11 +771,12 @@ class AllocationPresentationFormatter:
             holdings_by_group[holding["group_code"]][holding["category_code"]].append(holding)
 
         # Iterate through groups
-        for group_code in sorted(holdings_by_group.keys()):
+        # Iterate through groups
+        for group_code in holdings_by_group:
             categories = holdings_by_group[group_code]
 
             # Add holdings for each category
-            for category_code in sorted(categories.keys()):
+            for category_code in categories:
                 holdings = categories[category_code]
                 result.extend(holdings)
 

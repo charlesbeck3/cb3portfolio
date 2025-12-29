@@ -154,3 +154,116 @@ class TestAllocationCalculationEngine:
             )
             < 1.0
         )
+
+    @pytest.mark.django_db
+    def test_calculate_holdings_with_targets_sorting(
+        self, engine: AllocationCalculationEngine, base_system_data: Any, test_user: Any
+    ) -> None:
+        """Verify holdings are sorted by group/category order then target value."""
+        from portfolio.models import (
+            Account,
+            AssetClass,
+            AssetClassCategory,
+            Holding,
+            Portfolio,
+            Security,
+            SecurityPrice,
+        )
+
+        system = base_system_data
+        portfolio = Portfolio.objects.create(user=test_user, name="Sort Test")
+        account = Account.objects.create(
+            user=test_user,
+            portfolio=portfolio,
+            account_type=system.type_taxable,
+            name="Test Account",
+            institution=system.institution,
+        )
+
+        # Setup hierarchy: Group 1 (Sort 10) -> Cat A (Sort 1) -> Asset 1
+        #                  Group 1 (Sort 10) -> Cat B (Sort 2) -> Asset 2
+        #                  Group 2 (Sort 20) -> Cat C (Sort 1) -> Asset 3
+
+        # Create groups
+        group1 = AssetClassCategory.objects.create(code="GRP1", label="Group 1", sort_order=10)
+        group2 = AssetClassCategory.objects.create(code="GRP2", label="Group 2", sort_order=20)
+
+        # Create categories
+        cat_a = AssetClassCategory.objects.create(
+            code="CATA", label="Cat A", parent=group1, sort_order=1
+        )
+        cat_b = AssetClassCategory.objects.create(
+            code="CATB", label="Cat B", parent=group1, sort_order=2
+        )
+        cat_c = AssetClassCategory.objects.create(
+            code="CATC", label="Cat C", parent=group2, sort_order=1
+        )
+
+        # Create assets
+        asset1 = AssetClass.objects.create(name="Asset 1", category=cat_a)
+        asset2 = AssetClass.objects.create(name="Asset 2", category=cat_b)
+        asset3 = AssetClass.objects.create(name="Asset 3", category=cat_c)
+
+        # Create securities
+        sec1 = Security.objects.create(ticker="TIC1", asset_class=asset1)
+        sec2 = Security.objects.create(ticker="TIC2", asset_class=asset2)
+        sec3 = Security.objects.create(ticker="TIC3", asset_class=asset3)
+        # Add another security in Cat A with lower value to test value sorting
+        sec1_small = Security.objects.create(ticker="TIC1S", asset_class=asset1)
+
+        # Create holdings
+        # Group 2 (should be last)
+        Holding.objects.create(account=account, security=sec3, shares=Decimal("10"))
+        SecurityPrice.objects.create(
+            security=sec3,
+            price=Decimal("100"),
+            price_datetime=timezone.now(),
+            source="manual",
+        )
+
+        # Group 1, Cat B (should be 2nd)
+        Holding.objects.create(account=account, security=sec2, shares=Decimal("10"))
+        SecurityPrice.objects.create(
+            security=sec2,
+            price=Decimal("100"),
+            price_datetime=timezone.now(),
+            source="manual",
+        )
+
+        # Group 1, Cat A, Large (should be 1st)
+        Holding.objects.create(account=account, security=sec1, shares=Decimal("20"))
+        SecurityPrice.objects.create(
+            security=sec1,
+            price=Decimal("100"),
+            price_datetime=timezone.now(),
+            source="manual",
+        )
+
+        # Group 1, Cat A, Small (should be 2nd in Cat A)
+        Holding.objects.create(account=account, security=sec1_small, shares=Decimal("5"))
+        SecurityPrice.objects.create(
+            security=sec1_small,
+            price=Decimal("100"),
+            price_datetime=timezone.now(),
+            source="manual",
+        )
+
+        # Run calculation
+        df = engine.calculate_holdings_with_targets(test_user, account.id)
+
+        # Verify sorting
+        assert not df.empty
+        tickers = df["Ticker"].tolist()
+
+        # Expected order:
+        # 1. TIC1 (Group 1, Cat A, Value 2000)
+        # 2. TIC1S (Group 1, Cat A, Value 500)
+        # 3. TIC2 (Group 1, Cat B, Value 1000)
+        # 4. TIC3 (Group 2, Cat C, Value 1000)
+
+        assert tickers == ["TIC1", "TIC1S", "TIC2", "TIC3"]
+
+        # Double check implicit sort columns
+        assert df.iloc[0]["Group_Sort_Order"] == 10
+        assert df.iloc[2]["Group_Sort_Order"] == 10
+        assert df.iloc[3]["Group_Sort_Order"] == 20

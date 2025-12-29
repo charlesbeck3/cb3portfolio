@@ -313,18 +313,24 @@ class AllocationCalculationEngine:
             if parent:
                 group_code = parent.code
                 group_label = parent.label
+                group_sort_order = parent.sort_order
                 category_code = category.code if category else "UNC"
                 category_label = category.label if category else "Unclassified"
+                category_sort_order = category.sort_order if category else 9999
             elif category:
                 group_code = category.code
                 group_label = category.label
+                group_sort_order = category.sort_order
                 category_code = category.code
                 category_label = category.label
+                category_sort_order = category.sort_order
             else:
                 group_code = "UNC"
                 group_label = "Unclassified"
+                group_sort_order = 9999
                 category_code = "UNC"
                 category_label = "Unclassified"
+                category_sort_order = 9999
 
             data.append(
                 {
@@ -335,7 +341,9 @@ class AllocationCalculationEngine:
                     "Asset_Category": category_label,
                     "Asset_Group": group_label,
                     "Group_Code": group_code,
+                    "Group_Sort_Order": group_sort_order,
                     "Category_Code": category_code,
+                    "Category_Sort_Order": category_sort_order,
                     "Ticker": h.security.ticker,
                     "Security_Name": h.security.name,
                     "Shares": float(h.shares),
@@ -402,7 +410,12 @@ class AllocationCalculationEngine:
             df_with_targets["Shares"] - df_with_targets["Target_Shares"]
         )
 
-        return df_with_targets
+        # Step 4: Sort data for display
+        # Priority: Group Order -> Category Order -> Target Value (desc) -> Ticker
+        return df_with_targets.sort_values(
+            by=["Group_Sort_Order", "Category_Sort_Order", "Target_Value", "Ticker"],
+            ascending=[True, True, False, True],
+        )
 
     def build_presentation_dataframe(
         self,
