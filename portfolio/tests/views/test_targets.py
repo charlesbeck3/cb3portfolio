@@ -439,29 +439,22 @@ class TestTargetAllocationViewCoverage:
 
         context = view.get_context_data()
 
-        # Should return basic context without calling service.build_context
-        # strategies should NOT be in context (or empty if setup differently, but here just checking return)
-        # build_context adds 'strategies', 'portfolio_total_value', etc.
-        # super().get_context_data() just returns view params.
-
+        # Should return basic context without calling engine
         assert "strategies" not in context
         assert "portfolio_total_value" not in context
 
-    def test_post_error_handling(self, client, targets_view_setup):
-        """Test handling of errors from service during POST."""
+    def test_post_exception_handling(self, client, targets_view_setup):
+        """Test handling of exceptions during POST."""
         from unittest.mock import patch
 
         setup = targets_view_setup
         client.force_login(setup["user"])
         url = reverse("portfolio:target_allocations")
 
-        # Mock the service on the view instance?
-        # Easier to patch the service class used in the view,
-        # OR patch TargetAllocationViewService.save_from_post
-        with patch(
-            "portfolio.views.targets.TargetAllocationViewService.save_from_post"
-        ) as mock_save:
-            mock_save.return_value = (False, ["Test Error Message"])
+        # Mock the database operation to raise an exception
+        # We patch AccountType.objects.filter which is called early in atomic block
+        with patch("portfolio.views.targets.AccountType.objects.filter") as mock_filter:
+            mock_filter.side_effect = Exception("Database error")
 
             response = client.post(url, {})
 
@@ -469,8 +462,17 @@ class TestTargetAllocationViewCoverage:
             assert response.status_code == 302
             assert response.url == url
 
-            # Verify message
-            messages = list(response.wsgi_request._messages)
-            assert len(messages) == 1
-            assert str(messages[0]) == "Test Error Message"
-            assert messages[0].level_tag == "error"
+            # Should show error message
+            messages_list = list(response.wsgi_request._messages)
+            assert len(messages_list) == 1
+            assert "Error saving allocations" in str(messages_list[0])
+            assert messages_list[0].level_tag == "error"
+
+    def test_post_unauthenticated(self, client):
+        """Test POST request from unauthenticated user."""
+        url = reverse("portfolio:target_allocations")
+        response = client.post(url, {})
+
+        # Should redirect to login
+        assert response.status_code == 302
+        assert "/accounts/login/" in response.url

@@ -453,3 +453,74 @@ class TestAllocationPresentation:
         # Verify the dict structure
         assert result["portfolio"]["policy_variance"] == 20.0
         assert result["portfolio"]["effective_variance"] == 10.0
+
+
+@pytest.mark.integration
+@pytest.mark.services
+class TestAllocationCalculationEngineTargetContext:
+    """Test build_target_allocation_context method."""
+
+    def test_build_target_allocation_context_structure(self, test_user, base_system_data):
+        """Test that build_target_allocation_context returns expected structure."""
+        engine = AllocationCalculationEngine()
+        context = engine.build_target_allocation_context(user=test_user)
+
+        assert "allocation_rows_percent" in context
+        assert "allocation_rows_money" in context
+        assert "strategies" in context
+        assert "portfolio_total_value" in context
+
+        # Verify strategies query
+        assert list(context["strategies"]) == []
+
+    def test_build_target_allocation_context_with_strategies(self, test_user):
+        """Test that strategies are included in context."""
+        from portfolio.models import AllocationStrategy
+
+        strategy = AllocationStrategy.objects.create(user=test_user, name="Test Strategy")
+
+        engine = AllocationCalculationEngine()
+        context = engine.build_target_allocation_context(user=test_user)
+
+        assert strategy in context["strategies"]
+
+    def test_build_target_allocation_context_with_portfolio_data(self, test_user, base_system_data):
+        """Test context includes portfolio total when data exists."""
+        from decimal import Decimal
+
+        from portfolio.models import Account, Holding, Portfolio
+
+        # Create portfolio with holdings
+        portfolio = Portfolio.objects.create(user=test_user, name="Test Portfolio")
+        account = Account.objects.create(
+            user=test_user,
+            portfolio=portfolio,
+            name="Test Account",
+            account_type=base_system_data.type_taxable,
+            institution=base_system_data.institution,
+        )
+        # Use existing security from fixture
+        security = base_system_data.vti
+
+        Holding.objects.create(
+            account=account,
+            security=security,
+            shares=Decimal("100.00"),
+        )
+        # Mock price to ensure value > 0
+        from portfolio.models import SecurityPrice
+
+        SecurityPrice.objects.update_or_create(
+            security=security,
+            defaults={
+                "price": Decimal("100.00"),
+                "price_datetime": timezone.now(),
+            },
+        )
+
+        engine = AllocationCalculationEngine()
+        context = engine.build_target_allocation_context(user=test_user)
+
+        # Should have a non-zero portfolio total
+        assert context["portfolio_total_value"] >= Decimal("0.00")
+        assert isinstance(context["portfolio_total_value"], Decimal)

@@ -10,7 +10,7 @@ DESIGN PHILOSOPHY:
 """
 
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import structlog
@@ -1971,3 +1971,48 @@ class AllocationCalculationEngine:
         result.extend(grand_row)
 
         return result
+
+    def build_target_allocation_context(self, *, user: Any) -> dict[str, Any]:
+        """
+        Build context data for target allocation view.
+
+        This is a pure calculation/data transformation method that:
+        1. Gets presentation rows via get_presentation_rows()
+        2. Extracts portfolio total from the grand total row
+        3. Fetches user's allocation strategies
+
+        Returns dict with:
+        - allocation_rows_percent: Presentation rows for percent display
+        - allocation_rows_money: Presentation rows for dollar display
+        - strategies: QuerySet of user's allocation strategies
+        - portfolio_total_value: Total portfolio value as Decimal
+
+        Args:
+            user: The user whose allocations to display
+
+        Returns:
+            Dictionary containing view context data
+        """
+        from portfolio.models import AllocationStrategy
+
+        logger.info("building_target_allocation_context", user_id=cast(Any, user).id)
+
+        # Get presentation rows using existing engine method
+        allocation_rows = self.get_presentation_rows(user=user)
+
+        # Extract portfolio total from grand total row
+        portfolio_total = Decimal("0.00")
+        if allocation_rows:
+            grand_total_row = next((r for r in allocation_rows if r.get("is_grand_total")), None)
+            if grand_total_row and "portfolio" in grand_total_row:
+                portfolio_total = Decimal(str(grand_total_row["portfolio"]["actual"]))
+
+        # Get user's strategies
+        strategies = AllocationStrategy.objects.filter(user=user).order_by("name")
+
+        return {
+            "allocation_rows_percent": allocation_rows,
+            "allocation_rows_money": allocation_rows,  # Same rows, template handles formatting
+            "strategies": strategies,
+            "portfolio_total_value": portfolio_total,
+        }
