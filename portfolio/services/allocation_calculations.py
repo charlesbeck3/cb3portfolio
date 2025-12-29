@@ -1018,12 +1018,16 @@ class AllocationCalculationEngine:
         df_assets["sort_rank"] = 0
 
         # ... (Subtotal logic)
-        category_counts = df.groupby(level=["group_code", "category_code"], sort=False).size()
+        category_counts = df.groupby(
+            level=["group_code", "category_code"], sort=False, dropna=False
+        ).size()
         non_redundant_categories = category_counts[category_counts > 1].index
 
         # Calc sums
         category_subtotals = (
-            df[numeric_cols].groupby(level=["group_code", "category_code"], sort=False).sum()
+            df[numeric_cols]
+            .groupby(level=["group_code", "category_code"], sort=False, dropna=False)
+            .sum()
         )
         # Filter
         category_subtotals = category_subtotals.loc[non_redundant_categories]
@@ -1039,28 +1043,36 @@ class AllocationCalculationEngine:
             ]
             existing_meta = [c for c in metadata_cols if c in df.columns]
             category_meta = (
-                df[existing_meta].groupby(level=["group_code", "category_code"], sort=False).first()
+                df[existing_meta]
+                .groupby(level=["group_code", "category_code"], sort=False, dropna=False)
+                .first()
             )
             category_subtotals = category_subtotals.join(category_meta)
             category_subtotals["row_type"] = "subtotal"
             category_subtotals["sort_rank"] = 1
+            label = category_subtotals["category_label"].fillna("")
+            category_subtotals["asset_class_name"] = label + " Total"
             # Reset index to align columns
             category_subtotals = category_subtotals.reset_index()
 
         # ... (Group Total logic)
-        group_counts = df.groupby(level="group_code", sort=False).size()
+        group_counts = df.groupby(level="group_code", sort=False, dropna=False).size()
         non_redundant_groups = group_counts[group_counts > 1].index
 
-        group_totals = df[numeric_cols].groupby(level="group_code", sort=False).sum()
+        group_totals = df[numeric_cols].groupby(level="group_code", sort=False, dropna=False).sum()
         group_totals = group_totals.loc[non_redundant_groups]
 
         if not group_totals.empty:
             metadata_cols = ["group_label", "group_code", "group_sort_order"]
             existing_meta = [c for c in metadata_cols if c in df.columns]
-            group_meta = df[existing_meta].groupby(level="group_code", sort=False).first()
+            group_meta = (
+                df[existing_meta].groupby(level="group_code", sort=False, dropna=False).first()
+            )
             group_totals = group_totals.join(group_meta)
             group_totals["row_type"] = "group_total"
             group_totals["sort_rank"] = 2
+            label = group_totals["group_label"].fillna("")
+            group_totals["asset_class_name"] = label + " Total"
             # Fill category info max for sorting
             group_totals["category_sort_order"] = 99999
             group_totals["category_code"] = "ZZZ"
@@ -1071,6 +1083,7 @@ class AllocationCalculationEngine:
         grand_total = df[numeric_cols].sum().to_frame().T
         grand_total["row_type"] = "grand_total"
         grand_total["sort_rank"] = 3
+        grand_total["asset_class_name"] = "Total"
         grand_total["group_sort_order"] = 99999
         grand_total["group_code"] = "ZZZ"
         grand_total["group_label"] = "Total"
@@ -1644,14 +1657,18 @@ class AllocationCalculationEngine:
         Build final row dict from pre-formatted row data.
         """
         row_type = row.get("row_type", "asset")
-        asset_class_name = row.get("asset_class_name", "")
-        if not asset_class_name:
+        asset_class_name = row.get("asset_class_name")
+        if pd.isna(asset_class_name) or not asset_class_name:
             if row_type == "grand_total":
                 asset_class_name = "Total"
             elif row_type == "group_total":
-                asset_class_name = f"{row.get('group_label', '')} Total"
+                label = row.get("group_label")
+                group_label = label if pd.notna(label) else ""
+                asset_class_name = f"{group_label} Total"
             elif row_type == "subtotal":
-                asset_class_name = f"{row.get('category_label', '')} Total"
+                label = row.get("category_label")
+                cat_label = label if pd.notna(label) else ""
+                asset_class_name = f"{cat_label} Total"
 
         raw_acid = row.get("asset_class_id", 0)
         acid = int(raw_acid) if pd.notna(raw_acid) else 0
