@@ -417,3 +417,60 @@ class TestTargetAllocationViewDisplayModes:
         # Verify context has formatted values
         rows = response.context["allocation_rows_money"]
         assert len(rows) > 0
+
+
+@pytest.mark.views
+@pytest.mark.integration
+class TestTargetAllocationViewCoverage:
+    """Additional tests to improve coverage for TargetAllocationView."""
+
+    def test_get_context_data_unauthenticated(self, rf):
+        """Test get_context_data returns basic context for unauthenticated user."""
+        from django.contrib.auth.models import AnonymousUser
+
+        from portfolio.views.targets import TargetAllocationView
+
+        request = rf.get("/fake-url")
+        request.user = AnonymousUser()
+
+        view = TargetAllocationView()
+        view.request = request
+        view.object = None
+
+        context = view.get_context_data()
+
+        # Should return basic context without calling service.build_context
+        # strategies should NOT be in context (or empty if setup differently, but here just checking return)
+        # build_context adds 'strategies', 'portfolio_total_value', etc.
+        # super().get_context_data() just returns view params.
+
+        assert "strategies" not in context
+        assert "portfolio_total_value" not in context
+
+    def test_post_error_handling(self, client, targets_view_setup):
+        """Test handling of errors from service during POST."""
+        from unittest.mock import patch
+
+        setup = targets_view_setup
+        client.force_login(setup["user"])
+        url = reverse("portfolio:target_allocations")
+
+        # Mock the service on the view instance?
+        # Easier to patch the service class used in the view,
+        # OR patch TargetAllocationViewService.save_from_post
+        with patch(
+            "portfolio.views.targets.TargetAllocationViewService.save_from_post"
+        ) as mock_save:
+            mock_save.return_value = (False, ["Test Error Message"])
+
+            response = client.post(url, {})
+
+            # Should redirect
+            assert response.status_code == 302
+            assert response.url == url
+
+            # Verify message
+            messages = list(response.wsgi_request._messages)
+            assert len(messages) == 1
+            assert str(messages[0]) == "Test Error Message"
+            assert messages[0].level_tag == "error"

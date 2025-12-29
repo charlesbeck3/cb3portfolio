@@ -3,7 +3,7 @@ from .base import *  # noqa: F403
 DEBUG = True
 
 # Development: Enable template debugging
-TEMPLATES[0]["OPTIONS"]["debug"] = True  # noqa: F405
+TEMPLATES[0]["OPTIONS"]["debug"] = True  # type: ignore # noqa: F405
 
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "[::1]"]
 

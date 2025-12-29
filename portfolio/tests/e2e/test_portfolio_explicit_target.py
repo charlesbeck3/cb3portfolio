@@ -11,16 +11,15 @@ from portfolio.models import AllocationStrategy
 @pytest.mark.django_db
 class TestPortfolioExplicitTarget:
     @pytest.fixture(autouse=True)
-    def setup_data(self, standard_test_portfolio: dict[str, Any]) -> None:
-        self.data = standard_test_portfolio
-        self.user = self.data["user"]
-        self.portfolio = self.data["portfolio"]
-        self.acc_roth = self.data["account"]
-        self.mixin = self.data["mixin"]
+    def setup_data(self, simple_holdings: dict[str, Any]) -> None:
+        self.user = simple_holdings["user"]
+        self.portfolio = simple_holdings["portfolio"]
+        self.acc_roth = simple_holdings["account"]
+        self.system = simple_holdings["system"]
 
-        # Asset classes from mixin
-        self.ac_us_eq = self.mixin.asset_class_us_equities
-        self.ac_treasuries_short = self.mixin.asset_class_treasuries_short
+        # Asset classes from system
+        self.ac_us_eq = self.system.asset_class_us_equities
+        self.ac_treasuries_short = self.system.asset_class_treasuries_short
 
         # Setup Portfolio Strategy (Explicit Target)
         self.strategy_balanced = AllocationStrategy.objects.create(

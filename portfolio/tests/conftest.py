@@ -34,6 +34,7 @@ from portfolio.models import (
     Portfolio,
     Security,
 )
+from portfolio.tests import factories
 from portfolio.tests.fixtures.benchmarks import (
     large_portfolio_benchmark,
     medium_portfolio_benchmark,
@@ -75,6 +76,8 @@ __all__ = [
     # Benchmark fixtures
     "large_portfolio_benchmark",
     "medium_portfolio_benchmark",
+    # Factories
+    "factories",
 ]
 
 

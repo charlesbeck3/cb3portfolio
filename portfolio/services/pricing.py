@@ -9,17 +9,18 @@ Key Design:
 - fetched_at: Our fetch time (automatically set, audit trail)
 """
 
-import logging
 from datetime import date, datetime
 from decimal import Decimal
 
 from django.db import transaction
 
+import structlog
+
 from portfolio.models import Holding, Security, SecurityPrice
 from portfolio.services.market_data import MarketDataService
 from users.models import CustomUser
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class PricingService:

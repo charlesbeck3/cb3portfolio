@@ -8,8 +8,8 @@ from playwright.sync_api import Page, expect
 @pytest.mark.django_db
 class TestDashboardPage:
     @pytest.fixture(autouse=True)
-    def setup_data(self, standard_test_portfolio: dict[str, Any]) -> None:
-        self.data = standard_test_portfolio
+    def setup_data(self, simple_holdings: dict[str, Any]) -> None:
+        pass
 
     def test_variance_mode_toggle(self, authenticated_page: Page, live_server_url: str) -> None:
         authenticated_page.goto(f"{live_server_url}/")

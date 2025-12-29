@@ -25,7 +25,7 @@ LOGS_DIR.mkdir(exist_ok=True)
 DEBUG = False
 
 # Environment variables validated by startup_checks
-SECRET_KEY = os.getenv("SECRET_KEY")  # noqa: F405
+SECRET_KEY = os.getenv("SECRET_KEY")  # type: ignore # noqa: F405
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()]  # noqa: F405
 
 # HTTPS/SSL Configuration
@@ -137,7 +137,7 @@ if os.getenv("EMAIL_HOST"):  # noqa: F405
 # ============================================================================
 
 # Template caching
-TEMPLATES[0]["APP_DIRS"] = False  # Must be False when loaders are defined # noqa: F405
+TEMPLATES[0]["APP_DIRS"] = False  # noqa: F405
 TEMPLATES[0]["OPTIONS"]["loaders"] = [  # type: ignore # noqa: F405
     (
         "django.template.loaders.cached.Loader",
@@ -149,7 +149,7 @@ TEMPLATES[0]["OPTIONS"]["loaders"] = [  # type: ignore # noqa: F405
 ]
 
 # Production: Template string_if_invalid helps catch template errors
-TEMPLATES[0]["OPTIONS"]["string_if_invalid"] = "INVALID_TEMPLATE_VAR: %s"  # noqa: F405
+TEMPLATES[0]["OPTIONS"]["string_if_invalid"] = "INVALID_TEMPLATE_VAR: %s"  # type: ignore # noqa: F405
 
 # Disable debug toolbar in production
 if "debug_toolbar" in INSTALLED_APPS:  # noqa: F405

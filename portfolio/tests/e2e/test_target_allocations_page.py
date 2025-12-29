@@ -10,17 +10,16 @@ from portfolio.models import AllocationStrategy, TargetAllocation
 @pytest.mark.django_db
 class TestFrontendAllocations:
     @pytest.fixture(autouse=True)
-    def setup_data(self, standard_test_portfolio: dict[str, Any]) -> None:
-        self.data = standard_test_portfolio
-        self.user = self.data["user"]
-        self.portfolio = self.data["portfolio"]
-        self.acc_roth = self.data["account"]
-        self.mixin = self.data["mixin"]
+    def setup_data(self, simple_holdings: dict[str, Any]) -> None:
+        self.user = simple_holdings["user"]
+        self.portfolio = simple_holdings["portfolio"]
+        self.acc_roth = simple_holdings["account"]
+        self.system = simple_holdings["system"]
 
-        # Use existing asset classes from mixin
-        self.asset_class_us_equities = self.mixin.asset_class_us_equities
-        self.asset_class_cash = self.mixin.asset_class_cash
-        self.type_roth = self.mixin.type_roth
+        # Use existing asset classes from system
+        self.asset_class_us_equities = self.system.asset_class_us_equities
+        self.asset_class_cash = self.system.asset_class_cash
+        self.type_roth = self.system.type_roth
 
         # Setup Strategies
         self.strategy_all_us_equities = AllocationStrategy.objects.create(

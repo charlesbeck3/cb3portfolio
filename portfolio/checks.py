@@ -8,6 +8,8 @@ Django automatically discovers this file and registers all checks decorated
 with @register() - no manual registration needed.
 """
 
+from typing import Any
+
 from django.core.checks import Error, Warning, register
 
 import structlog
@@ -16,7 +18,7 @@ logger = structlog.get_logger(__name__)
 
 
 @register()
-def check_asset_classes_exist(app_configs, **kwargs):
+def check_asset_classes_exist(app_configs: Any = None, **kwargs: Any) -> list[Warning | Error]:
     """
     Verify that essential asset classes are defined.
 
@@ -46,7 +48,7 @@ def check_asset_classes_exist(app_configs, **kwargs):
 
 
 @register()
-def check_account_types_exist(app_configs, **kwargs):
+def check_account_types_exist(app_configs: Any = None, **kwargs: Any) -> list[Warning | Error]:
     """
     Verify that essential account types are defined.
 
@@ -72,7 +74,7 @@ def check_account_types_exist(app_configs, **kwargs):
 
 
 @register()
-def check_cash_asset_class_exists(app_configs, **kwargs):
+def check_cash_asset_class_exists(app_configs: Any = None, **kwargs: Any) -> list[Warning | Error]:
     """
     Verify that the special 'Cash' asset class exists.
 
