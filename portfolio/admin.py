@@ -112,9 +112,10 @@ class SecurityAdmin(admin.ModelAdmin):
         "name",
         "asset_class",
         "get_asset_class_category",
-        "is_primary_display",
+        "is_primary_security",
     )
     list_filter = ("asset_class__category", "asset_class")
+    list_select_related = ("asset_class", "asset_class__category")
     search_fields = ("ticker", "name")
 
     @admin.display(description="Category", ordering="asset_class__category")
@@ -122,8 +123,10 @@ class SecurityAdmin(admin.ModelAdmin):
         return obj.asset_class.category.label
 
     @admin.display(description="Primary", boolean=True)
-    def is_primary_display(self, obj: Security) -> bool:
-        return obj.is_primary_for_asset_class
+    def is_primary_security(self, obj: Security) -> bool:
+        """Check if this security is the primary for its asset class."""
+        # Direct FK comparison - no backward lookup needed
+        return obj.asset_class.primary_security_id == obj.id
 
 
 class SecurityPriceAdmin(admin.ModelAdmin):
