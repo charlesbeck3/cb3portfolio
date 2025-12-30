@@ -1747,11 +1747,22 @@ class AllocationCalculationEngine:
         """
         from portfolio.models import Portfolio
 
-        try:
-            portfolio = Portfolio.objects.get(user=user)
-            policy_strategy = portfolio.allocation_strategy
-        except Portfolio.DoesNotExist:
+        # Try to find a portfolio with a strategy first, fallback to first portfolio
+        portfolio = (
+            Portfolio.objects.filter(user=user)
+            .exclude(allocation_strategy=None)
+            .select_related("allocation_strategy")
+            .first()
+        )
+        if not portfolio:
+            portfolio = (
+                Portfolio.objects.filter(user=user).select_related("allocation_strategy").first()
+            )
+
+        if not portfolio:
             return {0: {}}
+
+        policy_strategy = portfolio.allocation_strategy
 
         if not policy_strategy:
             return {0: {}}
