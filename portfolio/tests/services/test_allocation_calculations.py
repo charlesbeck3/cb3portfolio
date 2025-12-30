@@ -894,3 +894,184 @@ class TestSidebarData:
         assert sidebar_data["grand_total"] == Decimal("0.00")
         assert len(sidebar_data["account_totals"]) == 0
         assert len(sidebar_data["accounts_by_group"]) == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.services
+class TestZeroHoldings:
+    """Tests for zero-holding display for missing expected asset classes."""
+
+    @pytest.fixture
+    def engine(self) -> AllocationCalculationEngine:
+        return AllocationCalculationEngine()
+
+    def test_get_aggregated_holdings_includes_zero_holding(
+        self, engine, test_user, base_system_data
+    ) -> None:
+        """Verify that an asset class with target but no holdings appears as a zero-holding row."""
+        from portfolio.models import (
+            Account,
+            AllocationStrategy,
+            AssetClass,
+            Holding,
+            Portfolio,
+            Security,
+            SecurityPrice,
+            TargetAllocation,
+        )
+
+        system = base_system_data
+        portfolio = Portfolio.objects.create(user=test_user, name="Zero Holding Test")
+
+        # 1. Create an asset class that we WILL hold
+        ac_held = system.vti.asset_class
+
+        # 2. Create an asset class that we WILL NOT hold but have a target for
+        ac_empty = AssetClass.objects.create(name="Empty Asset", category=ac_held.category)
+
+        # 3. Assign a primary security to the empty asset class
+        primary_sec = Security.objects.create(
+            ticker="ZERO", name="Zero Security", asset_class=ac_empty
+        )
+        ac_empty.primary_security = primary_sec
+        ac_empty.save()
+
+        # Add a price for the primary security
+        SecurityPrice.objects.create(
+            security=primary_sec, price=Decimal("10.00"), price_datetime=timezone.now()
+        )
+
+        # 4. Create an account and strategy
+        account = Account.objects.create(
+            user=test_user,
+            portfolio=portfolio,
+            name="Test Account",
+            account_type=system.type_taxable,
+            institution=system.institution,
+        )
+
+        strategy = AllocationStrategy.objects.create(user=test_user, name="Mixed Strategy")
+        TargetAllocation.objects.create(
+            strategy=strategy, asset_class=ac_held, target_percent=Decimal("70.00")
+        )
+        TargetAllocation.objects.create(
+            strategy=strategy, asset_class=ac_empty, target_percent=Decimal("30.00")
+        )
+
+        account.allocation_strategy = strategy
+        account.save()
+
+        # 5. Create holding ONLY for vti
+        Holding.objects.create(account=account, security=system.vti, shares=Decimal("70"))
+        # VTI Price is 100, so value is 7000.
+        SecurityPrice.objects.update_or_create(
+            security=system.vti,
+            defaults={"price": Decimal("100.00"), "price_datetime": timezone.now()},
+        )
+
+        # 6. Run aggregated holdings
+        rows = engine.get_aggregated_holdings_rows(test_user, target_mode="effective")
+
+        # 7. Verify result
+        holding_rows = [r for r in rows if r["row_type"] == "holding"]
+
+        # Should have 2 holding rows: VTI and ZERO
+        assert len(holding_rows) == 2
+
+        vti_row = next(r for r in holding_rows if r["ticker"] == "VTI")
+        zero_row = next(r for r in holding_rows if r["ticker"] == "ZERO")
+
+        # VTI Row
+        assert vti_row["value"] == 7000.0
+        assert vti_row["allocation"] == 100.0  # Currently 100% because ZERO has 0 value
+        assert vti_row["is_zero_holding"] is False
+
+        # ZERO Row
+        assert zero_row["value"] == 0.0
+        assert zero_row["shares"] == 0.0
+        assert zero_row["is_zero_holding"] is True
+        assert zero_row["target_allocation"] == 30.0
+        # row_class contains the badge stuff if it was formatted
+        assert "text-muted" in zero_row["row_class"]
+        assert "cat-" in zero_row["parent_id"]
+
+    def test_individual_account_includes_zero_holding(
+        self, engine, test_user, base_system_data
+    ) -> None:
+        """Verify that an individual account view also includes zero holdings."""
+        from portfolio.models import (
+            Account,
+            AllocationStrategy,
+            AssetClass,
+            Holding,
+            Portfolio,
+            Security,
+            SecurityPrice,
+            TargetAllocation,
+        )
+
+        system = base_system_data
+        portfolio = Portfolio.objects.create(user=test_user, name="Zero Holding Test Indiv")
+
+        # 1. Create an asset class that we WILL hold
+        ac_held = system.vti.asset_class
+
+        # 2. Create an asset class that we WILL NOT hold but have a target for
+        ac_empty = AssetClass.objects.create(
+            name="Empty Asset Individual", category=ac_held.category
+        )
+
+        # 3. Assign a primary security to the empty asset class
+        primary_sec = Security.objects.create(
+            ticker="ZEROI", name="Zero Security Individual", asset_class=ac_empty
+        )
+        ac_empty.primary_security = primary_sec
+        ac_empty.save()
+
+        # Add a price for the primary security
+        SecurityPrice.objects.create(
+            security=primary_sec, price=Decimal("10.00"), price_datetime=timezone.now()
+        )
+
+        # 4. Create an account and strategy
+        account = Account.objects.create(
+            user=test_user,
+            portfolio=portfolio,
+            name="Test Account Individual",
+            account_type=system.type_taxable,
+            institution=system.institution,
+            allocation_strategy=AllocationStrategy.objects.create(
+                user=test_user, name="Mixed Strategy I"
+            ),
+        )
+
+        TargetAllocation.objects.create(
+            strategy=account.allocation_strategy,
+            asset_class=ac_held,
+            target_percent=Decimal("50.00"),
+        )
+        TargetAllocation.objects.create(
+            strategy=account.allocation_strategy,
+            asset_class=ac_empty,
+            target_percent=Decimal("50.00"),
+        )
+
+        # 5. Create holding ONLY for vti
+        Holding.objects.create(account=account, security=system.vti, shares=Decimal("10"))
+        SecurityPrice.objects.update_or_create(
+            security=system.vti,
+            defaults={"price": Decimal("100.00"), "price_datetime": timezone.now()},
+        )
+
+        # 6. Run individual account holdings
+        rows = engine.get_holdings_rows(test_user, account_id=account.id)
+
+        # 7. Verify result
+        holding_rows = [r for r in rows if r["row_type"] == "holding"]
+
+        # Should have 2 holding rows
+        assert len(holding_rows) == 2
+        assert any(r["ticker"] == "VTI" for r in holding_rows)
+        zero_row = next(r for r in holding_rows if r["ticker"] == "ZEROI")
+        assert zero_row["is_zero_holding"] is True
+        assert zero_row["target_allocation"] == 50.0

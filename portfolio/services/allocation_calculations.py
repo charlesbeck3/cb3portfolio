@@ -739,6 +739,17 @@ class AllocationCalculationEngine:
         # Step 2: Get effective targets for all accounts
         effective_targets_map = self.get_effective_target_map(user)
 
+        # Step 2.1: Add zero holdings for missing targets
+        # If account_id is provided, only add zero holdings for that account.
+        # Otherwise, this might get complicated for multiple accounts, but for now
+        # we'll use the provided account_id (or 0 if None, though 0 isn't really used there).
+        if account_id:
+            df_zero = self._get_zero_holdings_for_missing_targets(
+                df=df, targets_map=effective_targets_map, account_id=account_id
+            )
+            if not df_zero.empty:
+                df = pd.concat([df, df_zero], ignore_index=True)
+
         # Step 3: Calculate targets using existing method
         # Note: calculate_holdings_detail expects columns: Account_ID, Asset_Class,
         # Ticker (or Security), Value, Shares, Price
@@ -1864,6 +1875,107 @@ class AllocationCalculationEngine:
         # Step 2: Format for display
         return self._format_holdings_rows(holdings_df)
 
+    def _get_zero_holdings_for_missing_targets(
+        self, df: pd.DataFrame, targets_map: dict[int, dict[str, Decimal]], account_id: int = 0
+    ) -> pd.DataFrame:
+        """
+        Create zero-holding rows for asset classes with targets but no holdings.
+
+        Args:
+            df: Existing holdings DataFrame
+            targets_map: Dict of {account_id: {asset_class_name: target_pct}}
+            account_id: Account ID (0 for portfolio-wide)
+
+        Returns:
+            DataFrame with zero-holding rows for missing asset classes
+        """
+        from portfolio.models import AssetClass, SecurityPrice
+
+        account_targets = targets_map.get(account_id, {})
+        if not account_targets:
+            return pd.DataFrame()
+
+        # Find missing asset classes
+        existing_asset_classes = set()
+        if not df.empty and "Asset_Class" in df.columns:
+            existing_asset_classes = set(df["Asset_Class"].unique())
+
+        missing_asset_classes = set(account_targets.keys()) - existing_asset_classes
+
+        if not missing_asset_classes:
+            return pd.DataFrame()
+
+        # Build zero holdings using primary securities
+        zero_holdings = []
+
+        for ac_name in missing_asset_classes:
+            try:
+                asset_class = AssetClass.objects.select_related(
+                    "primary_security", "category", "category__parent"
+                ).get(name=ac_name)
+
+                security = asset_class.primary_security
+
+                if not security:
+                    logger.warning(
+                        "no_primary_security_for_asset_class",
+                        asset_class=ac_name,
+                        account_id=account_id,
+                    )
+                    continue
+
+                # Get latest price for the primary security
+                latest_price = SecurityPrice.get_latest_price(security)
+                price = float(latest_price) if latest_price else 0.0
+
+                zero_holding = {
+                    "Account_ID": account_id,
+                    "Account_Name": "Portfolio" if account_id == 0 else "",
+                    "Ticker": security.ticker,
+                    "Security_Name": security.name,
+                    "Asset_Class": ac_name,
+                    "Asset_Class_ID": asset_class.id,
+                    "Asset_Category": asset_class.category.label,
+                    "Asset_Group": (
+                        asset_class.category.parent.label
+                        if asset_class.category.parent
+                        else asset_class.category.label
+                    ),
+                    "Group_Code": (
+                        asset_class.category.parent.code
+                        if asset_class.category.parent
+                        else asset_class.category.code
+                    ),
+                    "Group_Sort_Order": (
+                        asset_class.category.parent.sort_order
+                        if asset_class.category.parent
+                        else asset_class.category.sort_order
+                    ),
+                    "Category_Code": asset_class.category.code,
+                    "Category_Sort_Order": asset_class.category.sort_order,
+                    "Shares": 0.0,
+                    "Price": price,
+                    "Value": 0.0,
+                }
+
+                zero_holdings.append(zero_holding)
+
+            except AssetClass.DoesNotExist:
+                logger.warning("asset_class_not_found", name=ac_name)
+                continue
+
+        if not zero_holdings:
+            return pd.DataFrame()
+
+        logger.info(
+            "created_zero_holdings",
+            count=len(zero_holdings),
+            asset_classes=[h["Asset_Class"] for h in zero_holdings],
+            account_id=account_id,
+        )
+
+        return pd.DataFrame(zero_holdings)
+
     def get_aggregated_holdings_rows(
         self, user: Any, target_mode: str = "effective"
     ) -> list[dict[str, Any]]:
@@ -1921,10 +2033,20 @@ class AllocationCalculationEngine:
             # Use weighted effective targets (aggregate of account-level targets)
             targets_map = self._get_portfolio_effective_targets(user)
 
-        # Step 5: Reuse existing calculate_holdings_detail() - it already does everything!
-        df_with_targets = self.calculate_holdings_detail(df_aggregated, targets_map)
+        # Step 5: Add zero holdings for missing targets
+        df_zero = self._get_zero_holdings_for_missing_targets(
+            df=df_aggregated, targets_map=targets_map, account_id=0
+        )
 
-        # Step 6: Calculate allocation percentages (already exists in calculate_holdings_with_targets)
+        if not df_zero.empty:
+            df_final = pd.concat([df_aggregated, df_zero], ignore_index=True)
+        else:
+            df_final = df_aggregated
+
+        # Step 6: Calculate detail (targets, variance) for everything
+        df_with_targets = self.calculate_holdings_detail(df_final, targets_map)
+
+        # Step 7: Calculate allocation percentages (already exists in calculate_holdings_with_targets)
         total_value = df_with_targets["Value"].sum()
         if total_value > 0:
             df_with_targets["Allocation_Pct"] = (df_with_targets["Value"] / total_value) * 100
@@ -1939,7 +2061,7 @@ class AllocationCalculationEngine:
             df_with_targets["Allocation_Pct"] - df_with_targets["Target_Allocation_Pct"]
         )
 
-        # Calculate share targets (already exists in calculate_holdings_with_targets)
+        # Step 8: Calculate share targets (already exists in calculate_holdings_with_targets)
         df_with_targets["Target_Shares"] = 0.0
         price_mask = df_with_targets["Price"] > 0
         if price_mask.any():
@@ -1951,7 +2073,7 @@ class AllocationCalculationEngine:
             df_with_targets["Shares"] - df_with_targets["Target_Shares"]
         )
 
-        # Step 7: Sort and format (reuse existing formatter)
+        # Step 9: Sort and format (reuse existing formatter)
         df_with_targets = df_with_targets.sort_values(
             by=["Group_Sort_Order", "Category_Sort_Order", "Target_Value", "Ticker"],
             ascending=[True, True, False, True],
@@ -2216,6 +2338,8 @@ class AllocationCalculationEngine:
             # Build parent_id for collapse functionality
             parent_id = f"cat-{row['Category_Code']}"
 
+            is_zero_holding = float(row["Shares"]) == 0.0 and float(row["Value"]) == 0.0
+
             rows.append(
                 {
                     "row_type": "holding",
@@ -2244,8 +2368,10 @@ class AllocationCalculationEngine:
                     "is_subtotal": False,
                     "is_group_total": False,
                     "is_grand_total": False,
+                    "is_zero_holding": is_zero_holding,
                     "parent_id": parent_id,
-                    "row_class": f"{parent_id}-rows collapse show",
+                    "row_class": f"{parent_id}-rows collapse show"
+                    + (" table-light text-muted fst-italic" if is_zero_holding else ""),
                 }
             )
 

@@ -29,6 +29,14 @@ class Security(models.Model):
     def __str__(self) -> str:
         return f"{self.ticker} - {self.name}"
 
+    @property
+    def is_primary_for_asset_class(self) -> bool:
+        """Check if this security is the primary for its asset class."""
+        return (
+            self.asset_class.primary_security_id is not None
+            and self.asset_class.primary_security_id == self.id
+        )
+
 
 class SecurityPrice(models.Model):
     """

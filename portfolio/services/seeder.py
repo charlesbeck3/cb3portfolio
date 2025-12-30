@@ -49,7 +49,10 @@ class SystemSeederService:
         # 5. Securities
         self._seed_securities()
 
-        # 6. Institutions
+        # 6. Set Primary Securities
+        self._set_primary_securities()
+
+        #  institution
         self._seed_institutions()
 
         self.logger.success("System Data seeded successfully!")
@@ -326,3 +329,40 @@ class SystemSeederService:
             inst_obj, created = Institution.objects.get_or_create(name=name)
             if created:
                 self.logger.success(f"Created Institution: {inst_obj.name}")
+
+    def _set_primary_securities(self) -> None:
+        """Set primary securities for asset classes."""
+        primary_mappings = {
+            "US Equities": "VTI",
+            "US Small Cap Value Equities": "AVUV",
+            "US Quality Equities": "JQUA",
+            "US Dividend Equities": "VIG",
+            "US Value Equities": "VTV",
+            "US Real Estate": "VNQ",
+            "International Developed Equities": "VEA",
+            "International Emerging Equities": "VWO",
+            "US Treasuries - Short": "VGSH",
+            "US Treasuries - Intermediate": "VGIT",
+            "Inflation Adjusted Bond": "IBOND",
+            "Cash": "CASH",
+        }
+
+        updated_count = 0
+
+        for ac_name, ticker in primary_mappings.items():
+            try:
+                asset_class = AssetClass.objects.get(name=ac_name)
+                security = Security.objects.get(ticker=ticker)
+
+                if asset_class.primary_security != security:
+                    asset_class.primary_security = security
+                    asset_class.save()
+                    updated_count += 1
+                    self.logger.success(f"Set primary for {ac_name}: {ticker}")
+
+            except AssetClass.DoesNotExist:
+                self.logger.write(f"Warning: Asset class not found: {ac_name}")
+            except Security.DoesNotExist:
+                self.logger.write(f"Warning: Security not found: {ticker}")
+
+        self.logger.success(f"Updated {updated_count} primary securities")

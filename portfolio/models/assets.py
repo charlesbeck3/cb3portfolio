@@ -50,6 +50,15 @@ class AssetClass(models.Model):
         help_text="Expected annual return (%)",
     )
 
+    primary_security = models.ForeignKey(
+        "Security",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="primary_for_asset_classes",
+        help_text="Primary/preferred security for this asset class",
+    )
+
     # ============================================================================
     # Constants
     # ============================================================================

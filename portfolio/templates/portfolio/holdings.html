@@ -101,7 +101,10 @@
                                             <td>
                                                 <div class="d-flex justify-content-between align-items-center">
                                                     <strong>{{ row.ticker }}</strong>
-                                                    {% if account and row.is_holding %}
+                                                    {% if row.is_zero_holding %}
+                                                        <span class="badge bg-secondary ms-1" style="font-size: 0.6rem;">No Position</span>
+                                                    {% endif %}
+                                                    {% if account and row.is_holding and not row.is_zero_holding %}
                                                     <button type="button" class="btn btn-link btn-sm p-0 text-danger"
                                                             data-bs-toggle="modal" data-bs-target="#deleteHoldingModal"
                                                             data-id="{{ row.holding_id }}"
@@ -118,12 +121,14 @@
 
                                             <!-- Shares (Editable if account) -->
                                             <td class="text-end" style="min-width: 100px;">
-                                                {% if account %}
+                                                {% if row.is_zero_holding %}
+                                                    <span class="text-muted">&mdash;</span>
+                                                {% elif account %}
                                                     <div class="input-group input-group-sm">
                                                         <input type="number" name="shares_{{ row.holding_id }}"
-                                                               value="{{ row.shares_input }}"
-                                                               step="0.0001" class="form-control form-control-sm p-1 text-end"
-                                                               style="font-size: 0.8rem;">
+                                                                value="{{ row.shares_input }}"
+                                                                step="0.0001" class="form-control form-control-sm p-1 text-end"
+                                                                style="font-size: 0.8rem;">
                                                         <input type="hidden" name="holding_ids" value="{{ row.holding_id }}">
                                                     </div>
                                                 {% else %}
@@ -134,7 +139,13 @@
                                             <td class="text-end"><span class="number">{{ row.shares_variance|number:4 }}</span></td>
 
                                             <!-- Value -->
-                                            <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
+                                            <td class="text-end">
+                                                {% if row.is_zero_holding %}
+                                                    <span class="text-muted">$0</span>
+                                                {% else %}
+                                                    <span class="money">{{ row.value|money:0 }}</span>
+                                                {% endif %}
+                                            </td>
                                             <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
                                             <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
 

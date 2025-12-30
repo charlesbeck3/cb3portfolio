@@ -85,20 +85,45 @@ class AccountTypeStrategyAssignmentAdmin(admin.ModelAdmin):
 
 
 class AssetClassAdmin(admin.ModelAdmin):
-    list_display = ("name", "category", "expected_return")
+    list_display = ("name", "category", "expected_return", "get_primary_ticker")
     list_filter = ("category",)
     search_fields = ("name",)
     ordering = ("name",)
+    autocomplete_fields = ["primary_security"]
+
+    fieldsets = (
+        ("Basic Information", {"fields": ("name", "category", "expected_return")}),
+        (
+            "Primary Security",
+            {"fields": ("primary_security",)},
+        ),
+    )
+
+    @admin.display(description="Primary", ordering="primary_security__ticker")
+    def get_primary_ticker(self, obj: AssetClass) -> str:
+        if obj.primary_security:
+            return obj.primary_security.ticker
+        return "—"
 
 
 class SecurityAdmin(admin.ModelAdmin):
-    list_display = ("ticker", "name", "asset_class", "get_asset_class_category")
+    list_display = (
+        "ticker",
+        "name",
+        "asset_class",
+        "get_asset_class_category",
+        "is_primary_display",
+    )
     list_filter = ("asset_class__category", "asset_class")
     search_fields = ("ticker", "name")
 
     @admin.display(description="Category", ordering="asset_class__category")
     def get_asset_class_category(self, obj: Security) -> str:
         return obj.asset_class.category.label
+
+    @admin.display(description="Primary", boolean=True)
+    def is_primary_display(self, obj: Security) -> bool:
+        return obj.is_primary_for_asset_class
 
 
 class SecurityPriceAdmin(admin.ModelAdmin):
