@@ -1,13 +1,14 @@
-import logging
 from collections import OrderedDict
 from decimal import Decimal
 from typing import Any
 
 from django.http import HttpRequest
 
+import structlog
+
 from portfolio.models import Account, AccountGroup
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class PortfolioContextMixin:

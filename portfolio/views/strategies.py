@@ -1,18 +1,27 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
-from django.http import HttpResponseRedirect
+from django.http import Http404, HttpResponseRedirect
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, UpdateView
 
 from portfolio.exceptions import AllocationError
 from portfolio.forms.strategies import AllocationStrategyForm
 from portfolio.models import AllocationStrategy, AssetClass
+from portfolio.utils.security import (
+    AccessControlError,
+    InvalidInputError,
+    sanitize_integer_input,
+    validate_user_owns_strategy,
+)
 from portfolio.views.mixins import PortfolioContextMixin
+
+logger = logging.getLogger(__name__)
 
 
 class AllocationStrategyCreateView(LoginRequiredMixin, PortfolioContextMixin, CreateView):
@@ -83,9 +92,36 @@ class AllocationStrategyUpdateView(LoginRequiredMixin, PortfolioContextMixin, Up
     template_name = "portfolio/allocation_strategy_form.html"
     success_url = reverse_lazy("portfolio:target_allocations")
 
-    def get_queryset(self) -> Any:
-        """Ensure user can only edit their own strategies."""
-        return AllocationStrategy.objects.filter(user=cast(Any, self.request.user))
+    def get_object(self, queryset: Any = None) -> AllocationStrategy:
+        """Get strategy object with ownership validation."""
+        strategy_id_raw = self.kwargs.get("pk")
+
+        try:
+            # Sanitize input
+            strategy_id = sanitize_integer_input(strategy_id_raw, "strategy_id", min_val=1)
+
+            # Validate ownership
+            strategy = validate_user_owns_strategy(self.request.user, strategy_id)
+
+            return strategy
+
+        except (InvalidInputError, AccessControlError) as e:
+            logger.warning(
+                "Invalid strategy access: user=%s, strategy_id=%s, error=%s",
+                self.request.user.id,
+                strategy_id_raw,
+                str(e),
+            )
+            messages.error(self.request, str(e))
+            raise Http404("Strategy not found") from None
+        except Exception:
+            logger.error(
+                "Unexpected error accessing strategy: user=%s, strategy_id=%s",
+                self.request.user.id,
+                strategy_id_raw,
+                exc_info=True,
+            )
+            raise Http404("Strategy not found") from None
 
     def form_valid(self, form: Any) -> HttpResponseRedirect | Any:
         with transaction.atomic():

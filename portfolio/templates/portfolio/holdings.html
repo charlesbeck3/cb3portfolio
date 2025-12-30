@@ -101,9 +101,10 @@
                                             <td>
                                                 <div class="d-flex justify-content-between align-items-center">
                                                     <strong>{{ row.ticker }}</strong>
-                                                    {% if account and row.ticker %}
+                                                    {% if account and row.is_holding %}
                                                     <button type="button" class="btn btn-link btn-sm p-0 text-danger"
                                                             data-bs-toggle="modal" data-bs-target="#deleteHoldingModal"
+                                                            data-id="{{ row.holding_id }}"
                                                             data-ticker="{{ row.ticker }}"
                                                             title="Remove {{ row.ticker }}">
                                                         <i class="bi bi-trash"></i> &times;
@@ -118,10 +119,13 @@
                                             <!-- Shares (Editable if account) -->
                                             <td class="text-end" style="min-width: 100px;">
                                                 {% if account %}
-                                                    <input type="number" name="shares_{{ row.ticker }}"
-                                                           value="{{ row.shares_input }}"
-                                                           step="0.0001" class="form-control form-control-sm p-1 text-end"
-                                                           style="font-size: 0.8rem;">
+                                                    <div class="input-group input-group-sm">
+                                                        <input type="number" name="shares_{{ row.holding_id }}"
+                                                               value="{{ row.shares_input }}"
+                                                               step="0.0001" class="form-control form-control-sm p-1 text-end"
+                                                               style="font-size: 0.8rem;">
+                                                        <input type="hidden" name="holding_ids" value="{{ row.holding_id }}">
+                                                    </div>
                                                 {% else %}
                                                     <span class="number">{{ row.shares|number:4 }}</span>
                                                 {% endif %}
@@ -235,8 +239,8 @@
                         <div class="form-text">Select from existing securities.</div>
                     </div>
                     <div class="mb-3">
-                        <label for="initial_shares" class="form-label">Initial Shares</label>
-                        <input type="number" class="form-control" id="initial_shares" name="initial_shares" step="0.0001" min="0.0001" required>
+                        <label for="shares" class="form-label">Initial Shares</label>
+                        <input type="number" class="form-control" id="shares" name="shares" step="0.0001" min="0.0001" required>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -262,7 +266,7 @@
                 {% csrf_token %}
                 <div class="modal-body">
                     <p>Are you sure you want to remove <strong id="delete_ticker_display"></strong> from this account?</p>
-                    <input type="hidden" name="delete_ticker" id="delete_ticker_input">
+                    <input type="hidden" name="delete_holding_id" id="delete_holding_id_input">
                     <p class="text-danger small">This action cannot be undone.</p>
                 </div>
                 <div class="modal-footer">
@@ -279,12 +283,13 @@
     deleteModal.addEventListener('show.bs.modal', function (event) {
         var button = event.relatedTarget
         var ticker = button.getAttribute('data-ticker')
+        var holdingId = button.getAttribute('data-id')
         var modalTitle = deleteModal.querySelector('.modal-title')
         var tickerDisplay = deleteModal.querySelector('#delete_ticker_display')
-        var tickerInput = deleteModal.querySelector('#delete_ticker_input')
+        var idInput = deleteModal.querySelector('#delete_holding_id_input')
 
         tickerDisplay.textContent = ticker
-        tickerInput.value = ticker
+        idInput.value = holdingId
     })
 </script>
 {% endif %}

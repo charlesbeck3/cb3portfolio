@@ -125,7 +125,9 @@ class SecurityPrice(models.Model):
         return age > max_age
 
     @classmethod
-    def get_stale_securities(cls, user: Any, max_age: timedelta = timedelta(minutes=5)):
+    def get_stale_securities(
+        cls, user: Any, max_age: timedelta = timedelta(minutes=5)
+    ) -> models.QuerySet[Security]:
         """
         Get all securities owned by user that have stale prices.
 

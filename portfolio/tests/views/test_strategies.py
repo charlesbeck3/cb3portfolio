@@ -162,3 +162,39 @@ class TestAllocationStrategyViews:
             )
         assert "105" in str(excinfo.value)
         assert "100" in str(excinfo.value)
+
+
+@pytest.mark.views
+@pytest.mark.integration
+class TestAllocationStrategySecurity:
+    """Integration tests for security validation in strategy views."""
+
+    @pytest.fixture
+    def other_user(self, django_user_model):
+        """Create a second user."""
+        return django_user_model.objects.create_user(
+            username="otheruser",
+            password="testpass123",  # pragma: allowlist secret
+        )
+
+    def test_cannot_access_other_users_strategy_update(self, client, test_user, other_user):
+        """Test that user cannot access another user's strategy update page."""
+        # Create strategy for other user
+        strategy = AllocationStrategy.objects.create(user=other_user, name="Other User Strategy")
+
+        client.force_login(test_user)
+
+        url = reverse("portfolio:strategy_update", args=[strategy.id])
+        response = client.get(url)
+
+        # Should return 404 (as specified in AllocationStrategyUpdateView.get_object)
+        assert response.status_code == 404
+
+    def test_invalid_strategy_id_returns_404(self, client, test_user):
+        """Test that non-existent strategy ID returns 404."""
+        client.force_login(test_user)
+
+        url = reverse("portfolio:strategy_update", args=[99999])
+        response = client.get(url)
+
+        assert response.status_code == 404
