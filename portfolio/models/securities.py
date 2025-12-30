@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -277,11 +277,14 @@ class Holding(models.Model):
     def latest_price(self) -> Decimal | None:
         """
         Get latest price from SecurityPrice table.
+        Optimized to use annotated value from AllocationEngine if present.
 
         Returns:
             Latest price from SecurityPrice, or None if no price exists
         """
-        from portfolio.models import SecurityPrice
+        # Check for annotated value from optimized prefetches
+        if hasattr(self, "_annotated_latest_price"):
+            return cast(Decimal | None, self._annotated_latest_price)
 
         return SecurityPrice.get_latest_price(self.security)
 
@@ -293,8 +296,6 @@ class Holding(models.Model):
         Returns:
             DateTime of latest SecurityPrice, or None if no price exists
         """
-        from portfolio.models import SecurityPrice
-
         latest = SecurityPrice.objects.filter(security=self.security).first()
 
         return latest.price_datetime if latest else None

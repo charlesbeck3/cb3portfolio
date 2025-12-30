@@ -813,3 +813,84 @@ class TestAggregatedHoldings:
         """Verify empty holdings behavior."""
         rows = engine.get_aggregated_holdings_rows(test_user)
         assert rows == []
+
+
+@pytest.mark.services
+class TestSidebarData:
+    """Test get_sidebar_data engine method."""
+
+    @pytest.fixture
+    def portfolio_with_data(self, test_user, base_system_data):
+        """Create portfolio with multiple accounts and holdings."""
+        from django.utils import timezone
+
+        from portfolio.models import Portfolio, SecurityPrice
+
+        portfolio = Portfolio.objects.create(user=test_user, name="Test Portfolio")
+
+        # Ensure prices exist
+        for sec in [base_system_data.vti, base_system_data.bnd, base_system_data.cash]:
+            SecurityPrice.objects.update_or_create(
+                security=sec,
+                defaults={
+                    "price": Decimal("100.00"),
+                    "price_datetime": timezone.now(),
+                    "source": "manual",
+                },
+            )
+
+        for i in range(3):
+            account = Account.objects.create(
+                user=test_user,
+                portfolio=portfolio,
+                name=f"Account {i}",
+                account_type=base_system_data.type_taxable,
+                institution=base_system_data.institution,
+            )
+
+            # Add holdings
+            Holding.objects.create(
+                account=account, security=base_system_data.vti, shares=Decimal("10")
+            )
+
+        return {"portfolio": portfolio, "user": test_user}
+
+    @pytest.mark.django_db
+    def test_get_sidebar_data_completeness(self, portfolio_with_data):
+        """Verify sidebar data includes all expected information."""
+        user = portfolio_with_data["user"]
+        engine = AllocationCalculationEngine()
+
+        sidebar_data = engine.get_sidebar_data(user)
+
+        # Check structure
+        assert "grand_total" in sidebar_data
+        assert "account_totals" in sidebar_data
+        assert "account_variances" in sidebar_data
+        assert "accounts_by_group" in sidebar_data
+        assert "query_count" in sidebar_data
+
+        # Check data completeness
+        assert len(sidebar_data["account_totals"]) == 3
+        # 3 accounts * 10 shares * 100 price = 3000
+        assert sidebar_data["grand_total"] == Decimal("3000.00")
+
+        # Verify each account has required fields for template
+        for group in sidebar_data["accounts_by_group"].values():
+            for account_data in group["accounts"]:
+                assert "id" in account_data
+                assert "name" in account_data
+                assert "total" in account_data
+                assert "absolute_deviation_pct" in account_data
+                assert "institution" in account_data
+                assert "account_type" in account_data
+
+    @pytest.mark.django_db
+    def test_sidebar_empty_portfolio(self, test_user):
+        """Test sidebar with no accounts."""
+        engine = AllocationCalculationEngine()
+        sidebar_data = engine.get_sidebar_data(test_user)
+
+        assert sidebar_data["grand_total"] == Decimal("0.00")
+        assert len(sidebar_data["account_totals"]) == 0
+        assert len(sidebar_data["accounts_by_group"]) == 0

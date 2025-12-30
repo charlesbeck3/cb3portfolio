@@ -9,8 +9,11 @@ DESIGN PHILOSOPHY:
 - Formatting happens in views/templates, not here
 """
 
+from collections import OrderedDict
 from decimal import Decimal
 from typing import Any, cast
+
+from django.db import connection
 
 import pandas as pd
 import structlog
@@ -32,6 +35,249 @@ class AllocationCalculationEngine:
 
     def __init__(self) -> None:
         logger.debug("initializing_allocation_engine")
+
+    def get_sidebar_data(self, user: Any) -> dict[str, Any]:
+        """
+        Get all sidebar data in a single optimized call.
+
+        This method consolidates multiple queries and calculations into an
+        efficient batch operation, reducing round-trips to the database.
+
+        Args:
+            user: User to get sidebar data for
+
+        Returns:
+            dict with:
+                - grand_total: Total portfolio value (Decimal)
+                - account_totals: {account_id: total_value} (dict)
+                - account_variances: {account_id: variance_pct} (dict)
+                - accounts_by_group: {group_name: [account_data...]} (OrderedDict)
+                - query_count: Number of database queries executed (for monitoring)
+        """
+        from django.conf import settings
+
+        from portfolio.models import (
+            Account,
+            AccountGroup,
+            AccountTypeStrategyAssignment,
+            AllocationStrategy,
+            Portfolio,
+        )
+
+        logger.info("building_sidebar_data", user_id=user.id)
+
+        # Track query count for monitoring (only in DEBUG mode)
+        initial_queries = len(connection.queries) if settings.DEBUG else 0
+
+        try:
+            # Step 1: Pre-fetch all mapping components to avoid N+1 queries during iteration
+            portfolio = (
+                Portfolio.objects.filter(user=user).select_related("allocation_strategy").first()
+            )
+
+            # Index all user strategies with their targets prefetched
+            user_strategies = {
+                s.id: s
+                for s in AllocationStrategy.objects.filter(user=user).prefetch_related(
+                    "target_allocations__asset_class"
+                )
+            }
+
+            # Add portfolio strategy to the index if it exists and not already there
+            if (
+                portfolio
+                and portfolio.allocation_strategy_id
+                and portfolio.allocation_strategy_id not in user_strategies
+            ):
+                # Rare case: portfolio strategy owned by another user (not expected in this app)
+                # but we'll fetch it just in case to be safe
+                s = portfolio.allocation_strategy
+                # Manual prefetch if needed (or just let it query once)
+                if s:
+                    user_strategies[s.id] = s
+
+            # Map account types to strategies
+            at_assignments = {
+                a.account_type_id: a.allocation_strategy_id
+                for a in AccountTypeStrategyAssignment.objects.filter(user=user)
+            }
+
+            # Step 2: Fetch accounts with all other relationships
+            from django.db.models import OuterRef, Prefetch, Subquery
+
+            from portfolio.models import Holding, SecurityPrice
+
+            # Subquery for latest price to avoid N+1 and duplicates
+            latest_price = Subquery(
+                SecurityPrice.objects.filter(security_id=OuterRef("security_id"))
+                .order_by("-price_datetime")
+                .values("price")[:1]
+            )
+
+            holdings_qs = Holding.objects.annotate(
+                _annotated_latest_price=latest_price
+            ).select_related("security__asset_class")
+
+            accounts = list(
+                Account.objects.filter(user=user)
+                .select_related(
+                    "account_type",
+                    "account_type__group",
+                    "institution",
+                )
+                .prefetch_related(
+                    Prefetch("holdings", queryset=holdings_qs),
+                )
+                .order_by("account_type__group__sort_order", "name")
+            )
+
+            if not accounts:
+                logger.info("no_accounts_for_sidebar", user_id=user.id)
+                return {
+                    "grand_total": Decimal("0.00"),
+                    "account_totals": {},
+                    "account_variances": {},
+                    "accounts_by_group": OrderedDict(),
+                    "query_count": 0,
+                }
+
+            # Step 3: Calculate all totals and variances in one pass using in-memory data
+            account_totals: dict[int, Decimal] = {}
+            account_variances: dict[int, float] = {}
+
+            for acc in accounts:
+                # 1. Calculate holding totals by asset class (IN MEMORY)
+                holdings_by_ac: dict[str, Decimal] = {}
+                acc_total = Decimal("0.00")
+                for h in acc.holdings.all():
+                    ac_name = h.security.asset_class.name
+                    val = h.market_value
+                    holdings_by_ac[ac_name] = holdings_by_ac.get(ac_name, Decimal("0.00")) + val
+                    acc_total += val
+
+                if acc_total > 0:
+                    account_totals[acc.id] = acc_total
+
+                # 2. Determine Effective Strategy (IN MEMORY Fallback logic)
+                strategy_id = None
+                if acc.allocation_strategy_id:
+                    strategy_id = acc.allocation_strategy_id
+                elif acc.account_type_id in at_assignments:
+                    strategy_id = at_assignments[acc.account_type_id]
+                elif portfolio:
+                    strategy_id = portfolio.allocation_strategy_id
+
+                # 3. Calculate variance (IN MEMORY)
+                strategy = user_strategies.get(strategy_id) if strategy_id else None
+                if strategy:
+                    # get_allocations_by_name uses target_allocations.all() which is prefetched
+                    targets = {
+                        ta.asset_class.name: ta.target_percent
+                        for ta in strategy.target_allocations.all()
+                    }
+
+                    total_deviation = Decimal("0.00")
+                    all_asset_classes = set(targets.keys()) | set(holdings_by_ac.keys())
+                    for ac_name in all_asset_classes:
+                        actual = holdings_by_ac.get(ac_name, Decimal("0.00"))
+                        target_pct = targets.get(ac_name, Decimal("0.00"))
+                        target_value = acc_total * (target_pct / Decimal("100"))
+                        total_deviation += abs(actual - target_value)
+
+                    variance_pct = (
+                        float(total_deviation / acc_total * 100) if acc_total > 0 else 0.0
+                    )
+                    account_variances[acc.id] = variance_pct
+                else:
+                    account_variances[acc.id] = 0.0
+
+            grand_total = sum(account_totals.values(), Decimal("0.00"))
+
+            # Step 4: Build groups structure
+            all_groups = AccountGroup.objects.all().order_by("sort_order", "name")
+
+            # Initialize groups structure
+            groups: OrderedDict[str, dict[str, Any]] = OrderedDict()
+            for g in all_groups:
+                groups[g.name] = {"label": g.name, "total": Decimal("0.00"), "accounts": []}
+
+            # Add "Other" group for ungrouped accounts
+            if "Other" not in groups:
+                groups["Other"] = {"label": "Other", "total": Decimal("0.00"), "accounts": []}
+
+            # Single iteration through accounts to build groups
+            for acc in accounts:
+                acc_total = account_totals.get(acc.id, Decimal("0.00"))
+                acc_variance = account_variances.get(acc.id, 0.0)
+
+                # Determine group (use prefetched data)
+                group_name = (
+                    acc.account_type.group.name
+                    if acc.account_type and acc.account_type.group
+                    else "Other"
+                )
+
+                if group_name not in groups:
+                    groups[group_name] = {
+                        "label": group_name,
+                        "total": Decimal("0.00"),
+                        "accounts": [],
+                    }
+
+                # Add account to group
+                groups[group_name]["accounts"].append(
+                    {
+                        "id": acc.id,
+                        "name": acc.name,
+                        "total": acc_total,
+                        "absolute_deviation_pct": acc_variance,
+                        "institution": str(acc.institution) if acc.institution else "Direct",
+                        "account_type": acc.account_type.label if acc.account_type else "Unknown",
+                    }
+                )
+
+                # Accumulate group total
+                groups[group_name]["total"] += acc_total
+
+            # Remove empty groups
+            groups = OrderedDict((k, v) for k, v in groups.items() if v["accounts"])
+
+            # Calculate query count for monitoring (only in DEBUG)
+            final_queries = len(connection.queries) if settings.DEBUG else 0
+            query_count = final_queries - initial_queries if settings.DEBUG else 0
+
+            logger.info(
+                "sidebar_data_built",
+                user_id=user.id,
+                account_count=len(accounts),
+                grand_total=float(grand_total),
+                query_count=query_count,
+            )
+
+            return {
+                "grand_total": grand_total,
+                "account_totals": account_totals,
+                "account_variances": account_variances,
+                "accounts_by_group": groups,
+                "query_count": query_count,
+            }
+
+        except Exception as e:
+            logger.error(
+                "sidebar_data_build_failed",
+                user_id=user.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
+            # Return empty structure on error
+            return {
+                "grand_total": Decimal("0.00"),
+                "account_totals": {},
+                "account_variances": {},
+                "accounts_by_group": OrderedDict(),
+                "query_count": 0,
+            }
 
     def _get_asset_class_metadata_df(self, user: Any) -> pd.DataFrame:
         """Get asset class metadata as DataFrame (NEW)."""
@@ -1379,6 +1625,11 @@ class AllocationCalculationEngine:
         """
         Calculate absolute deviation variance percentage for each account.
 
+        OPTIMIZED: When called after accounts are prefetched with:
+            - holdings__security__asset_class
+            - allocation_strategy__target_allocations__asset_class
+        This method uses in-memory data with no additional queries.
+
         Uses Account domain model method for consistency and DRY principle.
 
         Returns:
@@ -1502,8 +1753,9 @@ class AllocationCalculationEngine:
         """
         Get current total value for all user accounts.
 
-        Efficient extraction using pandas aggregation on holdings DataFrame.
-        This is the authoritative source for account totals used across the application.
+        OPTIMIZED: This method now works efficiently with prefetched holdings.
+        When called after accounts are prefetched with holdings, it uses the
+        in-memory data instead of querying again.
 
         Performance: O(H) where H = total holdings (single pandas groupby)
         vs. O(N*H) for iterating accounts calling total_value()

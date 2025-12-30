@@ -161,8 +161,8 @@ class TestPortfolioContextMixin:
         group_name = base_system_data.type_roth.group.name
         account_data = context["sidebar_data"]["groups"][group_name]["accounts"][0]
         assert "absolute_deviation_pct" in account_data
-        # Variance should be a Decimal
-        assert isinstance(account_data["absolute_deviation_pct"], Decimal)
+        # Variance should be a float (template uses |percent filter)
+        assert isinstance(account_data["absolute_deviation_pct"], float)
 
     def test_sidebar_price_update_failure_handling(
         self, rf, test_user, test_portfolio, base_system_data, monkeypatch
@@ -200,3 +200,70 @@ class TestPortfolioContextMixin:
 
         assert context["sidebar_data"]["grand_total"] == Decimal("0.00")
         assert context["sidebar_data"]["groups"] == {}
+
+
+@pytest.mark.django_db
+@pytest.mark.views
+@pytest.mark.integration
+class TestSidebarContextIntegration:
+    """Test sidebar context generation in actual views."""
+
+    @pytest.fixture
+    def portfolio_with_data(self, test_user, base_system_data):
+        """Create portfolio with test data."""
+        from portfolio.models import Portfolio
+
+        portfolio = Portfolio.objects.create(user=test_user, name="Test")
+        account = Account.objects.create(
+            user=test_user,
+            portfolio=portfolio,
+            name="Test Account",
+            account_type=base_system_data.type_taxable,
+            institution=base_system_data.institution,
+        )
+        Holding.objects.create(
+            account=account, security=base_system_data.vti, shares=Decimal("100.00")
+        )
+        return {"portfolio": portfolio, "account": account}
+
+    def test_sidebar_data_in_context(self, client, test_user, portfolio_with_data):
+        """Verify sidebar data is properly populated in context."""
+        from django.urls import reverse
+
+        client.force_login(test_user)
+
+        response = client.get(reverse("portfolio:dashboard"))
+
+        sidebar_data = response.context["sidebar_data"]
+        assert "grand_total" in sidebar_data
+        assert "groups" in sidebar_data
+        assert sidebar_data["grand_total"] > Decimal("0.00")
+
+        # Verify group and account data structure
+        for _, group in sidebar_data["groups"].items():
+            assert "label" in group
+            assert "total" in group
+            assert "accounts" in group
+            for account in group["accounts"]:
+                assert "id" in account
+                assert "name" in account
+                assert "total" in account
+                assert "absolute_deviation_pct" in account
+                assert "institution" in account
+
+    def test_sidebar_consistent_across_views(self, client, test_user, portfolio_with_data):
+        """Verify sidebar data is consistent across different views."""
+        from django.urls import reverse
+
+        client.force_login(test_user)
+
+        # Get sidebar from dashboard
+        dashboard_response = client.get(reverse("portfolio:dashboard"))
+        dashboard_total = dashboard_response.context["sidebar_data"]["grand_total"]
+
+        # Get sidebar from holdings
+        holdings_response = client.get(reverse("portfolio:holdings"))
+        holdings_total = holdings_response.context["sidebar_data"]["grand_total"]
+
+        # Should be identical
+        assert dashboard_total == holdings_total
