@@ -32,7 +32,21 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         engine = AllocationCalculationEngine()
 
         # Single clean API call
-        context["holdings_rows"] = engine.get_holdings_rows(user=user, account_id=account_id)
+        # Default to aggregated view when viewing entire portfolio, individual for single account
+        default_view = "aggregated" if not account_id else "individual"
+        view_mode = self.request.GET.get("view", default_view)
+        target_mode = self.request.GET.get("target", "effective")
+
+        context["target_mode"] = target_mode
+
+        if view_mode == "aggregated":
+            context["holdings_rows"] = engine.get_aggregated_holdings_rows(
+                user=user, target_mode=target_mode
+            )
+            context["is_aggregated"] = True
+        else:
+            context["holdings_rows"] = engine.get_holdings_rows(user=user, account_id=account_id)
+            context["is_aggregated"] = False
 
         # Add sidebar context (same as before)
         context.update(self.get_sidebar_context())

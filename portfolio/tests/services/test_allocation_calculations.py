@@ -638,3 +638,178 @@ class TestDataFrameMetadata:
         # Check for float or Decimal depending on what DataFrame conversion does
         values = df["target_percent"].values
         assert any(v == 60.00 for v in values) or any(v == Decimal("60.00") for v in values)
+
+
+@pytest.mark.django_db
+@pytest.mark.services
+class TestAggregatedHoldings:
+    """Tests for aggregated holdings calculation and target weighting."""
+
+    @pytest.fixture
+    def engine(self) -> AllocationCalculationEngine:
+        return AllocationCalculationEngine()
+
+    @pytest.fixture
+    def aggregated_system_data(self, test_user, base_system_data):
+        """Setup complex portfolio with same security in multiple accounts."""
+        from decimal import Decimal
+
+        from portfolio.models import (
+            Account,
+            AllocationStrategy,
+            Holding,
+            Portfolio,
+            TargetAllocation,
+        )
+
+        system = base_system_data
+        portfolio = Portfolio.objects.create(user=test_user, name="Aggregated Test")
+
+        # Create two accounts
+        acc1 = Account.objects.create(
+            user=test_user,
+            portfolio=portfolio,
+            name="Account 1",
+            account_type=system.type_taxable,
+            institution=system.institution,
+        )
+        acc2 = Account.objects.create(
+            user=test_user,
+            portfolio=portfolio,
+            name="Account 2",
+            account_type=system.type_401k,
+            institution=system.institution,
+        )
+
+        # Security 1 (VTI) in both accounts
+        # Acc 1: 10 shares @ 100 = 1000
+        Holding.objects.create(account=acc1, security=system.vti, shares=Decimal("10"))
+        # Acc 2: 20 shares @ 100 = 2000
+        Holding.objects.create(account=acc2, security=system.vti, shares=Decimal("20"))
+
+        # Security 2 (BND) only in Acc 2
+        # Acc 2: 30 shares @ 100 = 3000
+        Holding.objects.create(account=acc2, security=system.bnd, shares=Decimal("30"))
+
+        # Total Value: 1000 (VTI) + 2000 (VTI) + 3000 (BND) = 6000
+        # VTI: 3000 (50%)
+        # BND: 3000 (50%)
+
+        # Set effective strategies
+        # Acc 1 Target: Equities 100%
+        strat1 = AllocationStrategy.objects.create(user=test_user, name="Equity Growth")
+        TargetAllocation.objects.create(
+            strategy=strat1, asset_class=system.vti.asset_class, target_percent=Decimal("100.00")
+        )
+        acc1.allocation_strategy = strat1
+        acc1.save()
+
+        # Acc 2 Target: Equities 40%, Fixed Income 60%
+        strat2 = AllocationStrategy.objects.create(user=test_user, name="Balanced")
+        TargetAllocation.objects.create(
+            strategy=strat2, asset_class=system.vti.asset_class, target_percent=Decimal("40.00")
+        )
+        TargetAllocation.objects.create(
+            strategy=strat2, asset_class=system.bnd.asset_class, target_percent=Decimal("60.00")
+        )
+        acc2.allocation_strategy = strat2
+        acc2.save()
+
+        # Weighted Target Calculation:
+        # Portfolio Value = 6000
+        # Acc 1 Value = 1000 (Weight = 1/6) -> 1/6 * 100% Equity = 16.66% Equity
+        # Acc 2 Value = 5000 (Weight = 5/6) -> 5/6 * 40% Equity = 33.33% Equity
+        #                                   -> 5/6 * 60% Bonds = 50.00% Bonds
+        # Total Weighted Target: Equity = 50%, Bonds = 50%
+
+        # Portfolio Policy Strategy: Equities 70%, Fixed Income 30%
+        policy_strat = AllocationStrategy.objects.create(user=test_user, name="Policy")
+        TargetAllocation.objects.create(
+            strategy=policy_strat,
+            asset_class=system.vti.asset_class,
+            target_percent=Decimal("70.00"),
+        )
+        TargetAllocation.objects.create(
+            strategy=policy_strat,
+            asset_class=system.bnd.asset_class,
+            target_percent=Decimal("30.00"),
+        )
+        portfolio.allocation_strategy = policy_strat
+        portfolio.save()
+
+        # Create prices
+        from django.utils import timezone
+
+        from portfolio.models import SecurityPrice
+
+        SecurityPrice.objects.update_or_create(
+            security=system.vti,
+            defaults={
+                "price": Decimal("100"),
+                "price_datetime": timezone.now(),
+                "source": "manual",
+            },
+        )
+        SecurityPrice.objects.update_or_create(
+            security=system.bnd,
+            defaults={
+                "price": Decimal("100"),
+                "price_datetime": timezone.now(),
+                "source": "manual",
+            },
+        )
+
+        return {
+            "user": test_user,
+            "portfolio": portfolio,
+            "acc1": acc1,
+            "acc2": acc2,
+            "system": system,
+        }
+
+    def test_get_aggregated_holdings_rows_effective(self, engine, aggregated_system_data):
+        """Verify aggregated totals and weighted effective targets."""
+        user = aggregated_system_data["user"]
+
+        rows = engine.get_aggregated_holdings_rows(user, target_mode="effective")
+
+        # Filter for holding rows
+        holding_rows = [r for r in rows if r["row_type"] == "holding"]
+        assert len(holding_rows) == 2
+
+        vti_row = next(r for r in holding_rows if r["ticker"] == "VTI")
+        bnd_row = next(r for r in holding_rows if r["ticker"] == "BND")
+
+        # Verify values
+        assert vti_row["shares"] == pytest.approx(30.0)
+        assert vti_row["value"] == pytest.approx(3000.0)
+        assert vti_row["allocation"] == pytest.approx(50.0)
+
+        assert bnd_row["shares"] == pytest.approx(30.0)
+        assert bnd_row["value"] == pytest.approx(3000.0)
+        assert bnd_row["allocation"] == pytest.approx(50.0)
+
+        # Verify effective targets (Weighted averages)
+        # Equity target = 50%
+        # Bonds target = 50%
+        assert vti_row["target_allocation"] == pytest.approx(50.0)
+        assert bnd_row["target_allocation"] == pytest.approx(50.0)
+
+    def test_get_aggregated_holdings_rows_policy(self, engine, aggregated_system_data):
+        """Verify policy targets are applied correctly."""
+        user = aggregated_system_data["user"]
+
+        rows = engine.get_aggregated_holdings_rows(user, target_mode="policy")
+
+        holding_rows = [r for r in rows if r["row_type"] == "holding"]
+        vti_row = next(r for r in holding_rows if r["ticker"] == "VTI")
+        bnd_row = next(r for r in holding_rows if r["ticker"] == "BND")
+
+        # Policy Targets: Equity 70%, Fixed Income 30%
+        assert vti_row["target_allocation"] == pytest.approx(70.0)
+        assert bnd_row["target_allocation"] == pytest.approx(30.0)
+
+    def test_get_aggregated_holdings_rows_empty(self, engine, test_user):
+        """Verify empty holdings behavior."""
+        rows = engine.get_aggregated_holdings_rows(test_user)
+        assert rows == []
