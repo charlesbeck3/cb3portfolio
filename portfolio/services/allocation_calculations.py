@@ -1612,6 +1612,153 @@ class AllocationCalculationEngine:
         # Step 2: Format for display
         return self._format_holdings_rows(holdings_df)
 
+    def get_aggregated_holdings_rows(
+        self, user: Any, target_mode: str = "effective"
+    ) -> list[dict[str, Any]]:
+        """
+        Calculate and format aggregated holdings across all accounts.
+
+        Args:
+            user: User object
+            target_mode: Either "effective" or "policy"
+
+        Returns:
+            List of dicts with same structure as get_holdings_rows but aggregated by ticker
+        """
+        logger.info(
+            "building_aggregated_holdings_rows",
+            user_id=user.id,
+            target_mode=target_mode,
+        )
+
+        # Step 1: Build holdings DataFrame for ALL accounts (account_id=None)
+        df = self.build_holdings_dataframe(user, account_id=None)
+
+        if df.empty:
+            logger.info("no_holdings_for_aggregation", user_id=user.id)
+            return []
+
+        # Step 2: Aggregate by ticker (sum shares and values across accounts)
+        agg_dict = {
+            "Shares": "sum",
+            "Value": "sum",
+            "Security_Name": "first",
+            "Asset_Class": "first",
+            "Asset_Class_ID": "first",
+            "Asset_Category": "first",
+            "Asset_Group": "first",
+            "Group_Code": "first",
+            "Group_Sort_Order": "first",
+            "Category_Code": "first",
+            "Category_Sort_Order": "first",
+            "Price": "first",
+        }
+
+        df_aggregated = df.groupby("Ticker", as_index=False).agg(agg_dict)
+
+        # Step 3: Create a synthetic "portfolio account" for target calculation
+        # Use Account_ID = 0 to represent the aggregated portfolio
+        df_aggregated["Account_ID"] = 0
+        df_aggregated["Account_Name"] = "Portfolio"
+
+        # Step 4: Get targets based on mode
+        if target_mode == "policy":
+            # Use portfolio-level policy strategy
+            targets_map = self._get_portfolio_policy_targets(user)
+        else:
+            # Use weighted effective targets (aggregate of account-level targets)
+            targets_map = self._get_portfolio_effective_targets(user)
+
+        # Step 5: Reuse existing calculate_holdings_detail() - it already does everything!
+        df_with_targets = self.calculate_holdings_detail(df_aggregated, targets_map)
+
+        # Step 6: Calculate allocation percentages (already exists in calculate_holdings_with_targets)
+        total_value = df_with_targets["Value"].sum()
+        if total_value > 0:
+            df_with_targets["Allocation_Pct"] = (df_with_targets["Value"] / total_value) * 100
+            df_with_targets["Target_Allocation_Pct"] = (
+                df_with_targets["Target_Value"] / total_value
+            ) * 100
+        else:
+            df_with_targets["Allocation_Pct"] = 0.0
+            df_with_targets["Target_Allocation_Pct"] = 0.0
+
+        df_with_targets["Allocation_Variance_Pct"] = (
+            df_with_targets["Allocation_Pct"] - df_with_targets["Target_Allocation_Pct"]
+        )
+
+        # Calculate share targets (already exists in calculate_holdings_with_targets)
+        df_with_targets["Target_Shares"] = 0.0
+        price_mask = df_with_targets["Price"] > 0
+        if price_mask.any():
+            df_with_targets.loc[price_mask, "Target_Shares"] = (
+                df_with_targets.loc[price_mask, "Target_Value"]
+                / df_with_targets.loc[price_mask, "Price"]
+            )
+        df_with_targets["Shares_Variance"] = (
+            df_with_targets["Shares"] - df_with_targets["Target_Shares"]
+        )
+
+        # Step 7: Sort and format (reuse existing formatter)
+        df_with_targets = df_with_targets.sort_values(
+            by=["Group_Sort_Order", "Category_Sort_Order", "Target_Value", "Ticker"],
+            ascending=[True, True, False, True],
+        )
+
+        return self._format_holdings_rows(df_with_targets)
+
+    def _get_portfolio_effective_targets(self, user: Any) -> dict[int, dict[str, Decimal]]:
+        """
+        Get weighted-average effective targets for portfolio as a whole.
+
+        Returns targets in format: {0: {asset_class_name: target_pct}}
+        where 0 is the synthetic portfolio account ID.
+        """
+        # Get effective targets for each account
+        effective_targets_map = self.get_effective_target_map(user)
+
+        # Get account totals for weighting
+        account_totals = self.get_account_totals(user)
+        portfolio_total = sum(account_totals.values(), Decimal("0.00"))
+
+        if portfolio_total == 0:
+            return {0: {}}
+
+        # Calculate weighted average
+        portfolio_targets = {}
+
+        for account_id, targets in effective_targets_map.items():
+            account_value = account_totals.get(account_id, Decimal("0.00"))
+            weight = float(account_value / portfolio_total)
+
+            for asset_class, target_pct in targets.items():
+                if asset_class not in portfolio_targets:
+                    portfolio_targets[asset_class] = Decimal("0.00")
+                portfolio_targets[asset_class] += Decimal(str(float(target_pct) * weight))
+
+        return {0: portfolio_targets}
+
+    def _get_portfolio_policy_targets(self, user: Any) -> dict[int, dict[str, Decimal]]:
+        """
+        Get portfolio-level policy targets.
+
+        Returns targets in format: {0: {asset_class_name: target_pct}}
+        where 0 is the synthetic portfolio account ID.
+        """
+        from portfolio.models import Portfolio
+
+        try:
+            portfolio = Portfolio.objects.get(user=user)
+            policy_strategy = portfolio.allocation_strategy
+        except Portfolio.DoesNotExist:
+            return {0: {}}
+
+        if not policy_strategy:
+            return {0: {}}
+
+        # Use existing get_allocations_by_name() method from AllocationStrategy
+        return {0: policy_strategy.get_allocations_by_name()}
+
     def _format_presentation_rows(
         self,
         df: pd.DataFrame,
@@ -1817,6 +1964,7 @@ class AllocationCalculationEngine:
                     "group_code": row["Group_Code"],
                     "category_code": row["Category_Code"],
                     "account_id": int(row["Account_ID"]),  # Ensure int
+                    "account_name": row["Account_Name"],
                     # Raw Values
                     "price": float(row["Price"]),
                     "shares": float(row["Shares"]),
