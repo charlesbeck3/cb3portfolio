@@ -38,13 +38,27 @@ class PortfolioContextMixin:
         from portfolio.services.allocation_calculations import AllocationCalculationEngine
         from portfolio.services.pricing import PricingService
 
-        # Auto-update prices on each page load
+        # Auto-update prices on each page load if they are stale (>5 mins)
         pricing_service = PricingService()
         try:
-            pricing_service.update_holdings_prices(user)
+            result = pricing_service.update_holdings_prices_if_stale(user)
+
+            # Log results for monitoring
+            if result["updated_count"] > 0:
+                logger.info(
+                    "prices_refreshed",
+                    user_id=user.id,
+                    updated=result["updated_count"],
+                    skipped=result["skipped_count"],
+                )
+
+            if result["errors"]:
+                logger.warning(
+                    "price_update_errors", user_id=user.id, failed_tickers=result["errors"]
+                )
         except Exception as e:
             # Log error but don't break the page if price fetch fails
-            logger.warning(f"Failed to update prices for {user.username}: {e}")
+            logger.error("price_service_error", user_id=user.id, error=str(e))
 
         engine = AllocationCalculationEngine()
 

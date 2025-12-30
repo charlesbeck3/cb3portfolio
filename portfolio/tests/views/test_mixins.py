@@ -174,7 +174,7 @@ class TestPortfolioContextMixin:
             raise Exception("Price fetch failed")
 
         monkeypatch.setattr(
-            "portfolio.services.pricing.PricingService.update_holdings_prices",
+            "portfolio.services.pricing.PricingService.update_holdings_prices_if_stale",
             mock_update_raises,
         )
 

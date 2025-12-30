@@ -9,8 +9,9 @@ Key Design:
 - fetched_at: Our fetch time (automatically set, audit trail)
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from django.db import transaction
 
@@ -116,6 +117,114 @@ class PricingService:
 
         # Return prices as dict[ticker, price] (timestamps available via SecurityPrice queries)
         return {t: p for t, (p, _) in price_data.items()}
+
+    def update_holdings_prices_if_stale(
+        self, user: CustomUser, max_age: timedelta = timedelta(minutes=5)
+    ) -> dict[str, Any]:
+        """
+        Update prices only for securities with stale data.
+
+        This is the preferred method for routine price updates as it prevents
+        unnecessary API calls and rate limiting.
+
+        Args:
+            user: User whose holdings to check
+            max_age: Maximum price age before refresh (default: 5 minutes)
+
+        Returns:
+            dict with:
+                - updated_count: Number of securities updated
+                - skipped_count: Number of securities with fresh prices
+                - errors: List of tickers that failed to update
+        """
+        # Get securities that need updating
+        stale_securities = SecurityPrice.get_stale_securities(user, max_age)
+        stale_count = stale_securities.count()
+
+        # Calculate how many are current
+        total_securities_count = (
+            Security.objects.filter(holdings__account__user=user).distinct().count()
+        )
+        skipped_count = total_securities_count - stale_count
+
+        if stale_count == 0:
+            logger.info(
+                "all_prices_fresh",
+                user_id=user.id,
+                max_age_minutes=max_age.total_seconds() / 60,
+            )
+            return {
+                "updated_count": 0,
+                "skipped_count": skipped_count,
+                "errors": [],
+            }
+
+        logger.info(
+            "updating_stale_prices",
+            user_id=user.id,
+            stale_count=stale_count,
+            max_age_minutes=max_age.total_seconds() / 60,
+        )
+
+        tickers = [s.ticker for s in stale_securities]
+
+        # Fetch prices WITH market timestamps from data service
+        price_data = self._market_data.get_prices(tickers)
+
+        if not price_data:
+            logger.warning("No prices returned from market data service")
+            return {"updated_count": 0, "skipped_count": 0, "errors": tickers}
+
+        # Create a mapping from ticker to security object for efficient lookup
+        ticker_to_security = {s.ticker: s for s in stale_securities}
+
+        errors = []
+        updated_count = 0
+
+        # Store prices in SecurityPrice table
+        with transaction.atomic():
+            for ticker in tickers:
+                if ticker in price_data:
+                    price, market_time = price_data[ticker]
+
+                    # Get security for this ticker
+                    security = ticker_to_security.get(ticker)
+                    if not security:
+                        # Should not happen as we got tickers from stale_securities
+                        continue
+
+                    # Create or update SecurityPrice record
+                    SecurityPrice.objects.update_or_create(
+                        security=security,
+                        price_datetime=market_time,
+                        defaults={"price": price, "source": "yfinance"},
+                    )
+                    updated_count += 1
+                    logger.debug(f"Stored price for {ticker}: {price} at {market_time}")
+                else:
+                    errors.append(ticker)
+                    logger.warning(f"No price returned for {ticker}")
+
+        # Calculate how many were fresh
+        # (Total user securities - stale ones)
+        total_securities_count = (
+            Security.objects.filter(holdings__account__user=user).distinct().count()
+        )
+        skipped_count = total_securities_count - stale_count
+
+        logger.info(
+            "price_update_complete",
+            user_id=user.id,
+            updated_count=updated_count,
+            skipped_count=skipped_count,
+            error_count=len(errors),
+        )
+
+        return {
+            "updated_count": updated_count,
+            "skipped_count": skipped_count,
+            "errors": errors,
+        }
 
     def get_price_at_datetime(
         self, security: Security, target_datetime: datetime

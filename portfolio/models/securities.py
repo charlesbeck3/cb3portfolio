@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -105,6 +105,56 @@ class SecurityPrice(models.Model):
         """
         latest = cls.objects.filter(security=security).first()
         return latest.price if latest else None
+
+    def is_stale(self, max_age: timedelta = timedelta(minutes=5)) -> bool:
+        """
+        Check if this price is stale and needs refreshing.
+
+        Args:
+            max_age: Maximum age before price is considered stale (default: 5 minutes)
+
+        Returns:
+            True if price is older than max_age, False otherwise
+        """
+        if not self.price_datetime:
+            return True
+
+        from django.utils import timezone
+
+        age = timezone.now() - self.price_datetime
+        return age > max_age
+
+    @classmethod
+    def get_stale_securities(cls, user: Any, max_age: timedelta = timedelta(minutes=5)):
+        """
+        Get all securities owned by user that have stale prices.
+
+        Args:
+            user: User to check holdings for
+            max_age: Maximum age before price is considered stale
+
+        Returns:
+            QuerySet of Security objects that need price updates
+        """
+        from django.utils import timezone
+
+        cutoff_time = timezone.now() - max_age
+
+        # Get all securities in user's holdings
+        user_securities = Security.objects.filter(holdings__account__user=user).distinct()
+
+        # Filter to those with no price or stale price
+        # We need to find securities where the LATEST price is older than cutoff_time
+        # or where NO price exists.
+        from django.db.models import Max
+
+        stale_securities = user_securities.annotate(
+            latest_price_time=Max("prices__price_datetime")
+        ).filter(
+            models.Q(latest_price_time__isnull=True) | models.Q(latest_price_time__lt=cutoff_time)
+        )
+
+        return stale_securities
 
     @classmethod
     def get_price_at_datetime(cls, security: Security, target_datetime: datetime) -> Decimal | None:
