@@ -248,3 +248,340 @@ class AllocationCalculator:
             "by_asset_class": pd.DataFrame(),
             "portfolio_summary": pd.DataFrame(),
         }
+
+    # ========================================================================
+    # Presentation Calculation Pipeline
+    # ========================================================================
+
+    def build_presentation_dataframe(
+        self,
+        holdings_df: pd.DataFrame,
+        asset_classes_df: pd.DataFrame,
+        targets_map: dict[int, dict[str, Any]],
+        account_totals: dict[int, Any],
+    ) -> pd.DataFrame:
+        """
+        Build complete presentation DataFrame with all calculations.
+
+        This orchestrates the full calculation pipeline:
+        1. Start with base asset class metadata
+        2. Add portfolio-level actuals
+        3. Add account-type level actuals
+        4. Add individual account actuals
+        5. Calculate weighted effective targets
+        6. Calculate variances at all levels
+        7. Sort by hierarchy
+
+        Args:
+            holdings_df: Long-format holdings
+            asset_classes_df: Asset class metadata
+            targets_map: {account_id: {asset_class_name: target_pct}}
+            account_totals: {account_id: total_value}
+
+        Returns:
+            DataFrame with columns for each level:
+            - asset_class metadata (name, id, group, category)
+            - portfolio_actual, portfolio_actual_pct
+            - {type}_actual, {type}_actual_pct for each account type
+            - {account}_actual, {account}_actual_pct for each account
+            - portfolio_effective, portfolio_effective_pct
+            - {type}_effective, {type}_effective_pct
+            - portfolio_variance, portfolio_variance_pct
+            - {type}_variance, {type}_variance_pct
+        """
+        if holdings_df.empty:
+            return pd.DataFrame()
+
+        # Step 1: Base DataFrame with all asset classes
+        df = asset_classes_df.copy()
+
+        # Step 2: Add portfolio-level calculations
+        df = self._add_portfolio_calculations_presentation(df, holdings_df)
+
+        # Step 3: Add account-type level calculations
+        df = self._add_account_type_calculations_presentation(df, holdings_df)
+
+        # Step 4: Add individual account calculations
+        df = self._add_account_calculations_presentation(df, holdings_df)
+
+        # Step 5: Calculate weighted effective targets
+        df = self._calculate_weighted_targets_presentation(df, targets_map, account_totals)
+
+        # Step 6: Calculate variances
+        df = self._calculate_variances_presentation(df)
+
+        # Step 7: Sort by hierarchy
+        df = self._sort_presentation_dataframe(df)
+
+        return df
+
+    def _add_portfolio_calculations_presentation(
+        self,
+        df: pd.DataFrame,
+        holdings_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Add portfolio-level actual allocations."""
+        portfolio_total = holdings_df["value"].sum()
+
+        # Aggregate by asset class
+        by_asset = (
+            holdings_df.groupby("asset_class_id")["value"].sum().to_frame(name="portfolio_actual")
+        )
+
+        # Calculate percentages
+        if portfolio_total > 0:
+            by_asset["portfolio_actual_pct"] = by_asset["portfolio_actual"] / portfolio_total * 100
+        else:
+            by_asset["portfolio_actual_pct"] = 0.0
+
+        # Merge with main DataFrame
+        result = df.merge(
+            by_asset,
+            left_on="asset_class_id",
+            right_index=True,
+            how="left",
+        ).fillna(0.0)
+
+        return result
+
+    def _add_account_type_calculations_presentation(
+        self,
+        df: pd.DataFrame,
+        holdings_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Add account-type level actual allocations."""
+        # Group by account type and asset class
+        by_type = (
+            holdings_df.groupby(["account_type_code", "asset_class_id"])["value"]
+            .sum()
+            .to_frame(name="value")
+        )
+
+        # Add percentage column using groupby transform
+        by_type["pct"] = by_type.groupby(level="account_type_code")["value"].transform(
+            lambda x: x / x.sum() * 100 if x.sum() > 0 else 0.0
+        )
+
+        # Pivot to get columns per account type
+        by_type_reset = by_type.reset_index()
+        by_type_pivot = by_type_reset.pivot(
+            index="asset_class_id",
+            columns="account_type_code",
+            values=["value", "pct"],
+        )
+
+        # Flatten column names: (value, 401k) -> 401k_actual
+        by_type_pivot.columns = [
+            f"{col[1]}_actual" if col[0] == "value" else f"{col[1]}_actual_pct"
+            for col in by_type_pivot.columns
+        ]
+
+        # Merge with main DataFrame
+        result = df.merge(
+            by_type_pivot,
+            left_on="asset_class_id",
+            right_index=True,
+            how="left",
+        ).fillna(0.0)
+
+        return result
+
+    def _add_account_calculations_presentation(
+        self,
+        df: pd.DataFrame,
+        holdings_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """Add individual account level actual allocations."""
+        # Group by account and asset class
+        by_account = (
+            holdings_df.groupby(["account_id", "asset_class_id"])["value"]
+            .sum()
+            .to_frame(name="value")
+        )
+
+        # Calculate percentages within each account
+        by_account["pct"] = by_account.groupby(level="account_id")["value"].transform(
+            lambda x: x / x.sum() * 100 if x.sum() > 0 else 0.0
+        )
+
+        # Pivot to get columns per account
+        by_account_reset = by_account.reset_index()
+        by_account_pivot = by_account_reset.pivot(
+            index="asset_class_id",
+            columns="account_id",
+            values=["value", "pct"],
+        )
+
+        # Flatten column names: (value, 123) -> account_123_actual
+        by_account_pivot.columns = [
+            f"account_{col[1]}_actual" if col[0] == "value" else f"account_{col[1]}_actual_pct"
+            for col in by_account_pivot.columns
+        ]
+
+        # Merge with main DataFrame
+        result = df.merge(
+            by_account_pivot,
+            left_on="asset_class_id",
+            right_index=True,
+            how="left",
+        ).fillna(0.0)
+
+        return result
+
+    def _calculate_weighted_targets_presentation(
+        self,
+        df: pd.DataFrame,
+        targets_map: dict[int, dict[str, Any]],
+        account_totals: dict[int, Any],
+    ) -> pd.DataFrame:
+        """
+        Calculate effective (weighted) targets at all levels.
+
+        Effective target = weighted average of account targets,
+        weighted by account values.
+        """
+        from decimal import Decimal
+
+        if not targets_map:
+            # No targets - add zero columns
+            df["portfolio_effective"] = 0.0
+            df["portfolio_effective_pct"] = 0.0
+            return df
+
+        # Build targets DataFrame with account metadata
+        targets_records = []
+        for acc_id, allocations in targets_map.items():
+            acc_total = float(account_totals.get(acc_id, Decimal("0")))
+
+            for asset_class_name, target_pct in allocations.items():
+                targets_records.append(
+                    {
+                        "account_id": acc_id,
+                        "asset_class": asset_class_name,
+                        "target_pct": float(target_pct),
+                        "account_total": acc_total,
+                    }
+                )
+
+        if not targets_records:
+            df["portfolio_effective"] = 0.0
+            df["portfolio_effective_pct"] = 0.0
+            return df
+
+        targets_df = pd.DataFrame(targets_records)
+
+        # Merge with asset class metadata to get asset_class_id
+        targets_with_id = targets_df.merge(
+            df[["asset_class_name", "asset_class_id"]].drop_duplicates(),
+            left_on="asset_class",
+            right_on="asset_class_name",
+            how="left",
+        )
+
+        # Portfolio-level weighted targets
+        portfolio_total = float(sum(account_totals.values(), Decimal("0")))
+
+        if portfolio_total > 0:
+            portfolio_weighted = (
+                targets_with_id.groupby("asset_class_id")
+                .apply(
+                    lambda x: (x["target_pct"] * x["account_total"]).sum() / portfolio_total,
+                    include_groups=False,
+                )
+                .to_frame(name="portfolio_effective_pct")
+            )
+
+            portfolio_weighted["portfolio_effective"] = (
+                portfolio_weighted["portfolio_effective_pct"] * portfolio_total / 100
+            )
+        else:
+            portfolio_weighted = pd.DataFrame(
+                {
+                    "portfolio_effective": 0.0,
+                    "portfolio_effective_pct": 0.0,
+                }
+            )
+
+        # Merge with main DataFrame
+        result = df.merge(
+            portfolio_weighted,
+            left_on="asset_class_id",
+            right_index=True,
+            how="left",
+        ).fillna(0.0)
+
+        return result
+
+    def _calculate_variances_presentation(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate variances between actual and effective/target allocations.
+
+        For each level (portfolio, account types, accounts):
+        - variance = actual - effective
+        - variance_pct = actual_pct - effective_pct
+        """
+        # Portfolio level
+        if "portfolio_actual" in df.columns and "portfolio_effective" in df.columns:
+            df["portfolio_variance"] = df["portfolio_actual"] - df["portfolio_effective"]
+            df["portfolio_variance_pct"] = (
+                df["portfolio_actual_pct"] - df["portfolio_effective_pct"]
+            )
+
+        # Account type level - find all type columns dynamically
+        type_columns = [
+            col
+            for col in df.columns
+            if col.endswith("_actual")
+            and not col.startswith("account_")
+            and col != "portfolio_actual"
+        ]
+
+        for actual_col in type_columns:
+            type_prefix = actual_col.replace("_actual", "")
+            effective_col = f"{type_prefix}_effective"
+
+            if effective_col in df.columns:
+                df[f"{type_prefix}_variance"] = df[actual_col] - df[effective_col]
+
+                # Percentage variance
+                actual_pct_col = f"{type_prefix}_actual_pct"
+                effective_pct_col = f"{type_prefix}_effective_pct"
+                if actual_pct_col in df.columns and effective_pct_col in df.columns:
+                    df[f"{type_prefix}_variance_pct"] = df[actual_pct_col] - df[effective_pct_col]
+
+        # Individual account level
+        account_columns = [
+            col for col in df.columns if col.startswith("account_") and col.endswith("_actual")
+        ]
+
+        for actual_col in account_columns:
+            account_prefix = actual_col.replace("_actual", "")
+            target_col = f"{account_prefix}_target"
+
+            if target_col in df.columns:
+                df[f"{account_prefix}_variance"] = df[actual_col] - df[target_col]
+
+                actual_pct_col = f"{account_prefix}_actual_pct"
+                target_pct_col = f"{account_prefix}_target_pct"
+                if actual_pct_col in df.columns and target_pct_col in df.columns:
+                    df[f"{account_prefix}_variance_pct"] = df[actual_pct_col] - df[target_pct_col]
+
+        return df
+
+    def _sort_presentation_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Sort DataFrame by hierarchy: group, category, asset class."""
+        sort_columns = [
+            "group_sort_order",
+            "group_code",
+            "category_sort_order",
+            "category_code",
+            "asset_class_name",
+        ]
+
+        # Only sort by columns that exist
+        existing_sort_cols = [col for col in sort_columns if col in df.columns]
+
+        if existing_sort_cols:
+            return df.sort_values(by=existing_sort_cols, ascending=True)
+
+        return df
