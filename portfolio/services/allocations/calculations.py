@@ -569,19 +569,48 @@ class AllocationCalculator:
         return df
 
     def _sort_presentation_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Sort DataFrame by hierarchy: group, category, asset class."""
-        sort_columns = [
-            "group_sort_order",
-            "group_code",
-            "category_sort_order",
-            "category_code",
-            "asset_class_name",
-        ]
+        """
+        Sort DataFrame by hierarchy and policy allocation.
 
-        # Only sort by columns that exist
-        existing_sort_cols = [col for col in sort_columns if col in df.columns]
+        Sorting priority:
+        1. group_sort_order (ascending) - if exists
+        2. group_code (ascending)
+        3. category_sort_order (ascending) - if exists
+        4. category_code (ascending)
+        5. portfolio_effective (descending) - policy allocation
+        6. asset_class_name (ascending) - tie breaker
+        """
+        sort_columns = []
+        ascending_flags = []
 
-        if existing_sort_cols:
-            return df.sort_values(by=existing_sort_cols, ascending=True)
+        # Group level
+        if "group_sort_order" in df.columns:
+            sort_columns.append("group_sort_order")
+            ascending_flags.append(True)
+
+        if "group_code" in df.columns:
+            sort_columns.append("group_code")
+            ascending_flags.append(True)
+
+        # Category level
+        if "category_sort_order" in df.columns:
+            sort_columns.append("category_sort_order")
+            ascending_flags.append(True)
+
+        if "category_code" in df.columns:
+            sort_columns.append("category_code")
+            ascending_flags.append(True)
+
+        # Asset level - sort by policy allocation descending
+        if "portfolio_effective" in df.columns:
+            sort_columns.append("portfolio_effective")
+            ascending_flags.append(False)  # Descending
+
+        if "asset_class_name" in df.columns:
+            sort_columns.append("asset_class_name")
+            ascending_flags.append(True)
+
+        if sort_columns:
+            return df.sort_values(by=sort_columns, ascending=ascending_flags)
 
         return df
