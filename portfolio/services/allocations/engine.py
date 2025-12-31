@@ -101,21 +101,145 @@ class AllocationEngine:
         """
         Calculate and format holdings data for holdings view.
 
-        Note: This is a placeholder - full implementation will be added
-        in Phase 6 (formatters).
+        Args:
+            user: User object
+            account_id: Optional account ID to filter to single account
+
+        Returns:
+            List of row dicts with holdings, subtotals, group totals, and grand total
         """
         logger.info("building_holdings_rows", user_id=user.id, account_id=account_id)
 
-        holdings_df = self.data_provider.get_holdings_df(user)
-        if account_id:
-            holdings_df = holdings_df[holdings_df["account_id"] == account_id]
+        try:
+            # Step 1: Get detailed holdings DataFrame
+            holdings_df = self.data_provider.get_holdings_df_detailed(user, account_id)
 
-        if holdings_df.empty:
+            if holdings_df.empty:
+                logger.info("no_holdings_found", user_id=user.id, account_id=account_id)
+                return []
+
+            # Step 2: Get effective targets for the account(s)
+            targets_map = self.data_provider.get_targets_map(user)
+
+            # Step 3: Add zero holdings for missing targets (if single account)
+            if account_id:
+                df_zero = self.data_provider.get_zero_holdings_for_targets(
+                    existing_df=holdings_df,
+                    targets_map=targets_map,
+                    account_id=account_id,
+                )
+                if not df_zero.empty:
+                    import pandas as pd
+
+                    holdings_df = pd.concat([holdings_df, df_zero], ignore_index=True)
+
+            # Step 4: Calculate targets and variances
+            holdings_with_targets = self.calculator.calculate_holdings_with_targets(
+                holdings_df=holdings_df,
+                targets_map=targets_map,
+            )
+
+            if holdings_with_targets.empty:
+                return []
+
+            # Step 5: Format for template
+            rows = self.formatter.format_holdings_rows(holdings_with_targets)
+
+            logger.info(
+                "holdings_rows_built",
+                user_id=user.id,
+                account_id=account_id,
+                row_count=len(rows),
+            )
+
+            return rows
+
+        except Exception as e:
+            logger.error(
+                "holdings_rows_build_failed",
+                user_id=user.id,
+                account_id=account_id,
+                error=str(e),
+                exc_info=True,
+            )
             return []
 
-        # TODO: Implement full holdings logic in Phase 6
-        logger.warning("get_holdings_rows_not_fully_implemented")
-        return []
+    def get_aggregated_holdings_rows(self, user: Any, target_mode: str = "effective") -> list[dict]:
+        """
+        Calculate and format aggregated holdings across all accounts.
+
+        Args:
+            user: User object
+            target_mode: Either "effective" or "policy"
+
+        Returns:
+            List of row dicts with aggregated holdings by ticker
+        """
+        logger.info(
+            "building_aggregated_holdings_rows",
+            user_id=user.id,
+            target_mode=target_mode,
+        )
+
+        try:
+            import pandas as pd
+
+            # Step 1: Get all holdings
+            holdings_df = self.data_provider.get_holdings_df_detailed(user, account_id=None)
+
+            if holdings_df.empty:
+                logger.info("no_holdings_for_aggregation", user_id=user.id)
+                return []
+
+            # Step 2: Aggregate by ticker
+            aggregated_df = self.calculator.aggregate_holdings_by_ticker(holdings_df)
+
+            # Step 3: Get targets based on mode
+            if target_mode == "policy":
+                targets_map = self.data_provider.get_policy_targets_for_portfolio(user)
+            else:
+                targets_map = self.data_provider.get_effective_targets_for_portfolio(user)
+
+            # Step 4: Add zero holdings for missing targets
+            df_zero = self.data_provider.get_zero_holdings_for_targets(
+                existing_df=aggregated_df,
+                targets_map=targets_map,
+                account_id=0,  # Portfolio-level
+            )
+
+            if not df_zero.empty:
+                aggregated_df = pd.concat([aggregated_df, df_zero], ignore_index=True)
+
+            # Step 5: Calculate targets and variances
+            holdings_with_targets = self.calculator.calculate_holdings_with_targets(
+                holdings_df=aggregated_df,
+                targets_map=targets_map,
+            )
+
+            if holdings_with_targets.empty:
+                return []
+
+            # Step 6: Format for template
+            rows = self.formatter.format_holdings_rows(holdings_with_targets)
+
+            logger.info(
+                "aggregated_holdings_rows_built",
+                user_id=user.id,
+                target_mode=target_mode,
+                row_count=len(rows),
+            )
+
+            return rows
+
+        except Exception as e:
+            logger.error(
+                "aggregated_holdings_rows_build_failed",
+                user_id=user.id,
+                target_mode=target_mode,
+                error=str(e),
+                exc_info=True,
+            )
+            return []
 
     def get_sidebar_data(self, user: Any) -> SidebarData:
         """

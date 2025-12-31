@@ -12,7 +12,7 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from portfolio.models import Account, Holding, Security
-from portfolio.services.allocation_calculations import AllocationCalculationEngine
+from portfolio.services.allocations import AllocationEngine
 from portfolio.utils.security import (
     AccessControlError,
     InvalidInputError,
@@ -75,7 +75,7 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         user = self.request.user
 
         # Initialize engine
-        engine = AllocationCalculationEngine()
+        engine = AllocationEngine()
 
         # Get and sanitize inputs (re-validation is cheap or we just use defaults)
         account_id_raw = kwargs.get("account_id")

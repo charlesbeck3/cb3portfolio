@@ -200,3 +200,297 @@ class AllocationFormatter:
             )
 
         return result
+
+    # ========================================================================
+    # Holdings Formatting
+    # ========================================================================
+
+    def format_holdings_rows(self, holdings_df: pd.DataFrame) -> list[dict[str, Any]]:
+        """
+        Format holdings DataFrame into display-ready rows with aggregations.
+
+        Args:
+            holdings_df: DataFrame with columns including:
+                Ticker, Security_Name, Asset_Class, Asset_Category, Asset_Group,
+                Group_Code, Category_Code, Shares, Price, Value,
+                Target_Shares, Shares_Variance, Target_Value, Value_Variance,
+                Allocation_Pct, Target_Allocation_Pct, Allocation_Variance_Pct
+
+        Returns:
+            List of row dicts with holdings, subtotals, group totals, and grand total
+            interleaved in display order.
+        """
+        if holdings_df.empty:
+            return []
+
+        # Step 1: Build individual holding rows
+        holding_rows = self._holdings_to_dicts(holdings_df)
+
+        # Step 2: Calculate aggregations
+        subtotal_rows = self._calculate_holdings_subtotals(holdings_df)
+        group_rows = self._calculate_holdings_group_totals(holdings_df)
+        grand_row = self._calculate_holdings_grand_total(holdings_df)
+
+        # Step 3: Interleave hierarchically
+        result = self._interleave_holdings_hierarchical(
+            holding_rows, subtotal_rows, group_rows, grand_row
+        )
+
+        return result
+
+    def _holdings_to_dicts(self, df: pd.DataFrame) -> list[dict[str, Any]]:
+        """Convert holdings DataFrame rows to display dictionaries."""
+        rows = []
+
+        for _, row in df.iterrows():
+            # Build parent_id for collapse functionality
+            parent_id = f"cat-{row['Category_Code']}"
+
+            is_zero_holding = float(row["Shares"]) == 0.0 and float(row["Value"]) == 0.0
+
+            rows.append(
+                {
+                    "row_type": "holding",
+                    "ticker": row["Ticker"],
+                    "security_name": row.get("Security_Name", ""),
+                    "name": row.get("Security_Name", row["Ticker"]),
+                    "asset_class": row["Asset_Class"],
+                    "asset_category": row.get("Asset_Category", ""),
+                    "asset_group": row.get("Asset_Group", ""),
+                    "group_code": row.get("Group_Code", ""),
+                    "category_code": row.get("Category_Code", ""),
+                    "account_id": int(row.get("Account_ID", 0)),
+                    "account_name": row.get("Account_Name", ""),
+                    # Raw values
+                    "price": float(row.get("Price", 0.0)),
+                    "shares": float(row.get("Shares", 0.0)),
+                    "target_shares": float(row.get("Target_Shares", 0.0)),
+                    "shares_variance": float(row.get("Shares_Variance", 0.0)),
+                    "value": float(row.get("Value", 0.0)),
+                    "target_value": float(row.get("Target_Value", 0.0)),
+                    "value_variance": float(row.get("Value_Variance", 0.0)),
+                    "allocation": float(row.get("Allocation_Pct", 0.0)),
+                    "target_allocation": float(row.get("Target_Allocation_Pct", 0.0)),
+                    "allocation_variance": float(row.get("Allocation_Variance_Pct", 0.0)),
+                    # UI metadata
+                    "is_holding": True,
+                    "is_subtotal": False,
+                    "is_group_total": False,
+                    "is_grand_total": False,
+                    "is_zero_holding": is_zero_holding,
+                    "parent_id": parent_id,
+                    "row_id": f"holding-{row['Ticker']}",
+                    "holding_id": row.get("holding_id", None),
+                    "row_class": f"{parent_id}-rows collapse show"
+                    + (" table-light text-muted fst-italic" if is_zero_holding else ""),
+                }
+            )
+
+        return rows
+
+    def _calculate_holdings_subtotals(self, df: pd.DataFrame) -> list[dict[str, Any]]:
+        """Calculate category subtotals using pandas groupby."""
+        if df.empty:
+            return []
+
+        # Group by asset category
+        grouped = (
+            df.groupby(["Group_Code", "Category_Code", "Asset_Category"], sort=False)
+            .agg(
+                {
+                    "Value": "sum",
+                    "Target_Value": "sum",
+                    "Allocation_Pct": "sum",
+                    "Target_Allocation_Pct": "sum",
+                }
+            )
+            .reset_index()
+        )
+
+        # Filter out single-holding categories (subtotal would be redundant)
+        category_counts = df.groupby(["Group_Code", "Category_Code"]).size()
+        multi_holding_categories = category_counts[category_counts > 1].index
+        grouped = grouped[
+            grouped.set_index(["Group_Code", "Category_Code"]).index.isin(multi_holding_categories)
+        ]
+
+        if grouped.empty:
+            return []
+
+        # Calculate variances
+        grouped["Value_Variance"] = grouped["Value"] - grouped["Target_Value"]
+        grouped["Allocation_Variance"] = (
+            grouped["Allocation_Pct"] - grouped["Target_Allocation_Pct"]
+        )
+
+        rows = []
+        for _, row in grouped.iterrows():
+            category_id = f"cat-{row['Category_Code']}"
+            parent_id = f"grp-{row['Group_Code']}"
+
+            rows.append(
+                {
+                    "row_type": "subtotal",
+                    "name": f"{row['Asset_Category']} Total",
+                    "category_code": row["Category_Code"],
+                    "group_code": row["Group_Code"],
+                    # Raw values
+                    "value": float(row["Value"]),
+                    "target_value": float(row["Target_Value"]),
+                    "value_variance": float(row["Value_Variance"]),
+                    "allocation": float(row["Allocation_Pct"]),
+                    "target_allocation": float(row["Target_Allocation_Pct"]),
+                    "allocation_variance": float(row["Allocation_Variance"]),
+                    # UI metadata
+                    "is_holding": False,
+                    "is_subtotal": True,
+                    "is_group_total": False,
+                    "is_grand_total": False,
+                    "row_id": category_id,
+                    "parent_id": parent_id,
+                    "row_class": f"table-secondary fw-bold {parent_id}-rows collapse show",
+                }
+            )
+
+        return rows
+
+    def _calculate_holdings_group_totals(self, df: pd.DataFrame) -> list[dict[str, Any]]:
+        """Calculate asset group totals using pandas groupby."""
+        if df.empty:
+            return []
+
+        # Group by asset group
+        grouped = (
+            df.groupby(["Group_Code", "Asset_Group"], sort=False)
+            .agg(
+                {
+                    "Value": "sum",
+                    "Target_Value": "sum",
+                    "Allocation_Pct": "sum",
+                    "Target_Allocation_Pct": "sum",
+                }
+            )
+            .reset_index()
+        )
+
+        # Filter out single-category groups (total would be redundant)
+        group_counts = df.groupby("Group_Code")["Category_Code"].nunique()
+        multi_category_groups = group_counts[group_counts > 1].index
+        grouped = grouped[grouped["Group_Code"].isin(multi_category_groups)]
+
+        if grouped.empty:
+            return []
+
+        # Calculate variances
+        grouped["Value_Variance"] = grouped["Value"] - grouped["Target_Value"]
+        grouped["Allocation_Variance"] = (
+            grouped["Allocation_Pct"] - grouped["Target_Allocation_Pct"]
+        )
+
+        rows = []
+        for _, row in grouped.iterrows():
+            group_id = f"grp-{row['Group_Code']}"
+
+            rows.append(
+                {
+                    "row_type": "group_total",
+                    "name": f"{row['Asset_Group']} Total",
+                    "group_code": row["Group_Code"],
+                    # Raw values
+                    "value": float(row["Value"]),
+                    "target_value": float(row["Target_Value"]),
+                    "value_variance": float(row["Value_Variance"]),
+                    "allocation": float(row["Allocation_Pct"]),
+                    "target_allocation": float(row["Target_Allocation_Pct"]),
+                    "allocation_variance": float(row["Allocation_Variance"]),
+                    # UI metadata
+                    "is_holding": False,
+                    "is_subtotal": False,
+                    "is_group_total": True,
+                    "is_grand_total": False,
+                    "row_id": group_id,
+                    "parent_id": "",
+                    "row_class": "table-primary fw-bold border-top group-toggle",
+                }
+            )
+
+        return rows
+
+    def _calculate_holdings_grand_total(self, df: pd.DataFrame) -> list[dict[str, Any]]:
+        """Calculate grand total across all holdings."""
+        if df.empty:
+            return []
+
+        total_value = df["Value"].sum()
+        total_target = df["Target_Value"].sum()
+        total_variance = total_value - total_target
+
+        # Allocations are always 100% for grand total
+        total_alloc = 100.0
+        total_target_alloc = 100.0
+
+        return [
+            {
+                "row_type": "grand_total",
+                "name": "Grand Total",
+                # Raw values
+                "value": float(total_value),
+                "target_value": float(total_target),
+                "value_variance": float(total_variance),
+                "allocation": float(total_alloc),
+                "target_allocation": float(total_target_alloc),
+                "allocation_variance": 0.0,
+                # UI metadata
+                "is_holding": False,
+                "is_subtotal": False,
+                "is_group_total": False,
+                "is_grand_total": True,
+                "row_class": "table-dark fw-bold border-top-3",
+            }
+        ]
+
+    def _interleave_holdings_hierarchical(
+        self,
+        holding_rows: list[dict[str, Any]],
+        subtotal_rows: list[dict[str, Any]],
+        group_rows: list[dict[str, Any]],
+        grand_row: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Interleave holdings, subtotals, group totals, and grand total in display order."""
+        from collections import defaultdict
+
+        result = []
+
+        # Build lookup maps for efficient access
+        subtotals_by_category = {row["category_code"]: row for row in subtotal_rows}
+        groups_by_code = {row["group_code"]: row for row in group_rows}
+
+        # Group holdings by group_code and category_code
+        holdings_by_group: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+
+        for holding in holding_rows:
+            holdings_by_group[holding["group_code"]][holding["category_code"]].append(holding)
+
+        # Iterate through groups
+        for group_code in holdings_by_group:
+            categories = holdings_by_group[group_code]
+
+            # Add holdings for each category
+            for category_code in categories:
+                holdings = categories[category_code]
+                result.extend(holdings)
+
+                # Add category subtotal if exists
+                if category_code in subtotals_by_category:
+                    result.append(subtotals_by_category[category_code])
+
+            # Add group total if exists
+            if group_code in groups_by_code:
+                result.append(groups_by_code[group_code])
+
+        # Add grand total at the end
+        result.extend(grand_row)
+
+        return result

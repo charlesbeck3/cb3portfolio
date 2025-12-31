@@ -876,3 +876,147 @@ class AllocationCalculator:
             return df.sort_values(by=sort_columns, ascending=ascending_flags)
 
         return df
+
+    # ========================================================================
+    # Holdings Calculation Pipeline
+    # ========================================================================
+
+    def calculate_holdings_with_targets(
+        self,
+        holdings_df: pd.DataFrame,
+        targets_map: dict[int, dict[str, Any]],
+    ) -> pd.DataFrame:
+        """
+        Calculate holdings with target allocations and variances.
+
+        Args:
+            holdings_df: DataFrame with columns:
+                Account_ID, Account_Name, Account_Type, Ticker, Security_Name,
+                Asset_Class, Asset_Class_ID, Asset_Category, Asset_Group,
+                Group_Code, Group_Sort_Order, Category_Code, Category_Sort_Order,
+                Shares, Price, Value
+            targets_map: {account_id: {asset_class_name: target_pct}}
+
+        Returns:
+            DataFrame with additional columns:
+                Target_Value, Value_Variance, Target_Shares, Shares_Variance,
+                Allocation_Pct, Target_Allocation_Pct, Allocation_Variance_Pct
+        """
+        if holdings_df.empty:
+            return pd.DataFrame()
+
+        df = holdings_df.copy()
+
+        # Calculate total value (for allocation percentages)
+        total_value = df["Value"].sum()
+
+        # Build targets DataFrame for efficient merging
+        targets_records = []
+        for acc_id, allocations in targets_map.items():
+            for asset_class_name, target_pct in allocations.items():
+                targets_records.append(
+                    {
+                        "Account_ID": acc_id,
+                        "Asset_Class": asset_class_name,
+                        "Target_Pct": float(target_pct),
+                    }
+                )
+
+        if targets_records:
+            targets_df = pd.DataFrame(targets_records)
+            df = df.merge(targets_df, on=["Account_ID", "Asset_Class"], how="left")
+        else:
+            df["Target_Pct"] = 0.0
+
+        df["Target_Pct"] = df["Target_Pct"].fillna(0.0)
+
+        # Calculate account totals for target value calculation
+        account_totals = df.groupby("Account_ID")["Value"].sum()
+        df["Account_Total"] = df["Account_ID"].map(account_totals)
+
+        # Count securities per asset class per account (for splitting target across holdings)
+        sec_counts = df.groupby(["Account_ID", "Asset_Class"])["Ticker"].transform("count")
+        df["Sec_Count"] = sec_counts
+
+        # Calculate target value (split across securities in same asset class)
+        df["Target_Value"] = 0.0
+        mask = df["Sec_Count"] > 0
+        if mask.any():
+            df.loc[mask, "Target_Value"] = (
+                df.loc[mask, "Account_Total"]
+                * (df.loc[mask, "Target_Pct"] / 100.0)
+                / df.loc[mask, "Sec_Count"]
+            )
+
+        # Calculate value variance
+        df["Value_Variance"] = df["Value"] - df["Target_Value"]
+
+        # Calculate allocation percentages
+        if total_value > 0:
+            df["Allocation_Pct"] = (df["Value"] / total_value) * 100
+            df["Target_Allocation_Pct"] = (df["Target_Value"] / total_value) * 100
+        else:
+            df["Allocation_Pct"] = 0.0
+            df["Target_Allocation_Pct"] = 0.0
+
+        df["Allocation_Variance_Pct"] = df["Allocation_Pct"] - df["Target_Allocation_Pct"]
+
+        # Calculate share targets and variances
+        df["Target_Shares"] = 0.0
+        price_mask = df["Price"] > 0
+        if price_mask.any():
+            df.loc[price_mask, "Target_Shares"] = (
+                df.loc[price_mask, "Target_Value"] / df.loc[price_mask, "Price"]
+            )
+        df["Shares_Variance"] = df["Shares"] - df["Target_Shares"]
+
+        # Sort by hierarchy
+        df = df.sort_values(
+            by=["Group_Sort_Order", "Category_Sort_Order", "Target_Value", "Ticker"],
+            ascending=[True, True, False, True],
+        )
+
+        # Clean up temporary columns
+        df = df.drop(columns=["Account_Total", "Sec_Count"], errors="ignore")
+
+        return df
+
+    def aggregate_holdings_by_ticker(self, holdings_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Aggregate holdings across all accounts by ticker.
+
+        Args:
+            holdings_df: DataFrame with holdings from multiple accounts
+
+        Returns:
+            DataFrame aggregated by Ticker with summed Shares and Value
+        """
+        if holdings_df.empty:
+            return pd.DataFrame()
+
+        agg_dict = {
+            "Shares": "sum",
+            "Value": "sum",
+            "Security_Name": "first",
+            "Asset_Class": "first",
+            "Asset_Class_ID": "first",
+            "Asset_Category": "first",
+            "Asset_Group": "first",
+            "Group_Code": "first",
+            "Group_Sort_Order": "first",
+            "Category_Code": "first",
+            "Category_Sort_Order": "first",
+            "Price": "first",
+        }
+
+        # Only include columns that exist
+        agg_dict = {k: v for k, v in agg_dict.items() if k in holdings_df.columns}
+
+        df_aggregated = holdings_df.groupby("Ticker", as_index=False).agg(agg_dict)
+
+        # Set synthetic portfolio account ID
+        df_aggregated["Account_ID"] = 0
+        df_aggregated["Account_Name"] = "Portfolio"
+        df_aggregated["Account_Type"] = ""
+
+        return df_aggregated
