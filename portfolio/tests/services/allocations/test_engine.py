@@ -86,7 +86,7 @@ class TestAllocationEngineIntegration:
         portfolio = first_row["portfolio"]
         assert isinstance(portfolio["actual"], float)
         assert isinstance(portfolio["actual_pct"], float)
-        assert isinstance(portfolio["variance"], float)
+        assert isinstance(portfolio["effective_variance"], float)
 
         # Verify account types present
         assert len(first_row["account_types"]) > 0
