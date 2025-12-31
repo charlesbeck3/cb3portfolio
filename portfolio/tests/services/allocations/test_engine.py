@@ -67,3 +67,36 @@ class TestAllocationEngineIntegration:
 
         assert isinstance(total, Decimal)
         assert total > 0
+
+    def test_get_presentation_rows_complete(self, test_user, simple_holdings):
+        """Test end-to-end presentation row generation."""
+        engine = AllocationEngine()
+        rows = engine.get_presentation_rows(test_user)
+
+        assert len(rows) > 0
+
+        # Verify row structure
+        first_row = rows[0]
+        assert "asset_class_name" in first_row
+        assert "asset_class_id" in first_row
+        assert "portfolio" in first_row
+        assert "account_types" in first_row
+
+        # Verify portfolio metrics are numeric
+        portfolio = first_row["portfolio"]
+        assert isinstance(portfolio["actual"], float)
+        assert isinstance(portfolio["actual_pct"], float)
+        assert isinstance(portfolio["variance"], float)
+
+        # Verify account types present
+        assert len(first_row["account_types"]) > 0
+        type_data = first_row["account_types"][0]
+        assert "code" in type_data
+        assert isinstance(type_data["actual"], float)
+
+    def test_get_presentation_rows_empty_portfolio(self, test_user):
+        """Test with no holdings."""
+        engine = AllocationEngine()
+        rows = engine.get_presentation_rows(test_user)
+
+        assert rows == []

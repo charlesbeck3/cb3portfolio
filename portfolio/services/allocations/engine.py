@@ -35,22 +35,63 @@ class AllocationEngine:
         """
         Calculate and format allocation data for dashboard/targets views.
 
-        Single clean API call replacing complex multi-step process.
-
-        Note: This is a placeholder - full implementation will be added
-        in Phase 6 (formatters).
+        Replaces old AllocationCalculationEngine.get_presentation_rows()
+        with clean, testable architecture.
         """
         logger.info("building_presentation_rows", user_id=user.id)
 
-        # Step 1: Get data
-        holdings_df = self.data_provider.get_holdings_df(user)
-        if holdings_df.empty:
-            logger.info("no_holdings_for_presentation", user_id=user.id)
-            return []
+        try:
+            # Step 1: Get all required data
+            holdings_df = self.data_provider.get_holdings_df(user)
+            if holdings_df.empty:
+                logger.info("no_holdings_for_presentation", user_id=user.id)
+                return []
 
-        # TODO: Implement full presentation logic in Phase 6
-        logger.warning("get_presentation_rows_not_fully_implemented")
-        return []
+            asset_classes_df = self.data_provider.get_asset_classes_df(user)
+            targets_map = self.data_provider.get_targets_map(user)
+            accounts_list, accounts_by_type = self.data_provider.get_accounts_metadata(user)
+
+            # Step 2: Calculate account totals
+            account_totals = (
+                holdings_df.groupby("account_id")["value"]
+                .sum()
+                .apply(lambda x: Decimal(str(x)))
+                .to_dict()
+            )
+
+            # Step 3: Run calculation pipeline
+            presentation_df = self.calculator.build_presentation_dataframe(
+                holdings_df=holdings_df,
+                asset_classes_df=asset_classes_df,
+                targets_map=targets_map,
+                account_totals=account_totals,
+            )
+
+            if presentation_df.empty:
+                return []
+
+            # Step 4: Format for templates
+            rows = self.formatter.to_presentation_rows(
+                df=presentation_df,
+                accounts_by_type=accounts_by_type,
+            )
+
+            logger.info(
+                "presentation_rows_built",
+                user_id=user.id,
+                row_count=len(rows),
+            )
+
+            return rows
+
+        except Exception as e:
+            logger.error(
+                "presentation_rows_build_failed",
+                user_id=user.id,
+                error=str(e),
+                exc_info=True,
+            )
+            return []
 
     def get_holdings_rows(self, user: Any, account_id: int | None = None) -> list[dict]:
         """

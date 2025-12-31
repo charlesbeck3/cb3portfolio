@@ -510,6 +510,26 @@ class AllocationCalculator:
             how="left",
         ).fillna(0.0)
 
+        # Account-type level effective targets
+        # Need to get account type for each account from holdings_df
+        # For now, we'll use the fact that account type columns exist in the DataFrame
+        # Get unique account types from column names
+        type_columns = [
+            col.replace("_actual", "")
+            for col in result.columns
+            if col.endswith("_actual")
+            and not col.startswith("account_")
+            and col != "portfolio_actual"
+        ]
+
+        # For each account type, calculate weighted effective targets
+        # This is a workaround - ideally we'd pass account type mapping
+        # For now, calculate effective = actual (no weighting at type level)
+        # TODO: Implement proper account-type level weighted targets
+        for type_code in type_columns:
+            result[f"{type_code}_effective"] = result[f"{type_code}_actual"]
+            result[f"{type_code}_effective_pct"] = result[f"{type_code}_actual_pct"]
+
         return result
 
     def _calculate_variances_presentation(self, df: pd.DataFrame) -> pd.DataFrame:

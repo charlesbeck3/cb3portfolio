@@ -5,7 +5,7 @@ from django.views.generic import TemplateView
 
 import structlog
 
-from portfolio.services.allocation_calculations import AllocationCalculationEngine
+from portfolio.services.allocations import get_presentation_rows
 from portfolio.views.mixins import PortfolioContextMixin
 
 logger = structlog.get_logger(__name__)
@@ -21,9 +21,8 @@ class DashboardView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         if not user.is_authenticated:
             return context  # Should be unreachable due to LoginRequiredMixin
 
-        # Single clean API call
-        engine = AllocationCalculationEngine()
-        allocation_rows = engine.get_presentation_rows(user=user)
+        # Single clean API call using new allocations module
+        allocation_rows = get_presentation_rows(user=user)
 
         # Template handles money vs percent formatting
         context["allocation_rows_money"] = allocation_rows
