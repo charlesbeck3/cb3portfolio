@@ -201,6 +201,75 @@ class TestPortfolioContextMixin:
         assert context["sidebar_data"]["grand_total"] == Decimal("0.00")
         assert context["sidebar_data"]["groups"] == {}
 
+    def test_sidebar_accounts_sorted_by_value(
+        self, rf, test_user, test_portfolio, base_system_data
+    ):
+        """Test that accounts within a group are sorted by value (descending)."""
+        # Create three accounts with different values
+        account1 = Account.objects.create(
+            user=test_user,
+            name="Small Account",
+            portfolio=test_portfolio["portfolio"],
+            account_type=base_system_data.type_roth,
+            institution=base_system_data.institution,
+        )
+        account2 = Account.objects.create(
+            user=test_user,
+            name="Large Account",
+            portfolio=test_portfolio["portfolio"],
+            account_type=base_system_data.type_roth,
+            institution=base_system_data.institution,
+        )
+        account3 = Account.objects.create(
+            user=test_user,
+            name="Medium Account",
+            portfolio=test_portfolio["portfolio"],
+            account_type=base_system_data.type_roth,
+            institution=base_system_data.institution,
+        )
+
+        # Add holdings with different values
+        Holding.objects.create(
+            account=account1, security=base_system_data.vti, shares=Decimal("5.00")
+        )  # $500
+        Holding.objects.create(
+            account=account2, security=base_system_data.vti, shares=Decimal("20.00")
+        )  # $2000
+        Holding.objects.create(
+            account=account3, security=base_system_data.vti, shares=Decimal("10.00")
+        )  # $1000
+
+        # Create price
+        now = timezone.now()
+        SecurityPrice.objects.create(
+            security=base_system_data.vti,
+            price=Decimal("100.00"),
+            price_datetime=now,
+            source="test",
+        )
+
+        # Execute
+        request = rf.get("/")
+        request.user = test_user
+
+        view = DashboardView()
+        view.request = request
+
+        context = view.get_sidebar_context()
+
+        # Verify accounts are sorted by value (descending)
+        group_name = base_system_data.type_roth.group.name
+        accounts = context["sidebar_data"]["groups"][group_name]["accounts"]
+
+        assert len(accounts) == 3
+        # Should be: Large ($2000), Medium ($1000), Small ($500)
+        assert accounts[0]["name"] == "Large Account"
+        assert accounts[0]["total"] == Decimal("2000.00")
+        assert accounts[1]["name"] == "Medium Account"
+        assert accounts[1]["total"] == Decimal("1000.00")
+        assert accounts[2]["name"] == "Small Account"
+        assert accounts[2]["total"] == Decimal("500.00")
+
 
 @pytest.mark.django_db
 @pytest.mark.views

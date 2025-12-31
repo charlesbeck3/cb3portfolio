@@ -209,5 +209,9 @@ class AllocationEngine:
 
             groups[group_name]["total"] += acc_total
 
+        # Sort accounts within each group by total (descending)
+        for group in groups.values():
+            group["accounts"].sort(key=lambda x: x["total"], reverse=True)
+
         # Remove empty groups
         return OrderedDict((k, v) for k, v in groups.items() if v["accounts"])
