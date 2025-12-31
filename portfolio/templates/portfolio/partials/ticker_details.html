@@ -17,15 +17,6 @@
                     </thead>
                     <tbody>
                         {% for group in grouped_holdings %}
-                            {# Subtotal row #}
-                            <tr class="table-secondary fw-bold">
-                                <td>{{ group.account_type }} Subtotal</td>
-                                <td class="text-end">{{ group.subtotal.shares|number:4 }}</td>
-                                <td class="text-end">{{ group.subtotal.value|money:2 }}</td>
-                                <td class="text-end">-</td>
-                                <td class="text-end">{{ group.subtotal.pct_of_position|percent:1 }}</td>
-                            </tr>
-
                             {# Detail rows #}
                             {% for holding in group.holdings %}
                                 <tr>
@@ -36,6 +27,15 @@
                                     <td class="text-end">{{ holding.pct_of_position|percent:1 }}</td>
                                 </tr>
                             {% endfor %}
+
+                            {# Subtotal row #}
+                            <tr class="table-secondary fw-bold">
+                                <td>{{ group.account_type }} Subtotal</td>
+                                <td class="text-end">{{ group.subtotal.shares|number:4 }}</td>
+                                <td class="text-end">{{ group.subtotal.value|money:2 }}</td>
+                                <td class="text-end">-</td>
+                                <td class="text-end">{{ group.subtotal.pct_of_position|percent:1 }}</td>
+                            </tr>
                         {% endfor %}
 
                         {# Grand total #}
