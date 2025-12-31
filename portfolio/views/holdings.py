@@ -16,6 +16,7 @@ from portfolio.services.allocation_calculations import AllocationCalculationEngi
 from portfolio.utils.security import (
     AccessControlError,
     InvalidInputError,
+    handle_holding_operation,
     sanitize_integer_input,
     validate_target_mode,
     validate_user_owns_account,
@@ -143,7 +144,12 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
 
     def _handle_add_holding(self, request: HttpRequest, account: Account) -> HttpResponse:
         """Handle adding a new holding with validation."""
-        try:
+        with handle_holding_operation(
+            request,
+            account,
+            "add_holding",
+            log_context={"form_action": "add"},
+        ):
             # SECURITY: Validate security_id
             security_id = sanitize_integer_input(
                 request.POST.get("security_id"), "security_id", min_val=1
@@ -185,94 +191,106 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
                     f"Added {shares.normalize():f} shares of {security.ticker} to {account.name}",
                 )
 
-            logger.info(
-                "Holding added: user=%s, account=%s, security=%s, shares=%s",
-                request.user.id,
-                account.id,
-                security_id,
-                float(shares),
-            )
-
-        except InvalidInputError as e:
-            messages.error(request, str(e))
-            logger.warning(
-                "Failed to add holding: user=%s, account=%s, error=%s",
-                request.user.id,
-                account.id,
-                str(e),
-            )
-        except Exception as e:
-            messages.error(request, f"Error adding holding: {str(e)}")
-            logger.error(
-                "Unexpected error adding holding: user=%s, account=%s",
-                request.user.id,
-                account.id,
-                exc_info=True,
-            )
-            raise Http404("Strategy not found") from None
-
         return redirect("portfolio:account_holdings", account_id=account.id)
+
+    def _update_single_holding(
+        self,
+        request: HttpRequest,
+        account: Account,
+        holding_id_raw: str,
+    ) -> bool:
+        """
+        Update a single holding's shares.
+
+        Args:
+            request: HTTP request
+            account: Account containing the holding
+            holding_id_raw: Raw holding ID from POST data
+
+        Returns:
+            True if holding was updated, False if skipped
+
+        Raises:
+            InvalidInputError: For validation failures
+            AccessControlError: For permission failures
+        """
+        holding_id = sanitize_integer_input(holding_id_raw, "holding_id", min_val=1)
+        shares_str = request.POST.get(f"shares_{holding_id}", "").strip()
+
+        if not shares_str:
+            return False  # Skip empty entries
+
+        shares = Decimal(shares_str)
+        if shares <= 0:
+            return False  # Skip invalid shares
+
+        # SECURITY: Validate ownership
+        holding = validate_user_owns_holding(request.user, holding_id)
+
+        # Cross-check: Ensure holding belongs to the account from URL
+        if holding.account_id != account.id:
+            logger.warning(
+                "Account mismatch in bulk update: holding=%s, expected_account=%s, actual_account=%s",
+                holding_id,
+                account.id,
+                holding.account_id,
+            )
+            return False
+
+        # Only update if changed
+        if holding.shares != shares:
+            holding.shares = shares
+            holding.save(update_fields=["shares"])
+            return True
+
+        return False
 
     def _handle_bulk_update(self, request: HttpRequest, account: Account) -> HttpResponse:
         """Handle bulk update of holdings with security validation."""
-        updates_count = 0
-        user = request.user
-        holding_ids = request.POST.getlist("holding_ids")
+        with handle_holding_operation(
+            request,
+            account,
+            "bulk_update_holdings",
+            log_context={"form_action": "bulk_update"},
+        ):
+            updates_count = 0
+            holding_ids = request.POST.getlist("holding_ids")
 
-        for holding_id_raw in holding_ids:
-            try:
-                holding_id = sanitize_integer_input(holding_id_raw, "holding_id", min_val=1)
-                shares_str = request.POST.get(f"shares_{holding_id}", "").strip()
-
-                if not shares_str:
-                    continue
-
-                shares = Decimal(shares_str)
-                if shares <= 0:
-                    continue
-
-                # SECURITY: Validate ownership
-                holding = validate_user_owns_holding(user, holding_id)
-
-                # Cross-check: Ensure holding belongs to the account from URL
-                if holding.account_id != account.id:
+            for holding_id_raw in holding_ids:
+                try:
+                    if self._update_single_holding(request, account, holding_id_raw):
+                        updates_count += 1
+                except (
+                    InvalidInputError,
+                    AccessControlError,
+                    ValueError,
+                    TypeError,
+                    DecimalException,
+                ) as e:
+                    # Log but continue processing other holdings
                     logger.warning(
-                        "Account mismatch in bulk update: holding=%s, expected_account=%s, actual_account=%s",
-                        holding_id,
-                        account.id,
-                        holding.account_id,
+                        "Skipping holding update due to validation error: id=%s, error=%s",
+                        holding_id_raw,
+                        str(e),
                     )
                     continue
 
-                if holding.shares != shares:
-                    holding.shares = shares
-                    holding.save(update_fields=["shares"])
-                    updates_count += 1
-
-            except (
-                InvalidInputError,
-                AccessControlError,
-                ValueError,
-                TypeError,
-                DecimalException,
-            ) as e:
-                logger.warning(
-                    "Skipping holding update due to validation error: id=%s, error=%s",
-                    holding_id_raw,
-                    str(e),
-                )
-                continue
-
-        if updates_count > 0:
-            messages.success(request, f"Updated {updates_count} holdings.")
-        else:
-            messages.info(request, "No changes saved.")
+            # Show appropriate message based on results
+            if updates_count > 0:
+                messages.success(request, f"Updated {updates_count} holdings.")
+            else:
+                messages.info(request, "No changes saved.")
 
         return redirect("portfolio:account_holdings", account_id=account.id)
 
     def _handle_delete_holding(self, request: HttpRequest, account: Account) -> HttpResponse:
         """Handle deleting a holding with validation."""
-        try:
+        with handle_holding_operation(
+            request,
+            account,
+            "delete_holding",
+            log_context={"form_action": "delete"},
+        ):
             # SECURITY: Validate holding_id and ownership
             holding_id_raw = request.POST.get("delete_holding_id")
             holding_id = sanitize_integer_input(holding_id_raw, "holding_id", min_val=1)
@@ -291,22 +309,6 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             messages.success(
                 request,
                 f"Deleted {shares_str} shares of {security_ticker}",
-            )
-
-            logger.info(
-                "Holding deleted: user=%s, holding=%s, security=%s",
-                request.user.id,
-                holding_id,
-                security_ticker,
-            )
-
-        except (InvalidInputError, AccessControlError) as e:
-            messages.error(request, str(e))
-            logger.warning("Failed to delete holding: user=%s, error=%s", request.user.id, str(e))
-        except Exception as e:
-            messages.error(request, f"Error deleting holding: {str(e)}")
-            logger.error(
-                "Unexpected error deleting holding: user=%s", request.user.id, exc_info=True
             )
 
         return redirect("portfolio:account_holdings", account_id=account.id)

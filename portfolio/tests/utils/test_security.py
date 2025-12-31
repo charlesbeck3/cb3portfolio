@@ -1,5 +1,7 @@
 """Tests for security utilities."""
 
+from unittest.mock import Mock, patch
+
 from django.contrib.auth import get_user_model
 from django.http import Http404
 
@@ -9,6 +11,7 @@ from portfolio.models import Account, AllocationStrategy, Holding, Portfolio
 from portfolio.utils.security import (
     AccessControlError,
     InvalidInputError,
+    handle_holding_operation,
     sanitize_integer_input,
     validate_target_mode,
     validate_user_owns_account,
@@ -161,3 +164,106 @@ class TestOwnershipValidation:
 
         with pytest.raises(AccessControlError, match="do not have permission"):
             validate_user_owns_strategy(test_user, strategy.id)
+
+
+@pytest.mark.unit
+class TestHandleHoldingOperation:
+    """Test handle_holding_operation context manager."""
+
+    @pytest.fixture
+    def mock_request(self, rf, test_user):
+        """Create mock request with user."""
+        request = rf.post("/")
+        request.user = test_user
+        request._messages = Mock()
+        return request
+
+    @pytest.fixture
+    def mock_account(self):
+        """Create mock account."""
+        account = Mock()
+        account.id = 123
+        return account
+
+    def test_successful_operation_logs_completion(self, mock_request, mock_account, caplog):
+        """Verify successful operation logs start and completion."""
+        with patch("portfolio.utils.security.logger") as mock_logger:
+            with handle_holding_operation(mock_request, mock_account, "test_operation"):
+                pass  # Successful operation
+
+            # Verify logging calls
+            assert mock_logger.info.call_count == 2
+            mock_logger.info.assert_any_call(
+                "test_operation_started",
+                operation="test_operation",
+                user_id=mock_request.user.id,
+                account_id=123,
+            )
+            mock_logger.info.assert_any_call(
+                "test_operation_completed",
+                operation="test_operation",
+                user_id=mock_request.user.id,
+                account_id=123,
+            )
+
+    def test_invalid_input_error_shows_message(self, mock_request, mock_account):
+        """Verify InvalidInputError shows user message and logs warning."""
+        with (
+            patch("portfolio.utils.security.logger") as mock_logger,
+            patch("portfolio.utils.security.messages") as mock_messages,
+            handle_holding_operation(mock_request, mock_account, "test_operation"),
+        ):
+            raise InvalidInputError("Invalid shares value")
+
+        # Verify error message shown to user
+        mock_messages.error.assert_called_once_with(mock_request, "Invalid shares value")
+
+        # Verify warning logged
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        assert call_args[0][0] == "test_operation_validation_failed"
+
+    def test_access_control_error_shows_message(self, mock_request, mock_account):
+        """Verify AccessControlError shows user message and logs warning."""
+        with (
+            patch("portfolio.utils.security.logger"),
+            patch("portfolio.utils.security.messages") as mock_messages,
+            handle_holding_operation(mock_request, mock_account, "test_operation"),
+        ):
+            raise AccessControlError("Account not owned by user")
+
+        mock_messages.error.assert_called_once_with(mock_request, "Account not owned by user")
+
+    def test_unexpected_error_logs_with_traceback(self, mock_request, mock_account):
+        """Verify unexpected exceptions log with full traceback."""
+        with (
+            patch("portfolio.utils.security.logger") as mock_logger,
+            patch("portfolio.utils.security.messages") as mock_messages,
+            handle_holding_operation(mock_request, mock_account, "test_operation"),
+        ):
+            raise ValueError("Unexpected calculation error")
+
+        # Generic message shown to user
+        mock_messages.error.assert_called_once()
+        assert "Error during test_operation" in str(mock_messages.error.call_args)
+
+        # Full error logged with traceback
+        mock_logger.error.assert_called_once()
+        call_kwargs = mock_logger.error.call_args[1]
+        assert call_kwargs["exc_info"] is True
+
+    def test_additional_log_context_included(self, mock_request, mock_account):
+        """Verify additional log context is included in logging."""
+        with patch("portfolio.utils.security.logger") as mock_logger:
+            with handle_holding_operation(
+                mock_request,
+                mock_account,
+                "test_operation",
+                log_context={"security_id": 456, "shares": "10.5"},
+            ):
+                pass
+
+            # Check log context includes additional fields
+            call_kwargs = mock_logger.info.call_args[1]
+            assert call_kwargs["security_id"] == 456
+            assert call_kwargs["shares"] == "10.5"

@@ -1,9 +1,12 @@
 """Security utilities for input validation and access control."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any, cast
 
+from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.http import Http404
+from django.http import Http404, HttpRequest
 
 import structlog
 
@@ -226,3 +229,82 @@ def sanitize_integer_input(value: str | int | None, param_name: str, min_val: in
         raise InvalidInputError(f"{param_name} must be at least {min_val}, got: {int_val}")
 
     return int_val
+
+
+@contextmanager
+def handle_holding_operation(
+    request: HttpRequest,
+    account: "Account",
+    operation_name: str,
+    *,
+    log_context: dict[str, Any] | None = None,
+) -> Iterator[None]:
+    """
+    Context manager for holding operations with consistent error handling.
+
+    Provides:
+    - Consistent error handling across add/update/delete operations
+    - Structured logging with context
+    - Automatic message/redirect handling
+    - Clean separation of validation from business logic
+
+    Usage:
+        with handle_holding_operation(request, account, "add_holding"):
+            # Your operation logic here
+            holding = create_holding(...)
+            # Success path - no return needed
+
+    Args:
+        request: Django request object
+        account: Account being operated on
+        operation_name: Name of operation for logging (e.g., "add_holding")
+        log_context: Additional context for structured logging
+
+    Yields:
+        None - context manager for exception handling only
+
+    Notes:
+        - All exceptions are caught and converted to user messages
+        - InvalidInputError and AccessControlError show user-friendly messages
+        - Unexpected exceptions show generic error messages
+        - All errors are logged with full context
+    """
+    log_ctx = {
+        "operation": operation_name,
+        "user_id": request.user.id,
+        "account_id": account.id,
+        **(log_context or {}),
+    }
+
+    logger.info(f"{operation_name}_started", **log_ctx)
+
+    try:
+        yield
+        logger.info(f"{operation_name}_completed", **log_ctx)
+
+    except (InvalidInputError, AccessControlError) as e:
+        # Expected validation errors - show to user
+        if hasattr(e, "message"):
+            msg = e.message
+        elif hasattr(e, "messages") and e.messages:
+            msg = e.messages[0]
+        else:
+            msg = str(e)
+
+        messages.error(request, msg)
+        logger.warning(
+            f"{operation_name}_validation_failed",
+            error=msg,
+            error_type=type(e).__name__,
+            **log_ctx,
+        )
+
+    except Exception as e:
+        # Unexpected errors - log with full details, show generic message
+        messages.error(request, f"Error during {operation_name}: {str(e)}")
+        logger.error(
+            f"{operation_name}_unexpected_error",
+            error=str(e),
+            **log_ctx,
+            exc_info=True,
+        )
