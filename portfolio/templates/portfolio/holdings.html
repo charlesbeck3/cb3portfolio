@@ -4,6 +4,23 @@
 {% block title %}Holdings | CB3 Portfolio{% endblock %}
 
 {% block content %}
+<style>
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    .ticker-row:hover {
+        background-color: #f8f9fa;
+    }
+
+    .ticker-details-row td {
+        background-color: #ffffff;
+    }
+
+    .ticker-row.expanded {
+        background-color: #e9ecef;
+    }
+</style>
 <div class="dashboard-content">
 <div class="row">
     <!-- Sidebar Column -->
@@ -31,13 +48,7 @@
                         </div>
                         <div class="btn-toolbar" role="toolbar">
                             {% if not account %}
-                            <!-- View Mode Toggle -->
-                            <div class="btn-group btn-group-sm me-2" role="group">
-                                <a href="?view=aggregated&target={{ target_mode }}"
-                                   class="btn btn-outline-primary {% if is_aggregated %}active{% endif %}">Aggregated</a>
-                                <a href="?view=individual"
-                                   class="btn btn-outline-primary {% if not is_aggregated %}active{% endif %}">By Account</a>
-                            </div>
+                            <!-- Toggle removed -->
 
                             {% if is_aggregated %}
                             <!-- Target Mode Toggle (only for aggregated) -->
@@ -97,7 +108,16 @@
                                 <tbody>
                                     {% for row in holdings_rows %}
                                         {% if row.is_holding %}
-                                        <tr class="{{ row.row_class }}" id="{{ row.row_id }}">
+                                        <tr class="{{ row.row_class }} {% if is_aggregated and row.is_holding and not row.is_zero_holding %}cursor-pointer ticker-row{% endif %}"
+                                            id="{{ row.row_id }}"
+                                            {% if is_aggregated and row.is_holding and not row.is_zero_holding %}
+                                            hx-get="{% url 'portfolio:ticker_details' row.ticker %}"
+                                            hx-target="#ticker-details-{{ row.ticker }}"
+                                            hx-swap="outerHTML"
+                                            hx-trigger="click"
+                                            data-ticker="{{ row.ticker }}"
+                                            data-details-url="{% url 'portfolio:ticker_details' row.ticker %}"
+                                            {% endif %}>
                                             <td>
                                                 <div class="d-flex justify-content-between align-items-center">
                                                     <strong>{{ row.ticker }}</strong>
@@ -154,6 +174,10 @@
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:1 }}</span></td>
                                         </tr>
+                                        {% if is_aggregated and row.is_holding and not row.is_zero_holding %}
+                                        {# Placeholder for details row #}
+                                        <tr id="ticker-details-{{ row.ticker }}" class="d-none"></tr>
+                                        {% endif %}
                                         {% elif row.is_subtotal %}
                                         <tr class="{{ row.row_class }}" id="{{ row.row_id }}">
                                             <td colspan="4">{{ row.name }}</td>
@@ -304,5 +328,44 @@
     })
 </script>
 {% endif %}
+
+<script>
+    document.addEventListener('htmx:afterSwap', function(event) {
+        const targetId = event.detail.target.id;
+        if (targetId.startsWith('ticker-details-')) {
+            const ticker = targetId.replace('ticker-details-', '');
+            const tickerRow = document.querySelector(`tr[data-ticker="${ticker}"]`);
+            if (tickerRow) {
+                tickerRow.classList.add('expanded');
+                tickerRow.removeAttribute('hx-get');
+                htmx.process(tickerRow);
+            }
+        }
+    });
+
+    document.addEventListener('click', function(event) {
+        const tickerRow = event.target.closest('.ticker-row.expanded');
+        if (!tickerRow) return;
+
+        const ticker = tickerRow.dataset.ticker;
+        if (!ticker) return;
+
+        const detailsRow = document.getElementById(`ticker-details-${ticker}`);
+        if (detailsRow) detailsRow.remove();
+
+        tickerRow.classList.remove('expanded');
+
+        const newPlaceholder = document.createElement('tr');
+        newPlaceholder.id = `ticker-details-${ticker}`;
+        newPlaceholder.className = 'd-none';
+        tickerRow.after(newPlaceholder);
+
+        const url = tickerRow.dataset.detailsUrl;
+        if (url) {
+            tickerRow.setAttribute('hx-get', url);
+            htmx.process(tickerRow);
+        }
+    });
+</script>
 
 {% endblock %}

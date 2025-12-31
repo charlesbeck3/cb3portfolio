@@ -1,11 +1,14 @@
 import logging
 from decimal import Decimal, DecimalException
+from itertools import groupby
+from operator import itemgetter
 from typing import Any
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import Http404, HttpRequest, HttpResponse
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
+from django.views import View
 from django.views.generic import TemplateView
 
 from portfolio.models import Account, Holding, Security
@@ -77,11 +80,11 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         account_id_raw = kwargs.get("account_id")
 
         try:
-            view_mode = validate_view_mode(self.request.GET.get("view"))
+            validate_view_mode(self.request.GET.get("view"))
             target_mode = validate_target_mode(self.request.GET.get("target"))
         except InvalidInputError:
             # Fallback to safe defaults if validation failed in get()
-            view_mode = "aggregated" if not account_id_raw else "individual"
+            # view_mode = "aggregated" if not account_id_raw else "individual"
             target_mode = "effective"
 
         context["target_mode"] = target_mode
@@ -92,21 +95,18 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             context["account"] = Account.objects.get(id=account_id)
             context["securities"] = Security.objects.all().order_by("ticker")
 
-            # For specific account, we usually want individual view
-            if self.request.GET.get("view") is None:
-                view_mode = "individual"
-
         # Fetch holdings data
-        if view_mode == "aggregated":
-            context["holdings_rows"] = engine.get_aggregated_holdings_rows(
-                user=user, target_mode=target_mode
-            )
-            context["is_aggregated"] = True
-        else:
+        # Default to aggregated unless account is specified
+        if account_id_raw:
             context["holdings_rows"] = engine.get_holdings_rows(
                 user=user, account_id=kwargs.get("account_id")
             )
             context["is_aggregated"] = False
+        else:
+            context["holdings_rows"] = engine.get_aggregated_holdings_rows(
+                user=user, target_mode=target_mode
+            )
+            context["is_aggregated"] = True
 
         # Add sidebar context
         context.update(self.get_sidebar_context())
@@ -310,3 +310,81 @@ class HoldingsView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
             )
 
         return redirect("portfolio:account_holdings", account_id=account.id)
+
+
+class TickerAccountDetailsView(LoginRequiredMixin, View):
+    """Return HTML fragment with account-level holdings for a specific ticker."""
+
+    def get(self, request: HttpRequest, ticker: str) -> HttpResponse:
+        # Get all accounts for the user
+        accounts = Account.objects.filter(user=request.user).select_related("account_type")
+
+        # Get holdings for this ticker across all accounts
+        holdings_data = []
+        total_value = Decimal("0")
+        total_shares = Decimal("0")
+
+        for account in accounts:
+            # We want the holding for this specific ticker
+            account_holding = account.holdings.filter(security__ticker=ticker).first()
+
+            if account_holding:
+                value = account_holding.market_value
+                shares = account_holding.shares
+
+                total_value += value
+                total_shares += shares
+
+                account_total = account.total_value()
+                pct_of_account = (
+                    (value / account_total * 100) if account_total > 0 else Decimal("0")
+                )
+
+                holdings_data.append(
+                    {
+                        "account_name": account.name,
+                        "account_type": account.account_type.label,
+                        "account_type_id": account.account_type.id,
+                        "shares": shares,
+                        "value": value,
+                        "pct_of_account": pct_of_account,
+                        "pct_of_position": Decimal("0"),  # Calculate after we have total
+                    }
+                )
+
+        # Recalculate pct_of_position now that we have total_value
+        for h in holdings_data:
+            h["pct_of_position"] = (
+                (h["value"] / total_value * 100) if total_value > 0 else Decimal("0")
+            )
+
+        # Group by account type
+        holdings_data.sort(key=itemgetter("account_type_id"))
+        grouped = []
+
+        for account_type, group in groupby(holdings_data, key=itemgetter("account_type")):
+            group_list = list(group)
+            group_total_value = sum(h["value"] for h in group_list)
+            group_total_shares = sum(h["shares"] for h in group_list)
+            group_pct_of_position = sum(h["pct_of_position"] for h in group_list)
+
+            grouped.append(
+                {
+                    "account_type": account_type,
+                    "subtotal": {
+                        "shares": group_total_shares,
+                        "value": group_total_value,
+                        "pct_of_position": group_pct_of_position,
+                    },
+                    "holdings": group_list,
+                }
+            )
+
+        context = {
+            "ticker": ticker,
+            "total_shares": total_shares,
+            "total_value": total_value,
+            "grouped_holdings": grouped,
+        }
+
+        return render(request, "portfolio/partials/ticker_details.html", context)

@@ -1,0 +1,54 @@
+{% load portfolio_filters %}
+
+<tr id="ticker-details-{{ ticker }}" class="ticker-details-row">
+    <td colspan="15" class="p-0">
+        <div class="card border-0 rounded-0 bg-light">
+            <div class="card-body p-3">
+                <h6 class="card-title mb-3">{{ ticker }} - Account Level Details</h6>
+                <table class="table table-sm table-hover mb-0 bg-white">
+                    <thead>
+                        <tr>
+                            <th>Account Name</th>
+                            <th class="text-end">Shares</th>
+                            <th class="text-end">Value</th>
+                            <th class="text-end">% of Account</th>
+                            <th class="text-end">% of Total Position</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for group in grouped_holdings %}
+                            {# Subtotal row #}
+                            <tr class="table-secondary fw-bold">
+                                <td>{{ group.account_type }} Subtotal</td>
+                                <td class="text-end">{{ group.subtotal.shares|number:4 }}</td>
+                                <td class="text-end">{{ group.subtotal.value|money:2 }}</td>
+                                <td class="text-end">-</td>
+                                <td class="text-end">{{ group.subtotal.pct_of_position|percent:1 }}</td>
+                            </tr>
+
+                            {# Detail rows #}
+                            {% for holding in group.holdings %}
+                                <tr>
+                                    <td class="ps-4">{{ holding.account_name }}</td>
+                                    <td class="text-end">{{ holding.shares|number:4 }}</td>
+                                    <td class="text-end">{{ holding.value|money:2 }}</td>
+                                    <td class="text-end">{{ holding.pct_of_account|percent:1 }}</td>
+                                    <td class="text-end">{{ holding.pct_of_position|percent:1 }}</td>
+                                </tr>
+                            {% endfor %}
+                        {% endfor %}
+
+                        {# Grand total #}
+                        <tr class="table-dark fw-bold">
+                            <td>Total</td>
+                            <td class="text-end">{{ total_shares|number:4 }}</td>
+                            <td class="text-end">{{ total_value|money:2 }}</td>
+                            <td class="text-end">-</td>
+                            <td class="text-end">100.0%</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </td>
+</tr>

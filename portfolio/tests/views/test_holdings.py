@@ -258,3 +258,83 @@ class TestHoldingsViewSecurity:
         assert response.context["is_aggregated"] is True
         messages = list(response.context["messages"])
         assert any("invalid view mode" in str(m).lower() for m in messages)
+
+
+@pytest.mark.views
+@pytest.mark.integration
+class TestTickerAccountDetailsView:
+    """Test TickerAccountDetailsView."""
+
+    @pytest.fixture
+    def setup_details(self, client, test_user, base_system_data):
+        from portfolio.models import Portfolio as PortfolioModel
+
+        system = base_system_data
+        portfolio = PortfolioModel.objects.create(user=test_user, name="Details Test Portfolio")
+        client.force_login(test_user)
+
+        acc1 = Account.objects.create(
+            user=test_user,
+            name="Roth",
+            portfolio=portfolio,
+            account_type=system.type_roth,
+            institution=system.institution,
+        )
+
+        acc2 = Account.objects.create(
+            user=test_user,
+            name="Taxable",
+            portfolio=portfolio,
+            account_type=system.type_taxable,
+            institution=system.institution,
+        )
+
+        # Add holdings
+        vti = system.vti
+        Holding.objects.create(account=acc1, security=vti, shares=Decimal("10.00"))
+        Holding.objects.create(account=acc2, security=vti, shares=Decimal("20.00"))
+
+        return {
+            "client": client,
+            "user": test_user,
+            "security": vti,
+            "accounts": [acc1, acc2],
+        }
+
+    def test_ticker_details_view_returns_html(self, setup_details):
+        """Test getting details for a ticker returns correct HTML fragment."""
+        setup = setup_details
+        url = reverse("portfolio:ticker_details", args=[setup["security"].ticker])
+        response = setup["client"].get(url)
+
+        assert response.status_code == 200
+        content = response.content.decode()
+
+        # Check basic content
+        assert f"{setup['security'].ticker} - Account Level Details" in content
+        assert "Roth" in content
+        assert "Taxable" in content
+
+        # Check totals
+        # Total shares = 30
+        assert "30.0000" in content
+
+        # Check subtotals (grouping by account type)
+        assert f"{setup['accounts'][0].account_type.label} Subtotal" in content
+
+    def test_ticker_details_requires_login(self, client):
+        url = reverse("portfolio:ticker_details", args=["VTI"])
+        response = client.get(url)
+        assert response.status_code == 302  # Redirect to login
+
+    def test_ticker_details_no_holdings(self, setup_details):
+        """Test with a ticker that has no holdings."""
+        setup = setup_details
+        url = reverse("portfolio:ticker_details", args=["AAPL"])  # Assuming AAPL not held
+        response = setup["client"].get(url)
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert "Total" in content
+        # Should show 0 totals
+        assert "0.0000" in content
