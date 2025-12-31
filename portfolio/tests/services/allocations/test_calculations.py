@@ -279,3 +279,57 @@ class TestPresentationCalculations:
         if "group_code" in df.columns and "category_code" in df.columns:
             # Check if sorted (should be monotonic or have repeating groups)
             assert not df.empty
+
+    def test_calculate_holdings_with_targets(self, calculator):
+        """Test holdings calculation logic."""
+        df = pd.DataFrame(
+            [
+                {
+                    "Account_ID": 1,
+                    "Ticker": "VTI",
+                    "Asset_Class": "US Equities",
+                    "Value": 1000.0,
+                    "Shares": 10.0,
+                    "Price": 100.0,
+                    "Group_Sort_Order": 1,
+                    "Category_Sort_Order": 1,
+                }
+            ]
+        )
+
+        targets_map = {1: {"US Equities": 60.0}}
+
+        result = calculator.calculate_holdings_with_targets(df, targets_map)
+
+        assert "Target_Value" in result.columns
+        assert "Value_Variance" in result.columns
+        assert result.iloc[0]["Target_Value"] == 600.0
+        assert result.iloc[0]["Value_Variance"] == 400.0
+
+    def test_aggregate_holdings_by_ticker(self, calculator):
+        """Test aggregation across accounts."""
+        df = pd.DataFrame(
+            [
+                {
+                    "Account_ID": 1,
+                    "Ticker": "VTI",
+                    "Value": 1000.0,
+                    "Shares": 10.0,
+                    "Asset_Class": "US Equities",
+                },
+                {
+                    "Account_ID": 2,
+                    "Ticker": "VTI",
+                    "Value": 500.0,
+                    "Shares": 5.0,
+                    "Asset_Class": "US Equities",
+                },
+            ]
+        )
+
+        result = calculator.aggregate_holdings_by_ticker(df)
+
+        assert len(result) == 1
+        assert result.iloc[0]["Value"] == 1500.0
+        assert result.iloc[0]["Shares"] == 15.0
+        assert result.iloc[0]["Account_ID"] == 0

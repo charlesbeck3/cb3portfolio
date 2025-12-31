@@ -19,7 +19,7 @@ from portfolio.models import (
     SecurityPrice,
     TargetAllocation,
 )
-from portfolio.services.allocation_calculations import AllocationCalculationEngine
+from portfolio.services.allocations import AllocationEngine
 
 
 @pytest.mark.models
@@ -39,12 +39,8 @@ class TestZeroBalanceHandling:
             institution=system.institution,
         )
 
-        engine = AllocationCalculationEngine()
-        result = engine.calculate_allocations(portfolio.to_dataframe())
-
-        # Check total value in summary
-        summary = result["portfolio_summary"]
-        val = Decimal("0.00") if summary.empty else Decimal(str(summary["total_value"].iloc[0]))
+        engine = AllocationEngine()
+        val = engine.get_portfolio_total(test_user)
         assert val == Decimal("0.00")
 
     def test_holding_with_zero_shares(self, test_user: Any, base_system_data: Any) -> None:
@@ -76,11 +72,8 @@ class TestZeroBalanceHandling:
             security=security, price=Decimal("100.00"), price_datetime=now, source="manual"
         )
 
-        engine = AllocationCalculationEngine()
-        result = engine.calculate_allocations(portfolio.to_dataframe())
-
-        summary = result["portfolio_summary"]
-        val = Decimal("0.00") if summary.empty else Decimal(str(summary["total_value"].iloc[0]))
+        engine = AllocationEngine()
+        val = engine.get_portfolio_total(test_user)
         assert val == Decimal("0.00")
 
 
@@ -183,11 +176,8 @@ class TestEmptyPortfolio:
 
     def test_portfolio_with_no_accounts(self, test_user: Any) -> None:
         """Test portfolio with no accounts."""
-        portfolio = Portfolio.objects.create(name="Empty Portfolio", user=test_user)
+        Portfolio.objects.create(name="Empty Portfolio", user=test_user)
 
-        engine = AllocationCalculationEngine()
-        result = engine.calculate_allocations(portfolio.to_dataframe())
-
-        summary = result["portfolio_summary"]
-        val = Decimal("0.00") if summary.empty else Decimal(str(summary["total_value"].iloc[0]))
+        engine = AllocationEngine()
+        val = engine.get_portfolio_total(test_user)
         assert val == Decimal("0.00")

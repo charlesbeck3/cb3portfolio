@@ -16,7 +16,7 @@ from portfolio.models import (
     Security,
     SecurityPrice,
 )
-from portfolio.services.allocation_calculations import AllocationCalculationEngine
+from portfolio.services.allocations import AllocationEngine
 
 
 @pytest.mark.models
@@ -26,7 +26,7 @@ class TestDecimalPrecision:
 
     def test_sum_of_float_holdings(self, test_user: Any, base_system_data: Any) -> None:
         """
-        Test that summing holdings via AllocationCalculationEngine (which uses floats)
+        Test that summing holdings via AllocationEngine
         doesn't introduce significant errors when converted back to Decimal.
         """
         system = base_system_data
@@ -77,16 +77,17 @@ class TestDecimalPrecision:
             security=security2, price=Decimal("1.00"), price_datetime=now, source="manual"
         )
 
-        engine = AllocationCalculationEngine()
-        result = engine.calculate_allocations(portfolio.to_dataframe())
+        engine = AllocationEngine()
+        # Use DataProvider to get the data as the engine would
+        _holdings_df = engine.data_provider.get_holdings_df(test_user)
+        # Verify total value via the engine's totals method
+        totals = engine.get_account_totals(test_user)
+        total_val = totals.get(account.id, Decimal("0"))
 
         # Expected total: 1.1*1 + 2.2*1 = 3.3
         # Float math: 1.1 + 2.2 = 3.3000000000000003
 
-        summary = result["portfolio_summary"]
-        total_val = Decimal(str(summary["total_value"].iloc[0]))
-
-        # Verify that the value is close enough (e.g. within 1 cent)
+        # Verify that the value is close enough (float artifacts expected)
         assert abs(total_val - Decimal("3.30")) < Decimal("0.000001"), f"Got {total_val}"
 
     def test_float_sum_precision_roundtrip(self, test_user: Any, base_system_data: Any) -> None:
@@ -132,11 +133,14 @@ class TestDecimalPrecision:
             security=sec2, price=Decimal("1.00"), price_datetime=now, source="manual"
         )
 
-        engine = AllocationCalculationEngine()
+        engine = AllocationEngine()
 
-        # Method 1: calculate_allocations (pure pandas/float)
-        results = engine.calculate_allocations(portfolio.to_dataframe())
-        total_float = results["portfolio_summary"]["total_value"].iloc[0]
+        # Method 1: DataProvider (pure pandas/float)
+        holdings_df = engine.data_provider.get_holdings_df(test_user)
+        # Sum only for our specific portfolio accounts
+        total_float = holdings_df[holdings_df["account_id"].isin([account1.id, account2.id])][
+            "value"
+        ].sum()
         assert isinstance(total_float, float)
 
         # Check if float sum has artifacts (it likely will)

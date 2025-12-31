@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from portfolio.services.allocation_calculations import AllocationCalculationEngine
+from portfolio.services.allocations import AllocationEngine
 
 
 @pytest.mark.golden
@@ -32,11 +32,10 @@ class TestGoldenReferenceCalculations:
         - CB Roth uses Tax Advantaged (50% US Equities)
         """
         setup = golden_reference_portfolio
-        engine = AllocationCalculationEngine()
+        engine = AllocationEngine()
 
         # Get effective allocations
-        # Note: get_effective_target_map returns dict[int, dict[str, Decimal]]
-        effective_map = engine.get_effective_target_map(setup["user"])
+        effective_map = engine.data_provider.get_targets_map(setup["user"])
 
         # ML Brokerage should have Taxable Default targets
         ml_dict = effective_map.get(setup["accounts"]["ml_brokerage"].id, {})
@@ -65,8 +64,9 @@ class TestGoldenReferenceCalculations:
         setup = golden_reference_portfolio
 
         # Calculate variances
-        engine = AllocationCalculationEngine()
-        variances = engine.calculate_account_variances(setup["user"])
+        engine = AllocationEngine()
+        sidebar_data = engine.get_sidebar_data(setup["user"])
+        variances = sidebar_data["account_variances"]
 
         # Verify we got variances for all accounts
         assert len(variances) == 3  # ml_brokerage, cb_ira, cb_roth

@@ -18,7 +18,7 @@ from portfolio.models import (
     SecurityPrice,
     TargetAllocation,
 )
-from portfolio.services.allocation_calculations import AllocationCalculationEngine
+from portfolio.services.allocations import AllocationEngine
 
 User = get_user_model()
 
@@ -78,8 +78,8 @@ class Command(BaseCommand):
         self, user: Any
     ) -> dict[int, list[AssetAllocation]]:
         """Adapter to convert Engine's map format to Domain Objects expected by Portfolio domain."""
-        engine = AllocationCalculationEngine()
-        target_map = engine.get_effective_target_map(user)
+        engine = AllocationEngine()
+        target_map = engine.data_provider.get_targets_map(user)
 
         result = {}
         for acc_id, targets in target_map.items():
@@ -631,7 +631,7 @@ class Command(BaseCommand):
         self.stdout.write("NEW ENGINE (PANDAS) VALIDATION SECTION")
         self.stdout.write("=" * 80 + "\n")
 
-        engine = AllocationCalculationEngine()
+        engine = AllocationEngine()
 
         # Single clean API call
         rows = engine.get_presentation_rows(user=user)
@@ -660,27 +660,14 @@ class Command(BaseCommand):
         self.stdout.write(self.format_df_for_display(df_presentation, ["Level", "Asset Class"]))
 
         # Also show Holdings Detail from Engine
-        effective_targets_map = engine.get_effective_target_map(user)
+        effective_targets_map = engine.data_provider.get_targets_map(user)
 
-        # Build raw holdings DF (similar to HoldingsView)
-        holdings_qs = Holding.objects.filter(account__user=user).select_related(
-            "account", "security__asset_class"
+        # Build raw holdings DF using DataProvider
+        holdings_df = engine.data_provider.get_holdings_df_detailed(user)
+
+        detail_df = engine.calculator.calculate_holdings_with_targets(
+            holdings_df, effective_targets_map
         )
-        raw_holdings = []
-        for h in holdings_qs:
-            raw_holdings.append(
-                {
-                    "Account_ID": h.account_id,
-                    "Asset_Class": h.security.asset_class.name,
-                    "Security": h.security.ticker,
-                    "Value": float(h.market_value),
-                    "Shares": float(h.shares),
-                    "Price": float(h.latest_price) if h.latest_price else 0.0,
-                }
-            )
-        holdings_df = pd.DataFrame(raw_holdings)
-
-        detail_df = engine.calculate_holdings_detail(holdings_df, effective_targets_map)
 
         self.stdout.write(self.style.MIGRATE_LABEL("\nENGINE HOLDINGS DETAIL VALIDATION"))
         detail_display = detail_df[

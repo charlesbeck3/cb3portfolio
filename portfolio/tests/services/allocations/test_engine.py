@@ -101,6 +101,54 @@ class TestAllocationEngineIntegration:
 
         assert rows == []
 
+    def test_get_holdings_rows(self, test_user, simple_holdings, roth_account):
+        """Test holdings rows generation."""
+        engine = AllocationEngine()
+        rows = engine.get_holdings_rows(test_user, account_id=roth_account.id)
+
+        assert len(rows) > 0
+        assert any(r["row_type"] == "holding" for r in rows)
+        assert any(r["row_type"] == "grand_total" for r in rows)
+
+    def test_get_aggregated_holdings_rows(self, test_user, simple_holdings):
+        """Test aggregated holdings rows generation (success)."""
+        engine = AllocationEngine()
+        rows = engine.get_aggregated_holdings_rows(test_user)
+
+        assert len(rows) > 0
+        assert any(r["row_type"] == "holding" for r in rows)
+        assert any(r["row_type"] == "grand_total" for r in rows)
+
+    def test_get_aggregated_holdings_rows_empty(self, test_user):
+        """Test with no holdings."""
+        engine = AllocationEngine()
+        rows = engine.get_aggregated_holdings_rows(test_user)
+        assert rows == []
+
+    def test_get_sidebar_data_error_handling(self, test_user):
+        """Test sidebar error handling."""
+        from unittest.mock import Mock
+
+        mock_provider = Mock()
+        mock_provider.get_holdings_df.side_effect = Exception("DB Error")
+
+        engine = AllocationEngine(data_provider=mock_provider)
+        result = engine.get_sidebar_data(test_user)
+
+        assert result["grand_total"] == 0
+        assert result["query_count"] == 0
+
+    def test_get_presentation_rows_error_handling(self, test_user):
+        """Test presentation rows error handling."""
+        from unittest.mock import Mock
+
+        mock_provider = Mock()
+        mock_provider.get_holdings_df.side_effect = Exception("Calculation Error")
+
+        engine = AllocationEngine(data_provider=mock_provider)
+        rows = engine.get_presentation_rows(test_user)
+        assert rows == []
+
 
 @pytest.mark.integration
 @pytest.mark.services
