@@ -115,6 +115,9 @@ class DjangoDataProvider:
             (df["category_code"] == "CASH") | (df["asset_class_name"] == "Cash")
         ).astype("boolean")
 
+        # Set row_type for individual asset class rows
+        df["row_type"] = "asset_class"
+
         return df
 
     def get_accounts_metadata(self, user: Any) -> tuple[list[dict], dict[int, list[dict]]]:
@@ -214,3 +217,27 @@ class DjangoDataProvider:
             "at_strategy_map": at_map,
             "acc_strategy_map": acc_map,
         }
+
+    def get_policy_targets(self, user: Any) -> dict[str, Decimal]:
+        """
+        Get portfolio-level policy targets from the portfolio's allocation strategy.
+
+        Policy targets represent the user's stated target allocation for their
+        entire portfolio, as opposed to effective targets which are weighted
+        averages of account-level targets.
+
+        Returns:
+            Dict of {asset_class_name: target_percent}
+            Empty dict if no portfolio strategy is assigned.
+        """
+        from portfolio.models import Portfolio
+
+        # Get user's portfolio with its allocation strategy
+        portfolio = (
+            Portfolio.objects.filter(user=user).select_related("allocation_strategy").first()
+        )
+
+        if not portfolio or not portfolio.allocation_strategy:
+            return {}
+
+        return portfolio.allocation_strategy.get_allocations_by_name()

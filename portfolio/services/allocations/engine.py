@@ -49,6 +49,7 @@ class AllocationEngine:
 
             asset_classes_df = self.data_provider.get_asset_classes_df(user)
             targets_map = self.data_provider.get_targets_map(user)
+            policy_targets = self.data_provider.get_policy_targets(user)
             accounts_list, accounts_by_type = self.data_provider.get_accounts_metadata(user)
             target_strategies = self.data_provider.get_target_strategies(user)
 
@@ -66,6 +67,7 @@ class AllocationEngine:
                 asset_classes_df=asset_classes_df,
                 targets_map=targets_map,
                 account_totals=account_totals,
+                policy_targets=policy_targets,
             )
 
             if presentation_df.empty:

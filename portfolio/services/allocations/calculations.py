@@ -259,6 +259,7 @@ class AllocationCalculator:
         asset_classes_df: pd.DataFrame,
         targets_map: dict[int, dict[str, Any]],
         account_totals: dict[int, Any],
+        policy_targets: dict[str, Any] | None = None,
     ) -> pd.DataFrame:
         """
         Build complete presentation DataFrame with all calculations.
@@ -269,14 +270,16 @@ class AllocationCalculator:
         3. Add account-type level actuals
         4. Add individual account actuals
         5. Calculate weighted effective targets
-        6. Calculate variances at all levels
-        7. Sort by hierarchy
+        6. Calculate policy targets (portfolio-level stated targets)
+        7. Calculate variances at all levels
+        8. Sort by hierarchy
 
         Args:
             holdings_df: Long-format holdings
             asset_classes_df: Asset class metadata
             targets_map: {account_id: {asset_class_name: target_pct}}
             account_totals: {account_id: total_value}
+            policy_targets: {asset_class_name: target_pct} from portfolio strategy
 
         Returns:
             DataFrame with columns for each level:
@@ -286,7 +289,9 @@ class AllocationCalculator:
             - {account}_actual, {account}_actual_pct for each account
             - portfolio_effective, portfolio_effective_pct
             - {type}_effective, {type}_effective_pct
-            - portfolio_variance, portfolio_variance_pct
+            - portfolio_policy, portfolio_policy_pct (stated targets)
+            - portfolio_variance, portfolio_variance_pct (vs effective)
+            - portfolio_policy_variance, portfolio_policy_variance_pct (vs policy)
             - {type}_variance, {type}_variance_pct
         """
         if holdings_df.empty:
@@ -305,15 +310,30 @@ class AllocationCalculator:
         df = self._add_account_calculations_presentation(df, holdings_df)
 
         # Step 5: Calculate weighted effective targets
-        df = self._calculate_weighted_targets_presentation(df, targets_map, account_totals)
+        # Build account_type_map from holdings_df: {account_id: account_type_code}
+        account_type_map = (
+            holdings_df[["account_id", "account_type_code"]]
+            .drop_duplicates()
+            .set_index("account_id")["account_type_code"]
+            .to_dict()
+        )
+        df = self._calculate_weighted_targets_presentation(
+            df, targets_map, account_totals, account_type_map
+        )
 
-        # Step 6: Calculate variances
+        # Step 6: Calculate policy targets (portfolio-level stated targets)
+        from decimal import Decimal
+
+        portfolio_total = float(sum(account_totals.values(), Decimal("0")))
+        df = self._calculate_policy_targets_presentation(df, policy_targets, portfolio_total)
+
+        # Step 7: Calculate variances (both effective and policy)
         df = self._calculate_variances_presentation(df)
 
-        # Step 7: Sort by hierarchy
+        # Step 8: Sort by hierarchy
         df = self._sort_presentation_dataframe(df)
 
-        # Step 8: Add subtotal and grand total rows
+        # Step 9: Add subtotal and grand total rows
         df = self._add_aggregated_rows(df)
 
         return df
@@ -327,7 +347,7 @@ class AllocationCalculator:
         if df.empty:
             return df
 
-        # Identify numeric columns to aggregate (all actual, effective, variance columns)
+        # Identify numeric columns to aggregate (all actual, effective, policy, variance columns)
         numeric_cols = [
             col
             for col in df.columns
@@ -338,6 +358,8 @@ class AllocationCalculator:
                     "_actual_pct",
                     "_effective",
                     "_effective_pct",
+                    "_policy",
+                    "_policy_pct",
                     "_variance",
                     "_variance_pct",
                 ]
@@ -539,12 +561,19 @@ class AllocationCalculator:
         df: pd.DataFrame,
         targets_map: dict[int, dict[str, Any]],
         account_totals: dict[int, Any],
+        account_type_map: dict[int, str] | None = None,
     ) -> pd.DataFrame:
         """
         Calculate effective (weighted) targets at all levels.
 
         Effective target = weighted average of account targets,
         weighted by account values.
+
+        Args:
+            df: DataFrame with asset class data and actuals
+            targets_map: {account_id: {asset_class_name: target_pct}}
+            account_totals: {account_id: total_value}
+            account_type_map: {account_id: account_type_code}
         """
         from decimal import Decimal
 
@@ -554,15 +583,19 @@ class AllocationCalculator:
             df["portfolio_effective_pct"] = 0.0
             return df
 
+        account_type_map = account_type_map or {}
+
         # Build targets DataFrame with account metadata
         targets_records = []
         for acc_id, allocations in targets_map.items():
             acc_total = float(account_totals.get(acc_id, Decimal("0")))
+            acc_type = account_type_map.get(acc_id, "")
 
             for asset_class_name, target_pct in allocations.items():
                 targets_records.append(
                     {
                         "account_id": acc_id,
+                        "account_type_code": acc_type,
                         "asset_class": asset_class_name,
                         "target_pct": float(target_pct),
                         "account_total": acc_total,
@@ -617,8 +650,7 @@ class AllocationCalculator:
         ).fillna(0.0)
 
         # Account-type level effective targets
-        # Need to get account type for each account from holdings_df
-        # For now, we'll use the fact that account type columns exist in the DataFrame
+        # Calculate weighted effective targets for each account type
         # Get unique account types from column names
         type_columns = [
             col.replace("_actual", "")
@@ -628,29 +660,133 @@ class AllocationCalculator:
             and col != "portfolio_actual"
         ]
 
+        # Calculate type totals for weighting
+        type_totals: dict[str, float] = {}
+        for acc_id, acc_type in account_type_map.items():
+            if acc_type:
+                acc_total = float(account_totals.get(acc_id, Decimal("0")))
+                type_totals[acc_type] = type_totals.get(acc_type, 0.0) + acc_total
+
         # For each account type, calculate weighted effective targets
-        # This is a workaround - ideally we'd pass account type mapping
-        # For now, calculate effective = actual (no weighting at type level)
-        # TODO: Implement proper account-type level weighted targets
         for type_code in type_columns:
-            result[f"{type_code}_effective"] = result[f"{type_code}_actual"]
-            result[f"{type_code}_effective_pct"] = result[f"{type_code}_actual_pct"]
+            type_total = type_totals.get(type_code, 0.0)
+
+            if type_total > 0 and not targets_with_id.empty:
+                # Filter targets to accounts of this type
+                type_targets = targets_with_id[targets_with_id["account_type_code"] == type_code]
+
+                if not type_targets.empty:
+                    # Calculate weighted effective for this type
+                    # Bind type_total to lambda's local scope to avoid B023
+                    type_weighted = (
+                        type_targets.groupby("asset_class_id")
+                        .apply(
+                            lambda x, tt=type_total: (x["target_pct"] * x["account_total"]).sum()
+                            / tt,
+                            include_groups=False,
+                        )
+                        .to_frame(name=f"{type_code}_effective_pct")
+                    )
+
+                    type_weighted[f"{type_code}_effective"] = (
+                        type_weighted[f"{type_code}_effective_pct"] * type_total / 100
+                    )
+
+                    # Merge with result
+                    result = result.merge(
+                        type_weighted,
+                        left_on="asset_class_id",
+                        right_index=True,
+                        how="left",
+                        suffixes=("", "_new"),
+                    )
+
+                    # Handle column collision if effective columns already exist
+                    if f"{type_code}_effective_new" in result.columns:
+                        result[f"{type_code}_effective"] = result[
+                            f"{type_code}_effective_new"
+                        ].fillna(0.0)
+                        result[f"{type_code}_effective_pct"] = result[
+                            f"{type_code}_effective_pct_new"
+                        ].fillna(0.0)
+                        result = result.drop(
+                            columns=[
+                                f"{type_code}_effective_new",
+                                f"{type_code}_effective_pct_new",
+                            ]
+                        )
+                    else:
+                        result[f"{type_code}_effective"] = result[f"{type_code}_effective"].fillna(
+                            0.0
+                        )
+                        result[f"{type_code}_effective_pct"] = result[
+                            f"{type_code}_effective_pct"
+                        ].fillna(0.0)
+                else:
+                    # No targets for this type - set to 0
+                    result[f"{type_code}_effective"] = 0.0
+                    result[f"{type_code}_effective_pct"] = 0.0
+            else:
+                # No accounts of this type or no total - set to 0
+                result[f"{type_code}_effective"] = 0.0
+                result[f"{type_code}_effective_pct"] = 0.0
 
         return result
 
+    def _calculate_policy_targets_presentation(
+        self,
+        df: pd.DataFrame,
+        policy_targets: dict[str, Any] | None,
+        portfolio_total: float,
+    ) -> pd.DataFrame:
+        """
+        Calculate policy targets at portfolio level.
+
+        Policy targets come from the portfolio's allocation_strategy and represent
+        the user's stated target allocation, as opposed to effective targets which
+        are weighted averages of account-level targets.
+
+        Args:
+            df: DataFrame with asset class data
+            policy_targets: {asset_class_name: target_pct} from portfolio strategy
+            portfolio_total: Total portfolio value for dollar calculations
+        """
+        if not policy_targets:
+            # No policy targets - set to 0
+            df["portfolio_policy"] = 0.0
+            df["portfolio_policy_pct"] = 0.0
+            return df
+
+        # Map policy targets by asset class name
+        df["portfolio_policy_pct"] = df["asset_class_name"].map(
+            lambda name: float(policy_targets.get(name, 0))
+        )
+
+        # Calculate dollar value based on percentage and total
+        df["portfolio_policy"] = df["portfolio_policy_pct"] * portfolio_total / 100
+
+        return df
+
     def _calculate_variances_presentation(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Calculate variances between actual and effective/target allocations.
+        Calculate variances between actual and effective/policy allocations.
 
         For each level (portfolio, account types, accounts):
-        - variance = actual - effective
-        - variance_pct = actual_pct - effective_pct
+        - effective_variance = actual - effective (for rebalancing)
+        - policy_variance = actual - policy (for policy adherence)
         """
-        # Portfolio level
+        # Portfolio level - effective variance (for rebalancing)
         if "portfolio_actual" in df.columns and "portfolio_effective" in df.columns:
             df["portfolio_variance"] = df["portfolio_actual"] - df["portfolio_effective"]
             df["portfolio_variance_pct"] = (
                 df["portfolio_actual_pct"] - df["portfolio_effective_pct"]
+            )
+
+        # Portfolio level - policy variance (for policy adherence)
+        if "portfolio_actual" in df.columns and "portfolio_policy" in df.columns:
+            df["portfolio_policy_variance"] = df["portfolio_actual"] - df["portfolio_policy"]
+            df["portfolio_policy_variance_pct"] = (
+                df["portfolio_actual_pct"] - df["portfolio_policy_pct"]
             )
 
         # Account type level - find all type columns dynamically

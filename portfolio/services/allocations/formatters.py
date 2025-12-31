@@ -58,14 +58,13 @@ class AllocationFormatter:
                     "actual_pct": float(row.get("portfolio_actual_pct", 0.0)),
                     "effective": float(row.get("portfolio_effective", 0.0)),
                     "effective_pct": float(row.get("portfolio_effective_pct", 0.0)),
-                    # Explicit target = same as effective for now (no separate policy targets)
-                    "explicit_target": float(row.get("portfolio_effective", 0.0)),
-                    "explicit_target_pct": float(row.get("portfolio_effective_pct", 0.0)),
-                    "effective_variance": float(row.get("portfolio_effective_variance", 0.0)),
-                    "effective_variance_pct": float(
-                        row.get("portfolio_effective_variance_pct", 0.0)
-                    ),
-                    # Policy variance = same as effective for now
+                    # Policy target = portfolio's allocation_strategy target
+                    "explicit_target": float(row.get("portfolio_policy", 0.0)),
+                    "explicit_target_pct": float(row.get("portfolio_policy_pct", 0.0)),
+                    # Effective variance = actual - effective (for rebalancing)
+                    "effective_variance": float(row.get("portfolio_variance", 0.0)),
+                    "effective_variance_pct": float(row.get("portfolio_variance_pct", 0.0)),
+                    # Policy variance = actual - policy (for policy adherence)
                     "policy_variance": float(row.get("portfolio_policy_variance", 0.0)),
                     "policy_variance_pct": float(row.get("portfolio_policy_variance_pct", 0.0)),
                 },

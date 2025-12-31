@@ -54,6 +54,7 @@ class TestDjangoDataProvider:
             "category_label",
             "category_sort_order",
             "is_cash",
+            "row_type",
         ]
         assert list(df.columns) == expected_cols
         assert len(df) > 0
