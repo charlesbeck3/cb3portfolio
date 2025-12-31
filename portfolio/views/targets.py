@@ -14,7 +14,6 @@ from portfolio.models import (
     AccountTypeStrategyAssignment,
     AllocationStrategy,
 )
-from portfolio.services.allocation_calculations import AllocationCalculationEngine
 from portfolio.views.mixins import PortfolioContextMixin
 
 logger = structlog.get_logger(__name__)
@@ -32,12 +31,12 @@ class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateVi
 
     template_name = "portfolio/target_allocations.html"
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self._engine = AllocationCalculationEngine()
-
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
-        """Build context using calculation engine."""
+        """Build context using new allocations module."""
+        from decimal import Decimal
+
+        from portfolio.services.allocations import get_presentation_rows
+
         logger.info("target_allocations_accessed", user_id=cast(Any, self.request.user).id)
         context = super().get_context_data(**kwargs)
         user = self.request.user
@@ -46,7 +45,28 @@ class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateVi
             return context
 
         user = cast(Any, user)
-        context.update(self._engine.build_target_allocation_context(user=user))
+
+        # Get presentation rows using new engine (already sorted by effective desc)
+        allocation_rows = get_presentation_rows(user=user)
+
+        # Extract portfolio total from grand total row
+        portfolio_total = Decimal("0.00")
+        if allocation_rows:
+            grand_total_row = next((r for r in allocation_rows if r.get("is_grand_total")), None)
+            if grand_total_row and "portfolio" in grand_total_row:
+                portfolio_total = Decimal(str(grand_total_row["portfolio"]["actual"]))
+
+        # Get user's strategies
+        strategies = AllocationStrategy.objects.filter(user=user).order_by("name")
+
+        context.update(
+            {
+                "allocation_rows_percent": allocation_rows,
+                "allocation_rows_money": allocation_rows,
+                "strategies": strategies,
+                "portfolio_total_value": portfolio_total,
+            }
+        )
         return context
 
     def post(self, request: Any, *args: Any, **kwargs: Any) -> Any:

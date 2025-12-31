@@ -180,3 +180,37 @@ class DjangoDataProvider:
                 result[account.id] = allocations
 
         return result
+
+    def get_target_strategies(self, user: Any) -> dict[str, dict[int, int]]:
+        """
+        Get strategy assignments for account types and accounts.
+
+        Returns:
+            Dict containing:
+            - at_strategy_map: {account_type_id: strategy_id}
+            - acc_strategy_map: {account_id: strategy_id}
+        """
+        from portfolio.models import Account, AccountTypeStrategyAssignment
+
+        # 1. Account Type Assignments
+        at_assignments = AccountTypeStrategyAssignment.objects.filter(user=user).values(
+            "account_type_id", "allocation_strategy_id"
+        )
+
+        at_map = {
+            item["account_type_id"]: item["allocation_strategy_id"] for item in at_assignments
+        }
+
+        # 2. Individual Account Overrides
+        acc_assignments = (
+            Account.objects.filter(user=user)
+            .exclude(allocation_strategy__isnull=True)
+            .values("id", "allocation_strategy_id")
+        )
+
+        acc_map = {item["id"]: item["allocation_strategy_id"] for item in acc_assignments}
+
+        return {
+            "at_strategy_map": at_map,
+            "acc_strategy_map": acc_map,
+        }

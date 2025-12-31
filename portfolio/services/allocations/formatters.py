@@ -11,7 +11,8 @@ class AllocationFormatter:
     def to_presentation_rows(
         self,
         df: pd.DataFrame,
-        accounts_by_type: dict[int, list[dict]],
+        accounts_by_type: dict[int, list[dict[str, Any]]],
+        target_strategies: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Transform presentation DataFrame to template-ready rows.
@@ -22,12 +23,17 @@ class AllocationFormatter:
         Args:
             df: Presentation DataFrame from calculator
             accounts_by_type: Metadata about accounts grouped by type
+            target_strategies: Strategy assignments map for dropdowns
 
         Returns:
             List of row dicts ready for template rendering
         """
         if df.empty:
             return []
+
+        target_strategies = target_strategies or {}
+        at_strategy_map = target_strategies.get("at_strategy_map", {})
+        acc_strategy_map = target_strategies.get("acc_strategy_map", {})
 
         rows = []
 
@@ -55,17 +61,19 @@ class AllocationFormatter:
                     # Explicit target = same as effective for now (no separate policy targets)
                     "explicit_target": float(row.get("portfolio_effective", 0.0)),
                     "explicit_target_pct": float(row.get("portfolio_effective_pct", 0.0)),
-                    "effective_variance": float(row.get("portfolio_variance", 0.0)),
-                    "effective_variance_pct": float(row.get("portfolio_variance_pct", 0.0)),
-                    # Policy variance = same as effective variance for now
-                    "policy_variance": float(row.get("portfolio_variance", 0.0)),
-                    "policy_variance_pct": float(row.get("portfolio_variance_pct", 0.0)),
+                    "effective_variance": float(row.get("portfolio_effective_variance", 0.0)),
+                    "effective_variance_pct": float(
+                        row.get("portfolio_effective_variance_pct", 0.0)
+                    ),
+                    # Policy variance = same as effective for now
+                    "policy_variance": float(row.get("portfolio_policy_variance", 0.0)),
+                    "policy_variance_pct": float(row.get("portfolio_policy_variance_pct", 0.0)),
                 },
             }
 
             # Add account type data
             account_types = []
-            for _type_id, accounts in accounts_by_type.items():
+            for type_id, accounts in accounts_by_type.items():
                 if not accounts:
                     continue
 
@@ -73,7 +81,29 @@ class AllocationFormatter:
                 type_code = accounts[0].get("type_code", "")
                 type_label = accounts[0].get("type_label", type_code)
 
+                # Collect accounts for this type to populate active_accounts
+                type_accounts_data = []
+                for account_meta in accounts:
+                    acc_id = account_meta["id"]
+                    acc_prefix = f"{type_code}_{account_meta['name']}"
+
+                    acc_data = {
+                        "id": acc_id,
+                        "name": account_meta["name"],
+                        "actual": float(row.get(f"{acc_prefix}_actual", 0.0)),
+                        "actual_pct": float(row.get(f"{acc_prefix}_actual_pct", 0.0)),
+                        "policy": float(row.get(f"{acc_prefix}_policy", 0.0)),
+                        "policy_pct": float(row.get(f"{acc_prefix}_policy_pct", 0.0)),
+                        "policy_variance": float(row.get(f"{acc_prefix}_policy_variance", 0.0)),
+                        "policy_variance_pct": float(
+                            row.get(f"{acc_prefix}_policy_variance_pct", 0.0)
+                        ),
+                        "allocation_strategy_id": acc_strategy_map.get(acc_id),
+                    }
+                    type_accounts_data.append(acc_data)
+
                 type_data = {
+                    "id": type_id,
                     "code": type_code,
                     "label": type_label,
                     "actual": float(row.get(f"{type_code}_actual", 0.0)),
@@ -88,6 +118,9 @@ class AllocationFormatter:
                     # Policy variance = same as effective variance for now
                     "policy_variance": float(row.get(f"{type_code}_variance", 0.0)),
                     "policy_variance_pct": float(row.get(f"{type_code}_variance_pct", 0.0)),
+                    "active_strategy_id": at_strategy_map.get(type_id),
+                    "active_accounts": type_accounts_data,  # Populate active_accounts for template
+                    "accounts": type_accounts_data,  # Populate accounts list for template
                 }
                 account_types.append(type_data)
 
@@ -109,6 +142,7 @@ class AllocationFormatter:
                         "target_pct": float(row.get(f"account_{acc_id}_target_pct", 0.0)),
                         "variance": float(row.get(f"account_{acc_id}_variance", 0.0)),
                         "variance_pct": float(row.get(f"account_{acc_id}_variance_pct", 0.0)),
+                        "allocation_strategy_id": acc_strategy_map.get(acc_id),
                     }
                     accounts.append(account_data)
 
@@ -117,7 +151,7 @@ class AllocationFormatter:
 
         return rows
 
-    def to_holdings_rows(self, df: pd.DataFrame) -> list[dict]:
+    def to_holdings_rows(self, df: pd.DataFrame) -> list[dict[str, Any]]:
         """Transform holdings DataFrame to rows."""
         if df.empty:
             return []
@@ -143,8 +177,8 @@ class AllocationFormatter:
         return rows
 
     def _format_account_types(
-        self, row: pd.Series, accounts_by_type: dict[int, list[dict]]
-    ) -> list[dict]:
+        self, row: pd.Series, accounts_by_type: dict[int, list[dict[str, Any]]]
+    ) -> list[dict[str, Any]]:
         """Format account type columns."""
         result = []
 

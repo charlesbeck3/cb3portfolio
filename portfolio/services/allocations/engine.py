@@ -50,6 +50,7 @@ class AllocationEngine:
             asset_classes_df = self.data_provider.get_asset_classes_df(user)
             targets_map = self.data_provider.get_targets_map(user)
             accounts_list, accounts_by_type = self.data_provider.get_accounts_metadata(user)
+            target_strategies = self.data_provider.get_target_strategies(user)
 
             # Step 2: Calculate account totals
             account_totals = (
@@ -74,6 +75,7 @@ class AllocationEngine:
             rows = self.formatter.to_presentation_rows(
                 df=presentation_df,
                 accounts_by_type=accounts_by_type,
+                target_strategies=target_strategies,
             )
 
             logger.info(
