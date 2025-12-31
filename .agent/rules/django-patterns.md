@@ -8,353 +8,195 @@ trigger: always_on
 
 # Django Patterns for cb3portfolio
 
-## Architecture: Engine → Template (UPDATED)
+## Composition Architecture
 
-**CRITICAL RULE: String formatting happens ONLY in templates, never in Python.**
+**Services use composition with dependency injection.**
 
-**NEW SIMPLIFIED FLOW:**
 ```
-Engine → Dict structure with raw numerics (calculations + transformation)
-Template → Formatted display (|money, |percent, |number)
+portfolio/services/allocations/
+├── __init__.py           # Public API
+├── engine.py            # Orchestration
+├── calculations.py      # Pure pandas logic
+├── data_providers.py    # ORM → pandas
+├── formatters.py        # DataFrame → dict
+└── types.py             # TypedDict schemas
 ```
 
-**OLD FLOW (DEPRECATED):**
-```
-Engine → Formatter → Template  # Don't do this anymore
-```
+### Component Pattern
 
----
+**Calculator (Pure Logic)**
+- No Django dependencies
+- Pure pandas calculations
+- Returns DataFrames with numeric values
 
-## Engine Pattern (UPDATED)
+**DataProvider (ORM → Pandas)**
+- All Django queries here
+- Convert to pandas DataFrames
+- Optimize with select_related/prefetch_related
 
-**Engines use pandas for calculations AND structure transformation.**
+**Formatter (DataFrame → Dict)**
+- Transform structure for templates
+- Return raw numeric values (no string formatting)
 
-### Engine Rules
-- ✅ Use pandas vectorized operations, no manual loops
-- ✅ Calculate ALL numeric values (including variances)
-- ✅ Return template-ready dicts with raw numeric values
-- ✅ Use MultiIndex for hierarchical data
-- ✅ Use Decimal for currency calculations
-- ✅ Expose clean public API: `get_presentation_rows()`, `get_holdings_rows()`
-- ✅ Keep formatting methods private (prefixed with `_`)
-- ❌ NO separate Formatter classes
-- ❌ NO string formatting (no f-strings, no `*_fmt` columns)
-- ❌ NO business logic (that's in domain models)
+**Engine (Orchestration)**
+- Compose components via dependency injection
+- Expose clean public API
+- Handle logging and errors
 
-### Engine Structure
+**Public API (__init__.py)**
+- Module-level convenience functions
+- Views call these, not Engine directly
+
+## View Pattern
+
+**Views make single API call.**
+
 ```python
-class AllocationCalculationEngine:
-    """
-    Calculate portfolio allocations and prepare display data.
+from portfolio.services.allocations import get_presentation_rows
 
-    Public API:
-    - get_presentation_rows(user) → Dashboard/targets data
-    - get_holdings_rows(user, account_id) → Holdings data
-
-    Private methods (internal use only):
-    - _format_presentation_rows() → DataFrame to dicts
-    - _calculate_variances() → Variance calculations
-    """
-
-    def get_presentation_rows(self, user: Any) -> list[dict[str, Any]]:
-        """
-        Calculate and format allocation data for display.
-
-        Returns list of dicts with raw numeric values.
-        Template handles formatting via filters.
-        """
-        # 1. Calculate numeric DataFrame
-        df = self.build_presentation_dataframe(user=user)
-        if df.empty:
-            return []
-
-        # 2. Aggregate and calculate variances
-        aggregated = self.aggregate_presentation_levels(df)
-
-        # 3. Transform to template-ready dicts
-        return self._format_presentation_rows(aggregated, ...)
-
-    def _format_presentation_rows(
-        self,
-        aggregated: dict[str, pd.DataFrame],
-        ...
-    ) -> list[dict[str, Any]]:
-        """
-        PRIVATE: Transform DataFrames to dicts.
-
-        Returns raw numerics only - NO string formatting.
-        """
-        return [{
-            'asset_class': row['name'],
-            'current_value': float(row['current_value']),  # Raw!
-            'current_pct': float(row['current_pct']),      # Raw!
-            'variance_value': float(row['variance_value']), # Raw!
-            'variance_pct': float(row['variance_pct']),    # Raw!
-        } for row in data]
+@login_required
+def dashboard(request):
+    rows = get_presentation_rows(user=request.user)
+    return render(request, 'portfolio/dashboard.html', {'allocation_rows': rows})
 ```
 
-### Engine Calculation Example
-```python
-def aggregate_presentation_levels(self, df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """
-    Aggregate at all levels AND calculate variances.
-
-    Returns DataFrames with ALL calculated columns ready for display.
-    """
-    aggregated = {
-        'assets': ...,
-        'subtotals': ...,
-        'grand_total': ...
-    }
-
-    # Calculate variance columns for each DataFrame
-    for df_name, df_data in aggregated.items():
-        if not df_data.empty:
-            # Portfolio variances
-            df_data['portfolio_variance'] = (
-                df_data['portfolio_actual'] - df_data['portfolio_effective']
-            )
-            df_data['portfolio_variance_pct'] = (
-                df_data['portfolio_actual_pct'] - df_data['portfolio_effective_pct']
-            )
-
-            # Account variances
-            for col in df_data.columns:
-                if col.endswith('_actual'):
-                    account_prefix = col[:-7]
-                    effective_col = f"{account_prefix}_effective"
-                    if effective_col in df_data.columns:
-                        df_data[f"{account_prefix}_variance"] = (
-                            df_data[col] - df_data[effective_col]
-                        )
-
-    return aggregated
-```
-
-### Anti-Patterns (NEVER DO THIS)
-```python
-# ❌ BAD - Separate Formatter class
-class AllocationPresentationFormatter:
-    def format_presentation_rows(self, ...):
-        # Don't create separate formatter classes
-
-# ❌ BAD - String formatting in Python
-return {'value': f"${row['value']:,.0f}"}  # NO!
-df['value_fmt'] = df['value'].apply(lambda x: f"${x:,.0f}")  # NO!
-
-# ❌ BAD - Mode parameter for dollar/percent
-def get_rows(self, user, mode="percent"):  # NO!
-
-# ❌ BAD - Multi-step view orchestration
-engine = Engine()
-formatter = Formatter()
-df = engine.build_df(user)
-agg = engine.aggregate(df)
-meta = engine._get_metadata(user)
-rows = formatter.format(agg, meta)  # Too many steps!
-
-# ✅ GOOD - Single clean API call
-engine = AllocationCalculationEngine()
-rows = engine.get_presentation_rows(user=user)  # YES!
-```
-
----
+**Rules:**
+- ✅ Single module function call
+- ✅ Pass raw numeric data to templates
+- ❌ NO business logic or calculations
+- ❌ NO component instantiation
+- ❌ NO multi-step orchestration
 
 ## Template Pattern
 
-**Templates handle ALL string formatting using custom filters.**
+**Templates format via filters.**
 
-### Template Filters
 ```python
 # portfolio/templatetags/portfolio_filters.py
 @register.filter
 def money(value):
-    """$1,234 or ($1,234)"""
     val = float(value)
     formatted = f"${abs(val):,.0f}"
     return f"({formatted})" if val < 0 else formatted
 
 @register.filter
 def percent(value, decimals=1):
-    """12.5% or (12.5%)"""
     val = float(value)
     formatted = f"{abs(val):.{decimals}f}%"
     return f"({formatted})" if val < 0 else formatted
-
-@register.filter
-def number(value, decimals=0):
-    """1,234 or (1,234)"""
-    val = float(value)
-    formatted = f"{abs(val):,.{decimals}f}"
-    return f"({formatted})" if val < 0 else formatted
 ```
 
-### Template Usage
 ```django
 {% load portfolio_filters %}
-
-{# Raw numeric values from Engine, formatted by template #}
-<td class="money">{{ row.current_value|money }}</td>
-<td class="percent">{{ row.current_pct|percent }}</td>
-<td class="money">{{ row.variance_value|money }}</td>
-<td class="percent">{{ row.variance_pct|percent:2 }}</td>
+<td>{{ row.portfolio.actual|money }}</td>
+<td>{{ row.portfolio.actual_pct|percent }}</td>
 ```
 
-### Template CSS
-```css
-.money, .percent, .number {
-    display: inline-block;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-}
+## Data Flow
+
+```
+View → get_presentation_rows(user)
+        → Engine.get_presentation_rows()
+          → DataProvider → Calculator → Formatter
+            → list[dict] with raw floats
+              → Template filters format strings
 ```
 
----
+## Testing Pattern
 
-## View Pattern (SIMPLIFIED)
+**Unit Test Components:**
+```python
+# Calculator (no Django)
+def test_calculator():
+    calc = AllocationCalculator()
+    df = pd.DataFrame({...})
+    result = calc.build_presentation_dataframe(df, ...)
+    assert 'portfolio_actual' in result.columns
 
-**Views make single Engine call. NO business logic, NO multi-step orchestration.**
+# DataProvider (with Django)
+@pytest.mark.django_db
+def test_data_provider(test_user):
+    provider = DjangoDataProvider()
+    df = provider.get_holdings_df(test_user)
+    assert not df.empty
+
+# Formatter (no Django)
+def test_formatter():
+    formatter = AllocationFormatter()
+    rows = formatter.to_presentation_rows(df, ...)
+    assert isinstance(rows[0]['portfolio']['actual'], float)
+```
+
+**Integration Test:**
+```python
+@pytest.mark.django_db
+def test_integration(test_user):
+    rows = get_presentation_rows(test_user)
+    assert len(rows) > 0
+```
+
+**Mock Dependencies:**
+```python
+def test_engine_mocks():
+    engine = AllocationEngine(
+        calculator=Mock(),
+        data_provider=Mock(),
+        formatter=Mock(),
+    )
+    # Test orchestration logic
+```
+
+## Anti-Patterns
+
+❌ **Multi-step view orchestration**
+```python
+# BAD
+provider = DjangoDataProvider()
+calculator = AllocationCalculator()
+formatter = AllocationFormatter()
+df = provider.get_holdings_df(user)
+result = calculator.build(df)
+rows = formatter.format(result)
+```
+
+✅ **Single API call**
+```python
+# GOOD
+rows = get_presentation_rows(user=user)
+```
+
+❌ **String formatting in Python**
+```python
+return {'value': f"${amount:,.0f}"}  # NO!
+```
+
+✅ **Raw values + template filters**
+```python
+return {'value': float(amount)}  # YES!
+```
+
+❌ **Django in Calculator**
+```python
+class Calculator:
+    def calc(self, user):
+        holdings = Holding.objects.filter(...)  # NO!
+```
+
+✅ **Pure pandas logic**
+```python
+class Calculator:
+    def calc(self, holdings_df: pd.DataFrame):
+        return holdings_df.groupby(...)  # YES!
+```
+
+## QuerySet Optimization
 
 ```python
-from portfolio.services.allocation_calculations import AllocationCalculationEngine
-
-@login_required
-def portfolio_dashboard(request):
-    """Dashboard view - single Engine call."""
-    user = request.user
-
-    # Single clean API call
-    engine = AllocationCalculationEngine()
-    rows = engine.get_presentation_rows(user=user)
-
-    # Template handles money/percent formatting
-    return render(request, 'portfolio/dashboard.html', {
-        'allocation_rows': rows,
-    })
-
-@login_required
-def holdings_view(request, account_id=None):
-    """Holdings view - single Engine call."""
-    user = request.user
-
-    # Single clean API call
-    engine = AllocationCalculationEngine()
-    rows = engine.get_holdings_rows(user=user, account_id=account_id)
-
-    return render(request, 'portfolio/holdings.html', {
-        'holdings_rows': rows,
-    })
+# Always prefetch to avoid N+1
+holdings = (
+    Holding.objects
+    .filter(account__user=user)
+    .select_related('security', 'account', 'security__asset_class')
+    .prefetch_related('security__latest_price')
+)
 ```
-
-### View Rules
-- ✅ Single Engine method call per view
-- ✅ Pass raw numeric data to templates
-- ✅ Let templates handle formatting
-- ❌ NO business logic or calculations
-- ❌ NO multi-step orchestration (engine → formatter → ...)
-- ❌ NO string formatting
-- ❌ NO separate Formatter instantiation
-
----
-
-## Complete Data Flow (UPDATED)
-
-```python
-# 1. Engine calculates - raw numerics
-df = pd.DataFrame({
-    'current_value': [50000.0],  # float, not "$50,000"
-    'current_pct': [62.5],        # float, not "62.5%"
-    'variance_value': [-5000.0],  # float, not "($5,000)"
-    'variance_pct': [-7.5],       # float, not "(7.5%)"
-})
-
-# 2. Engine transforms to dicts - raw numerics
-rows = engine.get_presentation_rows(user)
-# Returns: [{'current_value': 50000.0, 'current_pct': 62.5, ...}]
-
-# 3. View passes raw data
-context = {'rows': rows}
-
-# 4. Template formats for display
-# {{ row.current_value|money }} → "$50,000"
-# {{ row.current_pct|percent }} → "62.5%"
-# {{ row.variance_value|money }} → "($5,000)"
-# {{ row.variance_pct|percent }} → "(7.5%)"
-```
-
----
-
-## Testing Patterns (UPDATED)
-
-```python
-@pytest.mark.services
-class TestAllocationCalculationEngine:
-    """Test Engine - calculations and formatting together."""
-
-    def test_get_presentation_rows_returns_raw_numerics(self, engine, user):
-        """Verify Engine returns raw numeric values."""
-        rows = engine.get_presentation_rows(user=user)
-
-        assert isinstance(rows, list)
-        row = rows[0]
-
-        # All values should be raw numerics
-        assert isinstance(row['current_value'], (int, float))
-        assert isinstance(row['variance_pct'], (int, float))
-
-        # NO formatted strings
-        assert not isinstance(row['current_value'], str)
-
-    def test_get_presentation_rows_includes_variances(self, engine, user):
-        """Verify Engine calculates variance columns."""
-        rows = engine.get_presentation_rows(user=user)
-
-        row = rows[0]
-        assert 'variance_value' in row
-        assert 'variance_pct' in row
-
-        # Variance should be calculated: actual - target
-        assert row['variance_value'] == row['actual_value'] - row['target_value']
-```
-
----
-
-## Migration Checklist
-
-When consolidating existing Engine + Formatter pattern:
-
-- [ ] Move all calculations to Engine
-- [ ] Move all DataFrame→dict transformation to private Engine methods
-- [ ] Create public `get_*_rows()` methods
-- [ ] Delete separate Formatter class
-- [ ] Update views to use single Engine call
-- [ ] Update tests to test Engine only
-- [ ] Verify all numeric values remain raw (no formatting)
-- [ ] Verify templates handle all formatting
-- [ ] Ensure test coverage maintained
-
----
-
-## Key Principles
-
-1. **Engine does everything except string formatting**
-   - Calculations (pandas)
-   - Aggregations (groupby, sum)
-   - Variance calculations (actual - target)
-   - Structure transformation (DataFrame → dicts)
-
-2. **Templates do all string formatting**
-   - Money: `|money`
-   - Percent: `|percent`
-   - Numbers: `|number`
-
-3. **Views are thin orchestration only**
-   - Single Engine method call
-   - Pass raw data to template
-   - NO business logic
-
-4. **No separate Formatter classes**
-   - If always used with Engine, merge it
-   - Formatting methods become private Engine methods
-   - Public API: `get_presentation_rows()`, `get_holdings_rows()`

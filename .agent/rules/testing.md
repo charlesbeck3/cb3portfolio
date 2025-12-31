@@ -6,278 +6,296 @@ trigger: always_on
 trigger: always_on
 ---
 
-# Testing Standards for cb3portfolio
+# Testing Strategy for cb3portfolio
 
-## 🚨 CRITICAL: Add to Existing Test Files First
+## Test Coverage Target: ~94%
 
-**ALWAYS add new tests to existing test files. Only create new test files for entirely new modules.**
+Financial calculation errors = material dollar losses. Comprehensive testing is non-negotiable.
 
-### Decision Tree
+## Test Hierarchy
 
-1. ✅ Find production file: `portfolio/services/pricing.py`
-2. ✅ Find matching test: `portfolio/tests/services/test_pricing.py`
-3. ✅ **If test file exists → ADD TESTS THERE**
-4. ❌ Only create NEW file if testing brand new module
-
-### Examples
-
-**✅ CORRECT: Add to Existing File**
-```python
-# File: portfolio/tests/services/test_pricing.py (EXISTS!)
-# Add new test class:
-
-@pytest.mark.services
-class TestPriceCaching:  # New functionality
-    """Test price caching and staleness detection."""
-
-    def test_is_stale_fresh_price(self, ...):
-        pass
+```
+Unit Tests (fastest, most)
+  ↓
+Integration Tests (medium speed, medium coverage)
+  ↓
+E2E Tests (slowest, critical paths only)
+  ↓
+Golden Reference Tests (real scenarios, financial accuracy)
 ```
 
-**❌ WRONG: Creating Unnecessary Files**
+## Composition Testing Pattern
+
+### Component-Level (Unit Tests)
+
+**Calculator (No Django)**
 ```python
-# DON'T create:
-portfolio/tests/services/test_pricing_cache.py      # Add to test_pricing.py
-portfolio/tests/services/test_price_staleness.py    # Add to test_pricing.py
-portfolio/tests/views/test_sidebar_performance.py   # Add to test_mixins.py
-```
+from portfolio.services.allocations.calculations import AllocationCalculator
 
-### When to Create New Test Files
+def test_calculator_builds_presentation_df():
+    """Test calculator in isolation."""
+    calc = AllocationCalculator()
 
-**Only create new test file when:**
-1. Testing brand new production module (never tested before)
-2. New production directory requires matching test directory
-3. Specialized category (benchmarks/, golden_reference/)
+    holdings_df = pd.DataFrame({
+        'account_id': [1],
+        'asset_class_id': [1],
+        'value': [50000.0],
+    })
 
-## Test Requirements
-
-- Coverage target: **~94%**
-- Test hierarchy: **Unit → Integration → E2E**
-- Golden reference tests for financial calculations
-- Tests written alongside implementation
-
-## Test Types
-
-### 1. Unit Tests
-```python
-@pytest.mark.unit
-@pytest.mark.models
-def test_allocation_sum_constraint(portfolio_with_allocations):
-    """Test business constraint enforcement."""
-    strategy = portfolio_with_allocations
-
-    # Add invalid allocation
-    cash = AssetClass.objects.create(name="Cash")
-    TargetAllocation.objects.create(
-        strategy=strategy,
-        asset_class=cash,
-        target_percent=Decimal('10.00')  # Sum = 110%
+    result = calc.build_presentation_dataframe(
+        holdings_df=holdings_df,
+        asset_classes_df=pd.DataFrame(...),
+        targets_map={},
+        account_totals={1: Decimal('50000')},
     )
 
-    with pytest.raises(ValidationError) as exc:
-        strategy.full_clean()
-
-    assert "must sum to 100%" in str(exc.value)
+    assert not result.empty
+    assert 'portfolio_actual' in result.columns
 ```
 
-### 2. Integration Tests
+**DataProvider (With Django)**
 ```python
-@pytest.mark.integration
-@pytest.mark.services
-def test_price_update_workflow(db, test_user):
-    """Test complete workflow across components."""
-    service = PricingService()
-    result = service.update_holdings_prices(test_user)
+import pytest
+from portfolio.services.allocations.data_providers import DjangoDataProvider
 
-    assert result['updated_count'] > 0
+@pytest.mark.django_db
+def test_data_provider_holdings(test_user, simple_holdings):
+    """Test data provider queries."""
+    provider = DjangoDataProvider()
+    df = provider.get_holdings_df(test_user)
+
+    assert not df.empty
+    assert 'account_id' in df.columns
+    assert 'value' in df.columns
 ```
 
-### 3. Golden Reference Tests
+**Formatter (No Django)**
 ```python
-@pytest.mark.golden
-@pytest.mark.calculations
-def test_allocation_golden_reference():
-    """Verify against known-correct real-world scenario."""
-    scenario = load_golden_reference("allocation_drift.json")
-    engine = AllocationCalculationEngine()
-    result = engine.calculate_allocations(scenario['holdings_df'])
+from portfolio.services.allocations.formatters import AllocationFormatter
 
-    for asset_class, expected in scenario['expected'].items():
-        actual = result['by_asset_class'].loc[asset_class, 'current_value']
-        assert abs(actual - expected) < 0.01
+def test_formatter_raw_values():
+    """Test formatter returns raw numerics."""
+    formatter = AllocationFormatter()
+
+    df = pd.DataFrame({
+        'asset_class_name': ['Equities'],
+        'portfolio_actual': [50000.0],
+        'portfolio_actual_pct': [62.5],
+    })
+
+    rows = formatter.to_presentation_rows(df, {}, {})
+
+    assert isinstance(rows[0]['portfolio']['actual'], float)
+    assert rows[0]['portfolio']['actual'] == 50000.0
 ```
 
-### 4. E2E Tests (Playwright)
-```python
-@pytest.mark.e2e
-def test_rebalancing_workflow(page: Page, live_server, login_user):
-    """Test complete user workflow in browser."""
-    # Use login fixture to authenticate
-    login_user('testuser')
-
-    page.goto(f"{live_server.url}/portfolio/1/")
-    expect(page.locator('.drift-indicator')).to_be_visible()
-```
-
-## File Organization
-
-### Production-to-Test Mapping (1:1)
-
-```
-Production                    Test
-─────────────────            ─────────────────
-portfolio/
-├── services/
-│   ├── pricing.py          portfolio/tests/services/
-│   └── allocation.py       ├── test_pricing.py
-├── models/                 │   └── test_allocation.py
-│   └── securities.py       └── models/
-└── utils/                      ├── test_securities.py
-    └── security.py             └── utils/
-                                    └── test_security.py
-```
-
-### Test Class Organization
-
-**Group related tests in same file using classes:**
+### Engine-Level (Integration Tests)
 
 ```python
-# portfolio/tests/services/test_pricing.py
+@pytest.mark.django_db
+def test_engine_orchestration(test_user, simple_holdings):
+    """Test full pipeline integration."""
+    from portfolio.services.allocations import get_presentation_rows
 
-@pytest.mark.services
-class TestPricingService:
-    """Core pricing service tests."""
-    def test_update_prices(self): pass
+    rows = get_presentation_rows(test_user)
 
-@pytest.mark.services
-class TestPriceCaching:
-    """Price caching tests."""
-    def test_is_stale(self): pass
-    def test_update_if_stale(self): pass
-
-@pytest.mark.services
-class TestPriceHistory:
-    """Historical price tests."""
-    def test_get_price_at_datetime(self): pass
+    assert len(rows) > 0
+    assert 'asset_class_name' in rows[0]
+    assert 'portfolio' in rows[0]
+    assert isinstance(rows[0]['portfolio']['actual'], float)
 ```
 
-## Naming Conventions
+### Mock Dependencies
 
-### Files
-- Production: `portfolio/services/pricing.py`
-- Test: `portfolio/tests/services/test_pricing.py`
-
-### Classes
-- `TestPricingService` - Main functionality
-- `TestPriceCaching` - Specific feature
-- `TestSecurityValidation` - Another feature
-
-### Functions
-- `test_{function}_{scenario}`
-- `test_calculate_drift_with_empty_portfolio()`
-- `test_validate_user_owns_account_wrong_user()`
-
-## Fixtures
-
-### Shared Fixtures (conftest.py)
 ```python
+from unittest.mock import Mock
+from portfolio.services.allocations.engine import AllocationEngine
+
+def test_engine_error_handling():
+    """Test engine handles component failures."""
+    mock_provider = Mock()
+    mock_provider.get_holdings_df.side_effect = Exception("DB Error")
+
+    engine = AllocationEngine(data_provider=mock_provider)
+    rows = engine.get_presentation_rows(user=Mock())
+
+    assert rows == []  # Returns empty on error
+```
+
+## Golden Reference Tests
+
+**Use real portfolio scenarios to validate financial accuracy.**
+
+```python
+@pytest.mark.django_db
+def test_golden_reference_allocation(test_portfolio):
+    """
+    Golden reference: Real portfolio allocation calculation.
+
+    Scenario: Portfolio with $80,000
+      - US Equities: $50,000 (62.5%)
+      - Bonds: $30,000 (37.5%)
+
+    Target: 60% US Equities, 40% Bonds
+
+    Expected Variance:
+      - US Equities: +2.5% ($2,000)
+      - Bonds: -2.5% (-$2,000)
+    """
+    from portfolio.services.allocations import get_presentation_rows
+
+    rows = get_presentation_rows(test_portfolio.user)
+
+    equities_row = next(r for r in rows if r['asset_class_name'] == 'US Equities')
+    bonds_row = next(r for r in rows if r['asset_class_name'] == 'Bonds')
+
+    # Verify actual allocations
+    assert abs(equities_row['portfolio']['actual'] - 50000.0) < 0.01
+    assert abs(equities_row['portfolio']['actual_pct'] - 62.5) < 0.01
+
+    # Verify variances
+    assert abs(equities_row['portfolio']['variance_pct'] - 2.5) < 0.01
+    assert abs(bonds_row['portfolio']['variance_pct'] - (-2.5)) < 0.01
+```
+
+## Fixtures Pattern
+
+```python
+# conftest.py
+import pytest
+from decimal import Decimal
+
 @pytest.fixture
 def test_user(db):
-    """Standard test user."""
-    from users.models import CustomUser
-    return CustomUser.objects.create_user(
-        username="testuser",
-        email="test@example.com"
+    """Create test user."""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    return User.objects.create_user(username='test', email='test@example.com')
+
+@pytest.fixture
+def roth_account(test_portfolio):
+    """Create Roth IRA account."""
+    return Account.objects.create(
+        portfolio=test_portfolio,
+        name="Roth IRA",
+        account_type=AccountType.ROTH_IRA,
     )
 
 @pytest.fixture
-def base_system_data(db):
-    """Base system data (account types, asset classes)."""
-    from portfolio.services.seeder import SystemSeederService
-    SystemSeederService().run()
-    return get_system_data_namespace()
+def simple_holdings(roth_account, us_equities_asset_class):
+    """Create basic holdings."""
+    security = Security.objects.create(
+        portfolio=roth_account.portfolio,
+        symbol="VTI",
+        asset_class=us_equities_asset_class,
+    )
+
+    return Holding.objects.create(
+        account=roth_account,
+        security=security,
+        shares=Decimal('100'),
+    )
 ```
 
-### File-Specific Fixtures
-```python
-# In portfolio/tests/services/test_pricing.py
+## Test Organization
 
-@pytest.fixture
-def pricing_service():
-    """Pricing service instance."""
-    return PricingService()
-
-@pytest.fixture
-def stale_prices(test_user, base_system_data):
-    """Portfolio with old prices."""
-    # Setup
-    return portfolio
+```
+portfolio/tests/
+├── conftest.py                    # Shared fixtures
+├── test_models.py                 # Domain model tests
+├── test_views.py                  # View tests
+└── services/
+    └── allocations/
+        ├── test_calculations.py   # Calculator unit tests
+        ├── test_data_providers.py # DataProvider tests
+        ├── test_formatters.py     # Formatter unit tests
+        ├── test_engine.py         # Engine integration tests
+        └── test_golden_refs.py    # Golden reference scenarios
 ```
 
-## pytest Markers
-
-```python
-@pytest.mark.unit           # No database
-@pytest.mark.integration    # Database required
-@pytest.mark.e2e           # Browser required
-@pytest.mark.slow          # >1 second
-@pytest.mark.services      # Service layer
-@pytest.mark.models        # Model tests
-@pytest.mark.views         # View tests
-@pytest.mark.golden        # Golden reference
-@pytest.mark.calculations  # Calculation engine
-```
-
-## Test Commands
+## Running Tests
 
 ```bash
-# Run all tests
+# All tests
 pytest
 
-# Run specific file
-pytest portfolio/tests/services/test_pricing.py
+# Specific module
+pytest portfolio/tests/services/allocations/test_calculations.py
 
-# Run specific class
-pytest portfolio/tests/services/test_pricing.py::TestPriceCaching
-
-# Run specific test
-pytest portfolio/tests/services/test_pricing.py::TestPriceCaching::test_is_stale
-
-# Run with markers
-pytest -m services
-pytest -m "services and integration"
-
-# With coverage (must be >94%)
+# With coverage
 pytest --cov=portfolio --cov-report=html
-pytest --cov --cov-fail-under=94
 
-# Verbose
-pytest -v
+# Fast (skip slow E2E)
+pytest -m "not e2e"
 
-# Stop at first failure
-pytest -x
+# Watch mode
+ptw -- --testmon
 ```
 
-## Key Principles
+## Test Markers
 
-1. **✅ Add to existing files** - Don't proliferate test files
-2. **✅ Use test classes** - Group related tests
-3. **✅ Mirror structure** - 1:1 production-to-test mapping
-4. **✅ Use fixtures** - DRY principle for setup
-5. **✅ Mark appropriately** - Enable filtering
-6. **✅ Name descriptively** - Clear test purpose
-7. **❌ Don't create new files** - Unless testing new module
+```python
+@pytest.mark.unit           # Pure unit test
+@pytest.mark.integration    # Integration test
+@pytest.mark.django_db      # Requires database
+@pytest.mark.services       # Service layer test
+@pytest.mark.e2e            # End-to-end test (slow)
+```
 
-## Quick Reference
+## Critical Testing Rules
 
-**Adding tests for existing code:**
-1. Production: `portfolio/services/pricing.py`
-2. Test file: `portfolio/tests/services/test_pricing.py`
-3. Add class: `class TestPriceCaching:`
-4. Add methods: `def test_is_stale_fresh_price(...):`
-5. Mark: `@pytest.mark.services`
+1. **Calculator must have NO Django dependencies** - test without DB
+2. **Test each component independently** before integration
+3. **Golden reference tests for all financial calculations**
+4. **Mock external dependencies** for unit tests
+5. **Use factories/fixtures** for consistent test data
+6. **Verify raw numeric values** not formatted strings
+7. **Test error handling** not just happy path
 
-**Testing new code:**
-1. New file: `portfolio/utils/reporting.py`
-2. Create: `portfolio/tests/utils/test_reporting.py`
-3. Follow structure above
+## Anti-Patterns
+
+❌ **Testing implementation details**
+```python
+# BAD - testing internal methods
+def test_internal():
+    engine._build_internal_df()  # Don't test private methods
+```
+
+❌ **Mixing concerns**
+```python
+# BAD - testing Calculator with Django
+@pytest.mark.django_db
+def test_calculator(test_user):
+    calc = AllocationCalculator()
+    result = calc.calculate(test_user)  # Calculator shouldn't take User!
+```
+
+❌ **Testing formatting in Python**
+```python
+# BAD - verifying formatted strings
+assert rows[0]['value'] == "$50,000"  # Should verify float: 50000.0
+```
+
+✅ **Testing behavior**
+```python
+# GOOD - testing public API
+def test_public_api():
+    rows = get_presentation_rows(user)
+    assert len(rows) > 0
+```
+
+✅ **Isolated components**
+```python
+# GOOD - Calculator with pure data
+def test_calculator():
+    calc = AllocationCalculator()
+    result = calc.calculate(df)  # Pure pandas input
+    assert result['portfolio_actual'].sum() > 0
+```
+
+✅ **Raw numeric values**
+```python
+# GOOD - verifying raw floats
+assert isinstance(rows[0]['portfolio']['actual'], float)
+assert abs(rows[0]['portfolio']['actual'] - 50000.0) < 0.01
+```

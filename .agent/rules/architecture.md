@@ -40,48 +40,84 @@ This is cb3portfolio, a Django-based personal portfolio management platform focu
 Domain Models → Services → Views → Templates
 ```
 
-### 3. Calculation Architecture (UPDATED)
+### 3. Calculation Architecture (Composition Pattern)
 
-**All financial calculations use pandas DataFrames with consolidated Engine pattern.**
+**All financial calculations use pandas DataFrames with clean component separation.**
 
-- Centralize ALL calculations and formatting in Engine classes (e.g., `AllocationCalculationEngine`)
-- **Engine handles both calculation AND structure transformation**
-- **NO separate Formatter classes** - formatting methods are private methods within Engine
-- Use Python's `Decimal` type for monetary precision
-- Never use `float` for money calculations
+The allocation module follows a **composition pattern with dependency injection**:
 
-**Simplified Calculation Flow:**
 ```
-Engine (calculations + structure transformation) → View → Template
+Engine (orchestration)
+  ├── Calculator (pandas calculations)
+  ├── DataProvider (Django ORM → pandas)
+  └── Formatter (DataFrame → dict transformation)
 ```
 
-**Engine Responsibilities:**
-- Calculate all numeric values (including variances, percentages, aggregations)
-- Transform DataFrames to template-ready dicts with raw numeric values
-- Expose clean public API methods:
-  - `get_presentation_rows(user)` - Dashboard/targets data
-  - `get_holdings_rows(user, account_id)` - Holdings data
-  - `calculate_allocations(df)` - Low-level calculations
-- Keep internal methods private (prefixed with `_`)
+**Component Responsibilities:**
+
+1. **Calculator** - Pure calculation logic using pandas
+   - Builds DataFrames from input data
+   - Performs vectorized calculations (aggregations, variances, percentages)
+   - Returns DataFrames with numeric results
+   - No Django dependencies, fully unit testable
+
+2. **DataProvider** - Data access layer
+   - Fetches data from Django ORM
+   - Converts to pandas DataFrames
+   - Handles all database queries
+   - Single source of data fetching
+
+3. **Formatter** - Structure transformation
+   - Converts DataFrames to template-ready dicts
+   - Returns raw numeric values (no string formatting)
+   - Organizes data for template consumption
+
+4. **Engine** - Orchestration
+   - Composes Calculator, DataProvider, Formatter
+   - Exposes clean public API: `get_presentation_rows(user)`
+   - Handles logging and error handling
+   - Single entry point for views
+
+**Why Composition Over Consolidation?**
+
+- Better testability (mock each component independently)
+- Single Responsibility Principle (each class has one clear job)
+- Dependency injection enables testing without Django
+- More maintainable as complexity grows
+- Follows standard software engineering best practices
+- Still provides clean API (views make single method call)
+
+**Calculation Flow:**
+```
+View → Engine.get_presentation_rows(user)
+         ├── DataProvider.get_holdings_df()
+         ├── DataProvider.get_asset_classes_df()
+         ├── Calculator.build_presentation_dataframe()
+         └── Formatter.to_presentation_rows()
+              → list[dict] with raw numerics
+```
 
 **View Pattern (Simplified):**
 ```python
-# Single clean API call
-engine = AllocationCalculationEngine()
-rows = engine.get_presentation_rows(user=user)
-context["allocation_rows"] = rows
+from portfolio.services.allocations import get_presentation_rows
+
+@login_required
+def portfolio_dashboard(request):
+    # Single clean API call
+    rows = get_presentation_rows(user=request.user)
+    return render(request, 'portfolio/dashboard.html', {
+        'allocation_rows': rows,
+    })
 ```
 
-**Why consolidate Engine and Formatter?**
-- Formatter was always used immediately after Engine (tight coupling)
-- Formatter needed Engine's internal metadata (accounts, strategies)
-- Eliminates boilerplate in views (no multi-step orchestration)
-- Simpler testing (one service class instead of two)
-- Clear single responsibility: "Calculate portfolio data and prepare it for display"
-- Follows the principle: if two classes are always used together, they should be one class
+**Why Use Python's `Decimal` for Money?**
+- Avoids floating-point precision errors in financial calculations
+- Ensures exact decimal arithmetic
+- Industry best practice for monetary values
+- Use `Decimal` for all money calculations, convert to `float` only at template boundary
 
 **Template Display:**
-- Templates receive raw numeric values in dicts
+- Templates receive raw numeric values (float/int) in dicts
 - All string formatting done via template filters: `|money`, `|percent`, `|number`
 - No formatting strings in Python code
 
@@ -92,7 +128,7 @@ context["allocation_rows"] = rows
 - Choose well-maintained dependencies over complex custom solutions
 - Consolidate documentation in README.md (single source of truth)
 - Don't create separate architecture documents - keep it in README
-- **If two classes are always used together, merge them**
+- **Separate concerns, but compose cleanly**
 
 ### 5. Comprehensive Testing
 
@@ -101,6 +137,7 @@ context["allocation_rows"] = rows
 - Test hierarchy: Unit → Integration → E2E
 - Tests written alongside or after implementation
 - Financial calculation errors could result in material losses - tests provide confidence
+- Composition pattern enables testing each component in isolation
 
 ## File Organization
 
@@ -110,25 +147,28 @@ cb3portfolio/
 │   ├── models.py    # Django models with business methods
 │   └── services.py  # Domain services
 ├── services/        # Calculation engines (pandas-based)
-│   ├── allocation_calculations.py  # Engine with calculation + formatting
-│   └── rebalancing.py
+│   └── allocations/
+│       ├── __init__.py         # Public API (convenience functions)
+│       ├── engine.py           # AllocationEngine (orchestration)
+│       ├── calculations.py     # AllocationCalculator (pure pandas)
+│       ├── data_providers.py   # DjangoDataProvider (ORM → pandas)
+│       ├── formatters.py       # AllocationFormatter (DataFrame → dict)
+│       └── types.py            # TypedDict schemas
 ├── views.py         # Django views (thin, orchestration only)
 ├── urls.py
 └── templates/       # Django templates
 ```
 
-**Note:** No separate `formatters/` directory - formatting is private methods within Engine classes.
-
 ## Technology Stack
 
-- **Python:** 3.12+
+- **Python:** 3.14+
 - **Framework:** Django 6.0
 - **Calculations:** pandas (with MultiIndex)
 - **Database:** SQLite (dev/test), PostgreSQL (production consideration)
 - **Package Management:** uv
 - **Linting/Formatting:** ruff
 - **Type Checking:** mypy
-- **Testing:** pytest
+- **Testing:** pytest with factories
 - **E2E Testing:** Playwright
 
 ## Key Design Decisions
@@ -151,12 +191,13 @@ cb3portfolio/
 - MultiIndex for hierarchical aggregations
 - Industry standard for data analysis
 
-### Why Consolidate Engine and Formatter?
-- Eliminates unnecessary abstraction
-- Simplifies API surface
-- Reduces boilerplate in views
-- Easier to test and maintain
-- Follows "always used together = should be together" principle
+### Why Composition Pattern?
+- Better testability (unit test each component)
+- Single Responsibility Principle
+- Dependency injection for testing
+- Maintainable as complexity grows
+- Still provides clean API for views
+- Aligns with software engineering best practices
 
 ### Why Single-User Focus?
 - Simpler architecture
@@ -164,51 +205,163 @@ cb3portfolio/
 - Faster development
 - Personal tool optimization
 
-## Anti-Patterns to Avoid
+## Code Patterns
 
-### ❌ Separate Formatter Classes
+### ✅ Good Pattern: Composition with Clean API
+
 ```python
-# OLD PATTERN (Don't do this)
-engine = AllocationCalculationEngine()
-formatter = AllocationPresentationFormatter()
+# Module-level convenience function
+from portfolio.services.allocations import get_presentation_rows
 
-df = engine.build_presentation_dataframe(user=user)
-aggregated = engine.aggregate_presentation_levels(df)
-_, accounts_by_type = engine._get_account_metadata(user)
-strategies = engine._get_target_strategies(user)
+# View makes single call
+rows = get_presentation_rows(user=request.user)
 
-rows = formatter.format_presentation_rows(
-    aggregated_data=aggregated,
-    accounts_by_type=accounts_by_type,
-    target_strategies=strategies,
-)
+# Under the hood (engine.py):
+class AllocationEngine:
+    def __init__(self, calculator=None, data_provider=None, formatter=None):
+        self.calculator = calculator or AllocationCalculator()
+        self.data_provider = data_provider or DjangoDataProvider()
+        self.formatter = formatter or AllocationFormatter()
+
+    def get_presentation_rows(self, user):
+        # 1. Get data
+        holdings_df = self.data_provider.get_holdings_df(user)
+        asset_classes_df = self.data_provider.get_asset_classes_df(user)
+
+        # 2. Calculate
+        presentation_df = self.calculator.build_presentation_dataframe(
+            holdings_df, asset_classes_df, ...
+        )
+
+        # 3. Format for templates
+        return self.formatter.to_presentation_rows(presentation_df, ...)
 ```
 
-### ✅ Consolidated Engine
+### ❌ Bad Pattern: View-Level Orchestration
+
 ```python
-# NEW PATTERN (Do this)
-engine = AllocationCalculationEngine()
-rows = engine.get_presentation_rows(user=user)
+# DON'T DO THIS - too many steps in view
+from portfolio.services.allocations.calculator import AllocationCalculator
+from portfolio.services.allocations.data_provider import DjangoDataProvider
+from portfolio.services.allocations.formatter import AllocationFormatter
+
+def view(request):
+    provider = DjangoDataProvider()
+    calculator = AllocationCalculator()
+    formatter = AllocationFormatter()
+
+    holdings_df = provider.get_holdings_df(request.user)
+    presentation_df = calculator.build_presentation_dataframe(holdings_df, ...)
+    rows = formatter.to_presentation_rows(presentation_df, ...)
+    # Too much orchestration in view!
 ```
 
-### ❌ Formatting in Python
+### ❌ Bad Pattern: String Formatting in Python
+
 ```python
-# Don't do this
-return {'value': f"${amount:,.2f}"}  # NO!
+# DON'T DO THIS
+return {'value': f"${row['value']:,.0f}"}  # NO!
+df['value_fmt'] = df['value'].apply(lambda x: f"${x:,.0f}")  # NO!
 ```
 
-### ✅ Raw Values for Templates
+### ✅ Good Pattern: Raw Values + Template Filters
+
 ```python
-# Do this
-return {'value': float(amount)}  # YES - template handles formatting
+# Python: Return raw numeric values
+return {'value': float(amount)}
+
+# Template: Format with filters
+<td>{{ row.value|money }}</td>
+```
+
+## Testing Strategy
+
+### Component-Level Testing
+```python
+# Test Calculator in isolation (no Django)
+def test_calculator():
+    calculator = AllocationCalculator()
+    df = pd.DataFrame({...})
+    result = calculator.build_presentation_dataframe(df, ...)
+    assert result['portfolio_actual'].sum() > 0
+
+# Test DataProvider with Django
+@pytest.mark.django_db
+def test_data_provider(test_user):
+    provider = DjangoDataProvider()
+    df = provider.get_holdings_df(test_user)
+    assert not df.empty
+
+# Test Formatter in isolation
+def test_formatter():
+    formatter = AllocationFormatter()
+    df = pd.DataFrame({...})
+    rows = formatter.to_presentation_rows(df, ...)
+    assert isinstance(rows[0]['portfolio']['actual'], float)
+```
+
+### Integration Testing
+```python
+@pytest.mark.django_db
+def test_engine_integration(test_user):
+    engine = AllocationEngine()
+    rows = engine.get_presentation_rows(test_user)
+    assert len(rows) > 0
+```
+
+### Golden Reference Testing
+```python
+@pytest.mark.django_db
+def test_golden_reference(test_portfolio):
+    """Test with real portfolio scenario."""
+    engine = AllocationEngine()
+    rows = engine.get_presentation_rows(test_portfolio.user)
+
+    # Compare with known-good reference data
+    assert abs(rows[0]['portfolio']['actual'] - 50000.0) < 0.01
 ```
 
 ## Migration Notes
 
 When refactoring existing code:
-1. Move all calculations to Engine methods
-2. Move all DataFrame→dict transformation to private Engine methods
-3. Create clean public API methods (`get_*_rows()`)
-4. Delete separate Formatter classes
-5. Update views to use single Engine method call
-6. Ensure all tests pass and coverage maintained
+
+1. **Identify Components**
+   - What's pure calculation? → Calculator
+   - What fetches from Django? → DataProvider
+   - What transforms structure? → Formatter
+
+2. **Extract Components**
+   - Create separate classes with single responsibilities
+   - Remove Django dependencies from Calculator
+   - Move all ORM queries to DataProvider
+
+3. **Build Engine**
+   - Create Engine class that composes components
+   - Expose clean public API methods
+   - Handle logging and error handling
+
+4. **Update Views**
+   - Replace multi-step orchestration with single Engine call
+   - Use module-level convenience functions
+
+5. **Write Tests**
+   - Unit test each component independently
+   - Integration test Engine
+   - Golden reference tests for calculations
+
+## Anti-Patterns Summary
+
+❌ **NEVER:**
+- Format strings in Python (use template filters)
+- Orchestrate multiple service classes in views
+- Mix Django ORM with calculation logic
+- Skip comprehensive testing for financial calculations
+- Use `float` for monetary calculations (use `Decimal`)
+
+✅ **ALWAYS:**
+- Return raw numeric values from services
+- Provide clean single-method API from Engine
+- Separate calculations from data access
+- Test each component independently
+- Use pandas for vectorized calculations
+- Validate financial calculations with golden reference tests
