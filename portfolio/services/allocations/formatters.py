@@ -246,7 +246,6 @@ class AllocationFormatter:
 
             rows.append(
                 {
-                    "row_type": "holding",
                     "hierarchy_level": 999,  # Holding level
                     "ticker": row["Ticker"],
                     "security_name": row.get("Security_Name", ""),
@@ -270,16 +269,10 @@ class AllocationFormatter:
                     "target_allocation": float(row.get("Target_Allocation_Pct", 0.0)),
                     "allocation_variance": float(row.get("Allocation_Variance_Pct", 0.0)),
                     # UI metadata
-                    "is_holding": True,
-                    "is_subtotal": False,
-                    "is_group_total": False,
-                    "is_grand_total": False,
                     "is_zero_holding": is_zero_holding,
                     "parent_id": parent_id,
                     "row_id": f"holding-{row['Ticker']}",
                     "holding_id": row.get("holding_id", None),
-                    "row_class": f"{parent_id}-rows collapse show"
-                    + (" table-light text-muted fst-italic" if is_zero_holding else ""),
                 }
             )
 
@@ -327,7 +320,6 @@ class AllocationFormatter:
 
             rows.append(
                 {
-                    "row_type": "subtotal",
                     "hierarchy_level": 1,  # Category subtotal
                     "name": f"{row['Asset_Category']} Total",
                     "category_code": row["Category_Code"],
@@ -340,13 +332,8 @@ class AllocationFormatter:
                     "target_allocation": float(row["Target_Allocation_Pct"]),
                     "allocation_variance": float(row["Allocation_Variance"]),
                     # UI metadata
-                    "is_holding": False,
-                    "is_subtotal": True,
-                    "is_group_total": False,
-                    "is_grand_total": False,
                     "row_id": category_id,
                     "parent_id": parent_id,
-                    "row_class": f"table-secondary fw-bold {parent_id}-rows collapse show",
                 }
             )
 
@@ -391,7 +378,6 @@ class AllocationFormatter:
 
             rows.append(
                 {
-                    "row_type": "group_total",
                     "hierarchy_level": 0,  # Group total
                     "name": f"{row['Asset_Group']} Total",
                     "group_code": row["Group_Code"],
@@ -403,13 +389,7 @@ class AllocationFormatter:
                     "target_allocation": float(row["Target_Allocation_Pct"]),
                     "allocation_variance": float(row["Allocation_Variance"]),
                     # UI metadata
-                    "is_holding": False,
-                    "is_subtotal": False,
-                    "is_group_total": True,
-                    "is_grand_total": False,
                     "row_id": group_id,
-                    "parent_id": "",
-                    "row_class": "table-primary fw-bold border-top group-toggle",
                 }
             )
 
@@ -430,7 +410,6 @@ class AllocationFormatter:
 
         return [
             {
-                "row_type": "grand_total",
                 "hierarchy_level": -1,  # Grand total
                 "name": "Grand Total",
                 # Raw values
@@ -440,12 +419,6 @@ class AllocationFormatter:
                 "allocation": float(total_alloc),
                 "target_allocation": float(total_target_alloc),
                 "allocation_variance": 0.0,
-                # UI metadata
-                "is_holding": False,
-                "is_subtotal": False,
-                "is_group_total": False,
-                "is_grand_total": True,
-                "row_class": "table-dark fw-bold border-top-3",
             }
         ]
 

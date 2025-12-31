@@ -29,7 +29,7 @@
                             {% endfor %}
 
                             {# Subtotal row #}
-                            <tr class="table-secondary fw-bold">
+                            <tr data-hierarchy-level="1">
                                 <td>{{ group.account_type }} Subtotal</td>
                                 <td class="text-end">{{ group.subtotal.shares|number:4 }}</td>
                                 <td class="text-end">{{ group.subtotal.value|money:2 }}</td>
@@ -39,7 +39,7 @@
                         {% endfor %}
 
                         {# Grand total #}
-                        <tr class="table-dark fw-bold">
+                        <tr data-hierarchy-level="-1">
                             <td>Total</td>
                             <td class="text-end">{{ total_shares|number:4 }}</td>
                             <td class="text-end">{{ total_value|money:2 }}</td>

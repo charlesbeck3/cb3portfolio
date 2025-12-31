@@ -107,8 +107,8 @@ class TestAllocationEngineIntegration:
         rows = engine.get_holdings_rows(test_user, account_id=roth_account.id)
 
         assert len(rows) > 0
-        assert any(r["row_type"] == "holding" for r in rows)
-        assert any(r["row_type"] == "grand_total" for r in rows)
+        assert any(r["hierarchy_level"] == 999 for r in rows)  # holdings
+        assert any(r["hierarchy_level"] == -1 for r in rows)  # grand total
 
     def test_get_aggregated_holdings_rows(self, test_user, simple_holdings):
         """Test aggregated holdings rows generation (success)."""
@@ -116,8 +116,8 @@ class TestAllocationEngineIntegration:
         rows = engine.get_aggregated_holdings_rows(test_user)
 
         assert len(rows) > 0
-        assert any(r["row_type"] == "holding" for r in rows)
-        assert any(r["row_type"] == "grand_total" for r in rows)
+        assert any(r["hierarchy_level"] == 999 for r in rows)  # holdings
+        assert any(r["hierarchy_level"] == -1 for r in rows)  # grand total
 
     def test_get_aggregated_holdings_rows_empty(self, test_user):
         """Test with no holdings."""
@@ -248,7 +248,7 @@ class TestVarianceCalculations:
 
         assert us_equities_row is not None, (
             f"US Equities row not found. Available rows: "
-            f"{[(r.get('asset_class_name'), r.get('row_type')) for r in rows]}"
+            f"{[(r.get('asset_class_name'), r.get('hierarchy_level')) for r in rows]}"
         )
 
         portfolio = us_equities_row["portfolio"]

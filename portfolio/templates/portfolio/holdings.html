@@ -116,10 +116,13 @@
                                 </thead>
                                 <tbody>
                                     {% for row in holdings_rows %}
-                                        {% if row.is_holding %}
-                                        <tr class="{{ row.row_class }} {% if is_aggregated and row.is_holding and not row.is_zero_holding %}cursor-pointer ticker-row{% endif %}" data-hierarchy-level="{{ row.hierarchy_level }}"
+                                        {% if row.hierarchy_level == 999 %}
+                                        {# Individual holding #}
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}"
                                             id="{{ row.row_id }}"
-                                            {% if is_aggregated and row.is_holding and not row.is_zero_holding %}
+                                            {% if row.is_zero_holding %}class="table-light text-muted fst-italic"{% endif %}
+                                            {% if is_aggregated and not row.is_zero_holding %}
+                                            class="cursor-pointer ticker-row"
                                             hx-get="{% url 'portfolio:ticker_details' row.ticker %}"
                                             hx-target="#ticker-details-{{ row.ticker }}"
                                             hx-swap="outerHTML"
@@ -133,7 +136,7 @@
                                                     {% if row.is_zero_holding %}
                                                         <span class="badge bg-secondary ms-1" style="font-size: 0.6rem;">No Position</span>
                                                     {% endif %}
-                                                    {% if account and row.is_holding and not row.is_zero_holding %}
+                                                    {% if account and not row.is_zero_holding %}
                                                     <button type="button" class="btn btn-link btn-sm p-0 text-danger"
                                                             data-bs-toggle="modal" data-bs-target="#deleteHoldingModal"
                                                             data-id="{{ row.holding_id }}"
@@ -183,58 +186,51 @@
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:1 }}</span></td>
                                         </tr>
-                                        {% if is_aggregated and row.is_holding and not row.is_zero_holding %}
+                                        {% if is_aggregated and not row.is_zero_holding %}
                                         {# Placeholder for details row #}
                                         <tr id="ticker-details-{{ row.ticker }}" class="d-none"></tr>
                                         {% endif %}
-                                        {% elif row.is_subtotal %}
-                                        <tr class="{{ row.row_class }}" id="{{ row.row_id }}" data-hierarchy-level="{{ row.hierarchy_level }}">
+
+                                        {% elif row.hierarchy_level == 1 %}
+                                        {# Category subtotal #}
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}" id="{{ row.row_id }}">
                                             <td colspan="4">{{ row.name }}</td>
-
-                                            <!-- Shares empty -->
                                             <td colspan="3"></td>
-
-                                            <!-- Value Total -->
                                             <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
                                             <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
                                             <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
-
-                                            <!-- Allocation Total -->
                                             <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:1 }}</span></td>
                                         </tr>
-                                        {% elif row.is_group_total %}
-                                        <tr class="{{ row.row_class }}" data-bs-toggle="collapse" data-bs-target=".{{ row.row_id }}-rows" aria-expanded="true" role="button" data-hierarchy-level="{{ row.hierarchy_level }}">
+
+                                        {% elif row.hierarchy_level == 0 %}
+                                        {# Group total - collapsible #}
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}"
+                                            data-bs-toggle="collapse"
+                                            data-bs-target=".{{ row.row_id }}-rows"
+                                            aria-expanded="true"
+                                            role="button">
                                             <td colspan="4">
                                                 <i class="bi bi-chevron-down me-2"></i>{{ row.name }}
                                             </td>
-                                            <!-- Shares empty -->
                                             <td colspan="3"></td>
-
-                                            <!-- Value Total -->
                                             <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
                                             <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
                                             <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
-
-                                            <!-- Allocation Total -->
                                             <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:1 }}</span></td>
                                         </tr>
-                                        {% elif row.is_grand_total %}
-                                        <tr class="{{ row.row_class }}" data-hierarchy-level="{{ row.hierarchy_level }}">
+
+                                        {% elif row.hierarchy_level == -1 %}
+                                        {# Grand total #}
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}">
                                             <td colspan="4">{{ row.name }}</td>
-
-                                            <!-- Shares empty -->
                                             <td colspan="3"></td>
-
-                                            <!-- Value Total -->
                                             <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
                                             <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
                                             <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
-
-                                             <!-- Allocation Total -->
                                             <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:1 }}</span></td>

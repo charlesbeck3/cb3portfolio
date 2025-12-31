@@ -105,11 +105,26 @@ class TestAllocationFormatter:
         # (Only 1 category, so no group total if redundant)
         assert len(rows) >= 4
 
-        # Check grand total
-        grand_total_row = next(r for r in rows if r["is_grand_total"])
+        # Verify hierarchy_level present in all rows
+        assert all("hierarchy_level" in row for row in rows)
+
+        # Verify legacy fields NOT present
+        assert all("row_type" not in row for row in rows)
+        assert all("row_class" not in row for row in rows)
+        assert all("is_holding" not in row for row in rows)
+        assert all("is_subtotal" not in row for row in rows)
+        assert all("is_group_total" not in row for row in rows)
+        assert all("is_grand_total" not in row for row in rows)
+
+        # Check grand total (hierarchy_level == -1)
+        grand_total_row = next(r for r in rows if r["hierarchy_level"] == -1)
         assert grand_total_row["value"] == 1500.0
 
-        # Check subtotal
-        subtotal_row = next(r for r in rows if r["is_subtotal"])
+        # Check subtotal (hierarchy_level == 1)
+        subtotal_row = next(r for r in rows if r["hierarchy_level"] == 1)
         assert subtotal_row["name"] == "US Large Cap Total"
         assert subtotal_row["value"] == 1500.0
+
+        # Check holdings (hierarchy_level == 999)
+        holdings = [r for r in rows if r["hierarchy_level"] == 999]
+        assert len(holdings) == 2
