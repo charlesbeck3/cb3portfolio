@@ -52,7 +52,10 @@ class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateVi
         # Extract portfolio total from grand total row
         portfolio_total = Decimal("0.00")
         if allocation_rows:
-            grand_total_row = next((r for r in allocation_rows if r.get("is_grand_total")), None)
+            # hierarchy_level -1 is grand total
+            grand_total_row = next(
+                (r for r in allocation_rows if r.get("hierarchy_level") == -1), None
+            )
             if grand_total_row and "portfolio" in grand_total_row:
                 portfolio_total = Decimal(str(grand_total_row["portfolio"]["actual"]))
 

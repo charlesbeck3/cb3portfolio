@@ -117,7 +117,7 @@
                                 <tbody>
                                     {% for row in holdings_rows %}
                                         {% if row.is_holding %}
-                                        <tr class="{{ row.row_class }} {% if is_aggregated and row.is_holding and not row.is_zero_holding %}cursor-pointer ticker-row{% endif %}"
+                                        <tr class="{{ row.row_class }} {% if is_aggregated and row.is_holding and not row.is_zero_holding %}cursor-pointer ticker-row{% endif %}" data-hierarchy-level="{{ row.hierarchy_level }}"
                                             id="{{ row.row_id }}"
                                             {% if is_aggregated and row.is_holding and not row.is_zero_holding %}
                                             hx-get="{% url 'portfolio:ticker_details' row.ticker %}"
@@ -188,7 +188,7 @@
                                         <tr id="ticker-details-{{ row.ticker }}" class="d-none"></tr>
                                         {% endif %}
                                         {% elif row.is_subtotal %}
-                                        <tr class="{{ row.row_class }}" id="{{ row.row_id }}">
+                                        <tr class="{{ row.row_class }}" id="{{ row.row_id }}" data-hierarchy-level="{{ row.hierarchy_level }}">
                                             <td colspan="4">{{ row.name }}</td>
 
                                             <!-- Shares empty -->
@@ -205,7 +205,7 @@
                                             <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:1 }}</span></td>
                                         </tr>
                                         {% elif row.is_group_total %}
-                                        <tr class="{{ row.row_class }}" data-bs-toggle="collapse" data-bs-target=".{{ row.row_id }}-rows" aria-expanded="true" role="button">
+                                        <tr class="{{ row.row_class }}" data-bs-toggle="collapse" data-bs-target=".{{ row.row_id }}-rows" aria-expanded="true" role="button" data-hierarchy-level="{{ row.hierarchy_level }}">
                                             <td colspan="4">
                                                 <i class="bi bi-chevron-down me-2"></i>{{ row.name }}
                                             </td>
@@ -223,7 +223,7 @@
                                             <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:1 }}</span></td>
                                         </tr>
                                         {% elif row.is_grand_total %}
-                                        <tr class="{{ row.row_class }}">
+                                        <tr class="{{ row.row_class }}" data-hierarchy-level="{{ row.hierarchy_level }}">
                                             <td colspan="4">{{ row.name }}</td>
 
                                             <!-- Shares empty -->

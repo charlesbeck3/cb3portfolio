@@ -151,11 +151,11 @@ class TestPresentationCalculations:
         assert result["portfolio_actual"].sum() > 0
         assert 0 <= result["portfolio_actual_pct"].max() <= 100
 
-    def test_add_portfolio_calculations(self, calculator, presentation_data):
-        """Test portfolio-level calculations."""
+    def test_aggregate_actuals_by_level_portfolio(self, calculator, presentation_data):
+        """Test unified aggregation at portfolio level."""
         df = presentation_data["asset_classes_df"].copy()
-        result = calculator._add_portfolio_calculations_presentation(
-            df, presentation_data["holdings_df"]
+        result = calculator._aggregate_actuals_by_level(
+            df, presentation_data["holdings_df"], level="portfolio"
         )
 
         assert "portfolio_actual" in result.columns
@@ -166,11 +166,14 @@ class TestPresentationCalculations:
         total_pct = result["portfolio_actual_pct"].sum()
         assert 99.9 <= total_pct <= 100.1
 
-    def test_add_account_type_calculations(self, calculator, presentation_data):
-        """Test account-type level calculations."""
+    def test_aggregate_actuals_by_level_account_type(self, calculator, presentation_data):
+        """Test unified aggregation at account type level."""
         df = presentation_data["asset_classes_df"].copy()
-        result = calculator._add_account_type_calculations_presentation(
-            df, presentation_data["holdings_df"]
+        result = calculator._aggregate_actuals_by_level(
+            df,
+            presentation_data["holdings_df"],
+            level="account_type",
+            level_column="account_type_code",
         )
 
         # Should have columns for account types present in holdings

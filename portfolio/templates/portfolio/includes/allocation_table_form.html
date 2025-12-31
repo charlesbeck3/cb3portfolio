@@ -80,11 +80,11 @@
     </thead>
     <tbody>
         {% for row in rows %}
-        <tr class="{{ row.row_type|row_css_class }}">
+        <tr data-hierarchy-level="{{ row.hierarchy_level }}">
             <td class="ps-4">{{ row.asset_class_name }}</td>
 
             {% for group in row.account_types %}
-                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">
+                <td class="text-end pe-1 small">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ group.actual_pct|percent }}</span>
                     {% else %}
@@ -92,7 +92,7 @@
                     {% endif %}
                 </td>
 
-                <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% endif %} col-mode-policy d-none">
+                <td class="text-end pe-1 small col-mode-policy d-none">
                      {% if mode == 'percent' %}
                         <span class="percent">{{ group.policy_pct|default:0|percent }}</span>
                      {% else %}
@@ -100,7 +100,7 @@
                      {% endif %}
                 </td>
 
-                <td class="text-end pe-1 small fw-bold {% if row.is_grand_total %}text-white{% else %}text-muted{% endif %} col-mode-effective">
+                <td class="text-end pe-1 small fw-bold col-mode-effective">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ group.effective_pct|percent }}</span>
                     {% else %}
@@ -149,17 +149,17 @@
                 {% endfor %}
             {% endfor %}
 
-            <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">
+            <td class="text-end pe-2 table-active">
                 {% if mode == 'percent' %}
                     <span class="percent">{{ row.portfolio.actual_pct|percent }}</span>
                 {% else %}
                     <span class="money">{{ row.portfolio.actual|money }}</span>
                 {% endif %}
             </td>
-            <td class="text-end pe-1 table-active small {% if row.is_grand_total %}text-white{% else %}text-muted{% endif %} col-mode-policy d-none"
+            <td class="text-end pe-1 table-active small col-mode-policy d-none"
                 {% if row.is_cash %}id="cash-exp-target"
-                {% elif row.is_subtotal %}id="sub-total-exp-target-{{ row.category_code }}"
-                {% elif not row.is_group_total and not row.is_grand_total %}id="row-exp-target-{{ row.asset_class_id }}"{% endif %}
+                {% elif row.hierarchy_level == 1 %}id="sub-total-exp-target-{{ row.category_code }}"
+                {% elif row.hierarchy_level == 999 %}id="row-exp-target-{{ row.asset_class_id }}"{% endif %}
             >
                 {% if mode == 'percent' %}
                     <span class="percent">{{ row.portfolio.explicit_target_pct|percent }}</span>
@@ -167,11 +167,11 @@
                     <span class="money">{{ row.portfolio.explicit_target|money }}</span>
                 {% endif %}
             </td>
-            <td class="text-end pe-1 table-active small {% if row.is_grand_total %}text-white{% endif %} col-mode-effective"
+            <td class="text-end pe-1 table-active small col-mode-effective"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-total"
-                {% elif row.is_subtotal %}id="sub-total-target-{{ row.category_code }}"
-                {% elif not row.is_group_total and not row.is_grand_total %}id="row-total-{{ row.asset_class_id }}"{% endif %}
+                {% elif row.hierarchy_level == 1 %}id="sub-total-target-{{ row.category_code }}"
+                {% elif row.hierarchy_level == 999 %}id="row-total-{{ row.asset_class_id }}"{% endif %}
             >
                 {% if mode == 'percent' %}
                     <span class="percent">{{ row.portfolio.effective_pct|percent }}</span>
@@ -186,8 +186,8 @@
                 data-policy-variance-pct="{{ row.portfolio.policy_variance_pct }}"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-var"
-                {% elif row.is_subtotal %}id="sub-total-var-{{ row.category_code }}"
-                {% elif not row.is_group_total and not row.is_grand_total %}id="row-var-{{ row.asset_class_id }}"{% endif %}
+                {% elif row.hierarchy_level == 1 %}id="sub-total-var-{{ row.category_code }}"
+                {% elif row.hierarchy_level == 999 %}id="row-var-{{ row.asset_class_id }}"{% endif %}
             >
                 <span class="variance-value">
                     {% if mode == 'percent' %}

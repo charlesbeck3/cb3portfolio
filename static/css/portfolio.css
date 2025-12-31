@@ -158,27 +158,86 @@ body.sidebar-collapsed #main-content-column {
     white-space: nowrap;
 }
 
-/* Table row types */
-.table tr.subtotal,
-.table tr.subtotal td {
-    background-color: #6c757d !important;
-    color: #ffffff !important;
-    font-weight: bold;
+/* ============================================================================
+   Hierarchy Styling - Modern CSS with data attributes
+   ============================================================================ */
+
+:root {
+    /* Hierarchy color palette */
+    --hierarchy-darkest: #212529;
+    --hierarchy-dark: #343a40;
+    --hierarchy-medium: #495057;
+    --hierarchy-light: #6c757d;
+    --hierarchy-lighter: #adb5bd;
+    --hierarchy-lightest: transparent;
+    --hierarchy-text-dark: #ffffff;
+    --hierarchy-text-light: #212529;
 }
 
-.table tr.group-total,
-.table tr.group-total td {
-    background-color: #495057 !important;
-    color: #ffffff !important;
-    font-weight: bold;
-}
-
-.table tr.grand-total,
-.table tr.grand-total td {
-    background-color: #212529 !important;
-    color: #ffffff !important;
+/* Grand Total (level -1) */
+.table tr[data-hierarchy-level="-1"],
+.table tr[data-hierarchy-level="-1"] td {
+    background-color: var(--hierarchy-darkest) !important;
+    color: var(--hierarchy-text-dark) !important;
     font-weight: bold;
     border-top: 2px solid #000;
+}
+
+/* Top aggregate (level 0) */
+.table tr[data-hierarchy-level="0"],
+.table tr[data-hierarchy-level="0"] td {
+    background-color: var(--hierarchy-dark) !important;
+    color: var(--hierarchy-text-dark) !important;
+    font-weight: bold;
+}
+
+/* Second aggregate (level 1) */
+.table tr[data-hierarchy-level="1"],
+.table tr[data-hierarchy-level="1"] td {
+    background-color: var(--hierarchy-medium) !important;
+    color: var(--hierarchy-text-dark) !important;
+    font-weight: bold;
+}
+
+/* Third aggregate (level 2) */
+.table tr[data-hierarchy-level="2"],
+.table tr[data-hierarchy-level="2"] td {
+    background-color: var(--hierarchy-light) !important;
+    color: var(--hierarchy-text-dark) !important;
+    font-weight: bold;
+}
+
+/* Fourth aggregate (level 3) */
+.table tr[data-hierarchy-level="3"],
+.table tr[data-hierarchy-level="3"] td {
+    background-color: var(--hierarchy-lighter) !important;
+    color: var(--hierarchy-text-light) !important;
+    font-weight: bold;
+}
+
+/* Asset classes (level 4+) */
+.table tr[data-hierarchy-level]:is(
+    [data-hierarchy-level="4"],
+    [data-hierarchy-level="5"],
+    [data-hierarchy-level="6"],
+    [data-hierarchy-level="7"],
+    [data-hierarchy-level="8"],
+    [data-hierarchy-level="9"],
+    [data-hierarchy-level="999"]
+) {
+    background-color: var(--hierarchy-lightest);
+    font-weight: normal;
+}
+
+/* Hover effects */
+.table tr[data-hierarchy-level]:not([data-hierarchy-level="-1"]):hover td {
+    filter: brightness(0.95);
+    cursor: pointer;
+}
+
+/* Smooth transitions */
+.table tr[data-hierarchy-level] td {
+    transition: filter 0.15s ease-in-out;
 }
 
 /* Target Allocation Table Specific Styles */

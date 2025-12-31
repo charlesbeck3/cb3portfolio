@@ -12,36 +12,6 @@ register = template.Library()
 
 
 @register.filter
-def row_css_class(row_type: str) -> str:
-    """
-    Get CSS class for row type.
-
-    Used in templates to apply different styling to different row types
-    (e.g., bolding subtotals or highlights for grand totals).
-
-    Args:
-        row_type: One of 'asset', 'subtotal', 'group_total', 'grand_total'
-
-    Returns:
-        CSS class name string:
-        - 'subtotal' -> 'subtotal'
-        - 'group_total' -> 'group-total'
-        - 'grand_total' -> 'grand-total'
-        - others -> ''
-
-    Example:
-        <tr class="{{ row.row_type|row_css_class }}">
-    """
-    css_map = {
-        "asset": "",
-        "subtotal": "subtotal",
-        "group_total": "group-total",
-        "grand_total": "grand-total",
-    }
-    return css_map.get(row_type, "")
-
-
-@register.filter
 def variance_css_class(variance: float | Decimal | None) -> str:
     """
     Get CSS class for variance value (positive/negative coloring).

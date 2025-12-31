@@ -8,29 +8,13 @@ from decimal import Decimal
 
 import pytest
 
-from portfolio.templatetags.allocation_tags import (
-    row_css_class,
-    variance_css_class,
-)
+from portfolio.templatetags.allocation_tags import variance_css_class
 
 
 @pytest.mark.templatetags
 @pytest.mark.unit
 class TestAllocationTags:
     """Tests for allocation-specific template filters."""
-
-    def test_row_css_class(self) -> None:
-        """Verify CSS classes for different row types."""
-        # Standard types
-        assert row_css_class("asset") == ""
-        assert row_css_class("subtotal") == "subtotal"
-        assert row_css_class("group_total") == "group-total"
-        assert row_css_class("grand_total") == "grand-total"
-
-        # Edge cases
-        assert row_css_class("unknown") == ""
-        assert row_css_class("") == ""
-        assert row_css_class(None) == ""  # type: ignore
 
     def test_variance_css_class_numeric(self) -> None:
         """Verify variance coloring for numeric inputs."""

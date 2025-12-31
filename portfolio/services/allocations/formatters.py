@@ -47,11 +47,7 @@ class AllocationFormatter:
                 "category_code": row.get("category_code", ""),
                 "category_label": row.get("category_label", ""),
                 "is_cash": bool(row.get("is_cash", False)),
-                "row_type": row.get("row_type", "asset_class"),
-                # Row type flags for template styling
-                "is_subtotal": row.get("row_type") == "subtotal",
-                "is_group_total": row.get("row_type") == "group_total",
-                "is_grand_total": row.get("row_type") == "grand_total",
+                "hierarchy_level": int(row.get("hierarchy_level", 999)),
                 # Portfolio metrics (raw numerics only)
                 "portfolio": {
                     "actual": float(row.get("portfolio_actual", 0.0)),
@@ -251,6 +247,7 @@ class AllocationFormatter:
             rows.append(
                 {
                     "row_type": "holding",
+                    "hierarchy_level": 999,  # Holding level
                     "ticker": row["Ticker"],
                     "security_name": row.get("Security_Name", ""),
                     "name": row.get("Security_Name", row["Ticker"]),
@@ -331,6 +328,7 @@ class AllocationFormatter:
             rows.append(
                 {
                     "row_type": "subtotal",
+                    "hierarchy_level": 1,  # Category subtotal
                     "name": f"{row['Asset_Category']} Total",
                     "category_code": row["Category_Code"],
                     "group_code": row["Group_Code"],
@@ -394,6 +392,7 @@ class AllocationFormatter:
             rows.append(
                 {
                     "row_type": "group_total",
+                    "hierarchy_level": 0,  # Group total
                     "name": f"{row['Asset_Group']} Total",
                     "group_code": row["Group_Code"],
                     # Raw values
@@ -432,6 +431,7 @@ class AllocationFormatter:
         return [
             {
                 "row_type": "grand_total",
+                "hierarchy_level": -1,  # Grand total
                 "name": "Grand Total",
                 # Raw values
                 "value": float(total_value),

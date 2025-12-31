@@ -334,9 +334,13 @@ class TestTargetAllocationViewHTTP:
         assert response.status_code == 200
         rows = response.context["allocation_rows_money"]
 
-        # Find subtotal row
+        # Find subtotal row (hierarchy_level=1 is category subtotal)
         subtotal_row = next(
-            (r for r in rows if r.get("is_subtotal") and "US Large Cap" in r["asset_class_name"]),
+            (
+                r
+                for r in rows
+                if r.get("hierarchy_level") == 1 and "US Large Cap" in r["asset_class_name"]
+            ),
             None,
         )
         assert subtotal_row is not None

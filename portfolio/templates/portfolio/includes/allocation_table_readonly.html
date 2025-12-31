@@ -26,31 +26,31 @@
         </thead>
         <tbody>
             {% for row in rows %}
-            <tr class="{{ row.row_type|row_css_class }}">
+            <tr data-hierarchy-level="{{ row.hierarchy_level }}">
                 <td class="ps-4">{{ row.asset_class_name }}</td>
                 {% for at_col in row.account_types %}
-                    <td class="text-end pe-1 small {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">
+                    <td class="text-end pe-1 small">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ at_col.actual_pct|percent }}</span>
                         {% else %}
                             <span class="money">{{ at_col.actual|money }}</span>
                         {% endif %}
                     </td>
-                    <td class="text-end pe-1 small col-mode-policy d-none {% if row.is_grand_total %}text-white{% endif %}">
+                    <td class="text-end pe-1 small col-mode-policy d-none">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ at_col.policy_pct|percent }}</span>
                         {% else %}
                             <span class="money">{{ at_col.policy|money }}</span>
                         {% endif %}
                     </td>
-                    <td class="text-end pe-1 small col-mode-effective {% if row.is_grand_total %}text-white{% endif %}">
+                    <td class="text-end pe-1 small col-mode-effective">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ at_col.effective_pct|percent }}</span>
                         {% else %}
                             <span class="money">{{ at_col.effective|money }}</span>
                         {% endif %}
                     </td>
-                    <td class="text-end pe-1 small fw-bold variance-col {% if mode == 'percent' %}{{ at_col.effective_variance_pct|variance_css_class }}{% else %}{{ at_col.effective_variance|variance_css_class }}{% endif %} {% if row.is_grand_total %}text-white{% endif %}"
+                    <td class="text-end pe-1 small fw-bold variance-col {% if mode == 'percent' %}{{ at_col.effective_variance_pct|variance_css_class }}{% else %}{{ at_col.effective_variance|variance_css_class }}{% endif %}"
                         data-effective-variance="{% if mode == 'percent' %}{{ at_col.effective_variance_pct|percent }}{% else %}{{ at_col.effective_variance|money }}{% endif %}"
                         data-policy-variance="{% if mode == 'percent' %}{{ at_col.policy_variance_pct|percent }}{% else %}{{ at_col.policy_variance|money }}{% endif %}">
                         <span class="variance-value">
@@ -62,28 +62,28 @@
                         </span>
                     </td>
                 {% endfor %}
-                <td class="text-end pe-2 table-active {% if row.is_grand_total %}text-white{% elif row.is_subtotal or row.is_group_total %}text-dark{% else %}text-muted{% endif %}">
+                <td class="text-end pe-2 table-active">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ row.portfolio.actual_pct|percent }}</span>
                     {% else %}
                         <span class="money">{{ row.portfolio.actual|money }}</span>
                     {% endif %}
                 </td>
-                <td class="text-end pe-2 table-active col-mode-policy d-none {% if row.is_grand_total %}text-white{% endif %}">
+                <td class="text-end pe-2 table-active col-mode-policy d-none">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ row.portfolio.explicit_target_pct|percent }}</span>
                     {% else %}
                         <span class="money">{{ row.portfolio.explicit_target|money }}</span>
                     {% endif %}
                 </td>
-                <td class="text-end pe-2 table-active col-mode-effective {% if row.is_grand_total %}text-white{% endif %}">
+                <td class="text-end pe-2 table-active col-mode-effective">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ row.portfolio.effective_pct|percent }}</span>
                     {% else %}
                         <span class="money">{{ row.portfolio.effective|money }}</span>
                     {% endif %}
                 </td>
-                <td class="text-end pe-2 table-active fw-bold variance-col {% if mode == 'percent' %}{{ row.portfolio.effective_variance_pct|variance_css_class }}{% else %}{{ row.portfolio.effective_variance|variance_css_class }}{% endif %} {% if row.is_grand_total %}text-white{% endif %}"
+                <td class="text-end pe-2 table-active fw-bold variance-col {% if mode == 'percent' %}{{ row.portfolio.effective_variance_pct|variance_css_class }}{% else %}{{ row.portfolio.effective_variance|variance_css_class }}{% endif %}"
                     data-effective-variance="{% if mode == 'percent' %}{{ row.portfolio.effective_variance_pct|percent }}{% else %}{{ row.portfolio.effective_variance|money }}{% endif %}"
                     data-policy-variance="{% if mode == 'percent' %}{{ row.portfolio.policy_variance_pct|percent }}{% else %}{{ row.portfolio.policy_variance|money }}{% endif %}">
                     <span class="variance-value">

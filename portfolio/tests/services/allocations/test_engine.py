@@ -317,14 +317,14 @@ class TestVarianceCalculations:
 
         rows = engine.get_presentation_rows(user)
 
-        # Find the Equities Total (group_total) row
+        # Find the Equities Total (group_total, hierarchy_level=0) row
         equities_total = None
         fixed_income_total = None
         for row in rows:
             name = row.get("asset_class_name", "")
-            if "Equities Total" in name and row.get("row_type") == "group_total":
+            if "Equities Total" in name and row.get("hierarchy_level") == 0:
                 equities_total = row
-            elif "Fixed Income Total" in name and row.get("row_type") == "subtotal":
+            elif "Fixed Income Total" in name and row.get("hierarchy_level") == 1:
                 fixed_income_total = row
 
         # Equities group total should have +$400 variance (over-allocated)
@@ -341,20 +341,27 @@ class TestVarianceCalculations:
             f"Expected Fixed Income variance of -$400, got {fi_portfolio['effective_variance']}"
         )
 
-    def test_row_type_is_set_for_all_rows(self, portfolio_with_targets):
+    def test_hierarchy_level_is_set_for_all_rows(self, portfolio_with_targets):
         """
-        Verify all rows have a proper row_type set (not NaN).
+        Verify all rows have a proper hierarchy_level set.
+
+        hierarchy_level values:
+        - 999: asset class (leaf node)
+        - 1: category subtotal
+        - 0: group total
+        - -1: grand total
         """
         user = portfolio_with_targets["user"]
         engine = AllocationEngine()
 
         rows = engine.get_presentation_rows(user)
 
+        valid_levels = (999, 1, 0, -1)
         for row in rows:
-            row_type = row.get("row_type")
+            hierarchy_level = row.get("hierarchy_level")
             name = row.get("asset_class_name", "???")
-            assert row_type in ("asset_class", "subtotal", "group_total", "grand_total"), (
-                f"Row '{name}' has invalid row_type: {row_type}"
+            assert hierarchy_level in valid_levels, (
+                f"Row '{name}' has invalid hierarchy_level: {hierarchy_level}"
             )
 
     def test_portfolio_column_has_all_template_fields(self, portfolio_with_targets):

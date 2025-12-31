@@ -250,6 +250,124 @@ class AllocationCalculator:
         }
 
     # ========================================================================
+    # Helper Methods for Unified Aggregation
+    # ========================================================================
+
+    def _pivot_and_merge(
+        self,
+        df: pd.DataFrame,
+        data_df: pd.DataFrame,
+        level_column: str,
+        column_prefix: str = "",
+        suffix: str = "_actual",
+    ) -> pd.DataFrame:
+        """
+        Universal pivot-flatten-merge pattern.
+
+        Handles: reset → pivot → flatten → merge
+        """
+        data_reset = data_df.reset_index()
+
+        pivoted = data_reset.pivot(
+            index="asset_class_id",
+            columns=level_column,
+            values=["value", "pct"],
+        )
+
+        # Flatten column names
+        pivoted.columns = [
+            f"{column_prefix}{col[1]}{suffix}"
+            if col[0] == "value"
+            else f"{column_prefix}{col[1]}{suffix}_pct"
+            for col in pivoted.columns
+        ]
+
+        result = df.merge(pivoted, left_on="asset_class_id", right_index=True, how="left")
+        return result.fillna(0.0)
+
+    def _aggregate_actuals_by_level(
+        self,
+        df: pd.DataFrame,
+        holdings_df: pd.DataFrame,
+        level: str,
+        level_column: str | None = None,
+    ) -> pd.DataFrame:
+        """
+        Unified aggregation for actual allocations at any hierarchy level.
+
+        Replaces:
+        - _add_portfolio_calculations_presentation
+        - _add_account_type_calculations_presentation
+        - _add_account_calculations_presentation
+
+        Args:
+            df: Base DataFrame with asset_class metadata
+            holdings_df: Long-format holdings
+            level: 'portfolio', 'account_type', or 'account'
+            level_column: Column to group by (None for portfolio)
+
+        Returns:
+            DataFrame with added actual/actual_pct columns
+        """
+        if holdings_df.empty:
+            return df
+
+        # Determine grouping
+        if level == "portfolio":
+            group_cols: list[str] = ["asset_class_id"]
+        else:
+            assert level_column is not None, "level_column required for non-portfolio levels"
+            group_cols = [level_column, "asset_class_id"]
+
+        # Aggregate values
+        aggregated = holdings_df.groupby(group_cols)["value"].sum().to_frame(name="value")
+
+        # Calculate percentages
+        if level == "portfolio":
+            total = aggregated["value"].sum()
+            aggregated["pct"] = aggregated["value"] / total * 100 if total > 0 else 0.0
+        else:
+            aggregated["pct"] = aggregated.groupby(level=0)["value"].transform(
+                lambda x: x / x.sum() * 100 if x.sum() > 0 else 0.0
+            )
+
+        # Merge back
+        if level == "portfolio":
+            aggregated.columns = ["portfolio_actual", "portfolio_actual_pct"]
+            result = df.merge(aggregated, left_on="asset_class_id", right_index=True, how="left")
+        else:
+            column_prefix = "account_" if level == "account" else ""
+            # level_column is guaranteed not None by assertion above
+            assert level_column is not None
+            result = self._pivot_and_merge(
+                df, aggregated, level_column, column_prefix=column_prefix, suffix="_actual"
+            )
+
+        return result.fillna(0.0)
+
+    def _calculate_variance_for_columns(
+        self,
+        df: pd.DataFrame,
+        actual_col: str,
+        target_col: str,
+        variance_col: str,
+    ) -> pd.DataFrame:
+        """Calculate variance = actual - target for any column pair."""
+        # Value variance
+        if actual_col in df.columns and target_col in df.columns:
+            df[variance_col] = df[actual_col] - df[target_col]
+
+        # Percentage variance
+        actual_pct = f"{actual_col}_pct"
+        target_pct = f"{target_col}_pct"
+        variance_pct = f"{variance_col}_pct"
+
+        if actual_pct in df.columns and target_pct in df.columns:
+            df[variance_pct] = df[actual_pct] - df[target_pct]
+
+        return df
+
+    # ========================================================================
     # Presentation Calculation Pipeline
     # ========================================================================
 
@@ -300,14 +418,14 @@ class AllocationCalculator:
         # Step 1: Base DataFrame with all asset classes
         df = asset_classes_df.copy()
 
-        # Step 2: Add portfolio-level calculations
-        df = self._add_portfolio_calculations_presentation(df, holdings_df)
-
-        # Step 3: Add account-type level calculations
-        df = self._add_account_type_calculations_presentation(df, holdings_df)
-
-        # Step 4: Add individual account calculations
-        df = self._add_account_calculations_presentation(df, holdings_df)
+        # Step 2-4: Add actuals at all levels using unified method
+        df = self._aggregate_actuals_by_level(df, holdings_df, level="portfolio")
+        df = self._aggregate_actuals_by_level(
+            df, holdings_df, level="account_type", level_column="account_type_code"
+        )
+        df = self._aggregate_actuals_by_level(
+            df, holdings_df, level="account", level_column="account_id"
+        )
 
         # Step 5: Calculate weighted effective targets
         # Build account_type_map from holdings_df: {account_id: account_type_code}
@@ -380,7 +498,9 @@ class AllocationCalculator:
 
                 # Add individual asset class rows
                 for _, row in category_df.iterrows():
-                    result_rows.append(row.to_dict())
+                    row_dict = row.to_dict()
+                    row_dict["hierarchy_level"] = 999  # Asset class level
+                    result_rows.append(row_dict)
 
                 # Add category subtotal if more than 1 asset class in category
                 if len(category_df) > 1:
@@ -393,7 +513,7 @@ class AllocationCalculator:
                         "category_code": category,
                         "category_label": category_df.iloc[0]["category_label"],
                         "is_cash": False,
-                        "row_type": "subtotal",  # Changed from category_total
+                        "hierarchy_level": 1,  # Category subtotal
                         "group_sort_order": category_df.iloc[0].get("group_sort_order", 0),
                         "category_sort_order": category_df.iloc[0].get("category_sort_order", 0),
                     }
@@ -413,7 +533,7 @@ class AllocationCalculator:
                     "category_code": "",
                     "category_label": "",
                     "is_cash": False,
-                    "row_type": "group_total",
+                    "hierarchy_level": 0,  # Group total
                     "group_sort_order": group_df.iloc[0].get("group_sort_order", 0),
                     "category_sort_order": 999,  # Sort at end of group
                 }
@@ -432,7 +552,7 @@ class AllocationCalculator:
             "category_code": "",
             "category_label": "",
             "is_cash": False,
-            "row_type": "grand_total",
+            "hierarchy_level": -1,  # Grand total
             "group_sort_order": 999,
             "category_sort_order": 999,
         }
@@ -442,119 +562,6 @@ class AllocationCalculator:
         result_rows.append(grand_row)
 
         return pd.DataFrame(result_rows)
-
-    def _add_portfolio_calculations_presentation(
-        self,
-        df: pd.DataFrame,
-        holdings_df: pd.DataFrame,
-    ) -> pd.DataFrame:
-        """Add portfolio-level actual allocations."""
-        portfolio_total = holdings_df["value"].sum()
-
-        # Aggregate by asset class
-        by_asset = (
-            holdings_df.groupby("asset_class_id")["value"].sum().to_frame(name="portfolio_actual")
-        )
-
-        # Calculate percentages
-        if portfolio_total > 0:
-            by_asset["portfolio_actual_pct"] = by_asset["portfolio_actual"] / portfolio_total * 100
-        else:
-            by_asset["portfolio_actual_pct"] = 0.0
-
-        # Merge with main DataFrame
-        result = df.merge(
-            by_asset,
-            left_on="asset_class_id",
-            right_index=True,
-            how="left",
-        ).fillna(0.0)
-
-        return result
-
-    def _add_account_type_calculations_presentation(
-        self,
-        df: pd.DataFrame,
-        holdings_df: pd.DataFrame,
-    ) -> pd.DataFrame:
-        """Add account-type level actual allocations."""
-        # Group by account type and asset class
-        by_type = (
-            holdings_df.groupby(["account_type_code", "asset_class_id"])["value"]
-            .sum()
-            .to_frame(name="value")
-        )
-
-        # Add percentage column using groupby transform
-        by_type["pct"] = by_type.groupby(level="account_type_code")["value"].transform(
-            lambda x: x / x.sum() * 100 if x.sum() > 0 else 0.0
-        )
-
-        # Pivot to get columns per account type
-        by_type_reset = by_type.reset_index()
-        by_type_pivot = by_type_reset.pivot(
-            index="asset_class_id",
-            columns="account_type_code",
-            values=["value", "pct"],
-        )
-
-        # Flatten column names: (value, 401k) -> 401k_actual
-        by_type_pivot.columns = [
-            f"{col[1]}_actual" if col[0] == "value" else f"{col[1]}_actual_pct"
-            for col in by_type_pivot.columns
-        ]
-
-        # Merge with main DataFrame
-        result = df.merge(
-            by_type_pivot,
-            left_on="asset_class_id",
-            right_index=True,
-            how="left",
-        ).fillna(0.0)
-
-        return result
-
-    def _add_account_calculations_presentation(
-        self,
-        df: pd.DataFrame,
-        holdings_df: pd.DataFrame,
-    ) -> pd.DataFrame:
-        """Add individual account level actual allocations."""
-        # Group by account and asset class
-        by_account = (
-            holdings_df.groupby(["account_id", "asset_class_id"])["value"]
-            .sum()
-            .to_frame(name="value")
-        )
-
-        # Calculate percentages within each account
-        by_account["pct"] = by_account.groupby(level="account_id")["value"].transform(
-            lambda x: x / x.sum() * 100 if x.sum() > 0 else 0.0
-        )
-
-        # Pivot to get columns per account
-        by_account_reset = by_account.reset_index()
-        by_account_pivot = by_account_reset.pivot(
-            index="asset_class_id",
-            columns="account_id",
-            values=["value", "pct"],
-        )
-
-        # Flatten column names: (value, 123) -> account_123_actual
-        by_account_pivot.columns = [
-            f"account_{col[1]}_actual" if col[0] == "value" else f"account_{col[1]}_actual_pct"
-            for col in by_account_pivot.columns
-        ]
-
-        # Merge with main DataFrame
-        result = df.merge(
-            by_account_pivot,
-            left_on="asset_class_id",
-            right_index=True,
-            how="left",
-        ).fillna(0.0)
-
-        return result
 
     def _calculate_weighted_targets_presentation(
         self,
@@ -775,58 +782,40 @@ class AllocationCalculator:
         - effective_variance = actual - effective (for rebalancing)
         - policy_variance = actual - policy (for policy adherence)
         """
-        # Portfolio level - effective variance (for rebalancing)
-        if "portfolio_actual" in df.columns and "portfolio_effective" in df.columns:
-            df["portfolio_variance"] = df["portfolio_actual"] - df["portfolio_effective"]
-            df["portfolio_variance_pct"] = (
-                df["portfolio_actual_pct"] - df["portfolio_effective_pct"]
-            )
+        # Portfolio variances
+        df = self._calculate_variance_for_columns(
+            df, "portfolio_actual", "portfolio_effective", "portfolio_variance"
+        )
+        df = self._calculate_variance_for_columns(
+            df, "portfolio_actual", "portfolio_policy", "portfolio_policy_variance"
+        )
 
-        # Portfolio level - policy variance (for policy adherence)
-        if "portfolio_actual" in df.columns and "portfolio_policy" in df.columns:
-            df["portfolio_policy_variance"] = df["portfolio_actual"] - df["portfolio_policy"]
-            df["portfolio_policy_variance_pct"] = (
-                df["portfolio_actual_pct"] - df["portfolio_policy_pct"]
-            )
-
-        # Account type level - find all type columns dynamically
+        # Account type variances (dynamic)
         type_columns = [
-            col
+            col.replace("_actual", "")
             for col in df.columns
             if col.endswith("_actual")
             and not col.startswith("account_")
             and col != "portfolio_actual"
         ]
+        for type_prefix in type_columns:
+            df = self._calculate_variance_for_columns(
+                df, f"{type_prefix}_actual", f"{type_prefix}_effective", f"{type_prefix}_variance"
+            )
 
-        for actual_col in type_columns:
-            type_prefix = actual_col.replace("_actual", "")
-            effective_col = f"{type_prefix}_effective"
-
-            if effective_col in df.columns:
-                df[f"{type_prefix}_variance"] = df[actual_col] - df[effective_col]
-
-                # Percentage variance
-                actual_pct_col = f"{type_prefix}_actual_pct"
-                effective_pct_col = f"{type_prefix}_effective_pct"
-                if actual_pct_col in df.columns and effective_pct_col in df.columns:
-                    df[f"{type_prefix}_variance_pct"] = df[actual_pct_col] - df[effective_pct_col]
-
-        # Individual account level
+        # Account variances (dynamic)
         account_columns = [
-            col for col in df.columns if col.startswith("account_") and col.endswith("_actual")
+            col.replace("_actual", "")
+            for col in df.columns
+            if col.startswith("account_") and col.endswith("_actual")
         ]
-
-        for actual_col in account_columns:
-            account_prefix = actual_col.replace("_actual", "")
-            target_col = f"{account_prefix}_target"
-
-            if target_col in df.columns:
-                df[f"{account_prefix}_variance"] = df[actual_col] - df[target_col]
-
-                actual_pct_col = f"{account_prefix}_actual_pct"
-                target_pct_col = f"{account_prefix}_target_pct"
-                if actual_pct_col in df.columns and target_pct_col in df.columns:
-                    df[f"{account_prefix}_variance_pct"] = df[actual_pct_col] - df[target_pct_col]
+        for account_prefix in account_columns:
+            df = self._calculate_variance_for_columns(
+                df,
+                f"{account_prefix}_actual",
+                f"{account_prefix}_target",
+                f"{account_prefix}_variance",
+            )
 
         return df
 
