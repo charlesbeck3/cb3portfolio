@@ -130,13 +130,14 @@ class DjangoDataProvider:
 
         accounts = list(
             Account.objects.filter(user=user)
-            .select_related("account_type", "institution")
+            .select_related("account_type", "account_type__group", "institution")
             .values(
                 "id",
                 "name",
                 "account_type__id",
                 "account_type__code",
                 "account_type__label",
+                "account_type__group__name",
                 "institution__name",
             )
         )

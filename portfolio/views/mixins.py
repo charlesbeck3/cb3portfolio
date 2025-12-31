@@ -35,7 +35,7 @@ class PortfolioContextMixin:
         if not user.is_authenticated:
             return {"sidebar_data": {"grand_total": Decimal("0.00"), "groups": {}}}
 
-        from portfolio.services.allocation_calculations import AllocationCalculationEngine
+        from portfolio.services.allocations import get_sidebar_data
         from portfolio.services.pricing import PricingService
 
         # Auto-update prices on each page load if they are stale (>5 mins)
@@ -60,10 +60,8 @@ class PortfolioContextMixin:
             # Log error but don't break the page if price fetch fails
             logger.error("price_service_error", user_id=user.id, error=str(e))
 
-        engine = AllocationCalculationEngine()
-
         # OPTIMIZED: Single consolidated call for all sidebar data
-        sidebar_data = engine.get_sidebar_data(user)
+        sidebar_data = get_sidebar_data(user)
 
         # Log query count for monitoring (helps identify regressions)
         if sidebar_data["query_count"] > 10:
