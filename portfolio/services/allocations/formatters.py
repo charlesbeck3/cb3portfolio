@@ -41,11 +41,11 @@ class AllocationFormatter:
                 "category_code": row.get("category_code", ""),
                 "category_label": row.get("category_label", ""),
                 "is_cash": bool(row.get("is_cash", False)),
-                "row_type": "asset_class",
+                "row_type": row.get("row_type", "asset_class"),
                 # Row type flags for template styling
-                "is_subtotal": False,
-                "is_group_total": False,
-                "is_grand_total": False,
+                "is_subtotal": row.get("row_type") == "subtotal",
+                "is_group_total": row.get("row_type") == "group_total",
+                "is_grand_total": row.get("row_type") == "grand_total",
                 # Portfolio metrics (raw numerics only)
                 "portfolio": {
                     "actual": float(row.get("portfolio_actual", 0.0)),

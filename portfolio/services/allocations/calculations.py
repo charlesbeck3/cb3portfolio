@@ -313,7 +313,113 @@ class AllocationCalculator:
         # Step 7: Sort by hierarchy
         df = self._sort_presentation_dataframe(df)
 
+        # Step 8: Add subtotal and grand total rows
+        df = self._add_aggregated_rows(df)
+
         return df
+
+    def _add_aggregated_rows(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Add category subtotals, group subtotals, and grand total rows.
+
+        Uses pandas groupby aggregation for vectorized performance.
+        """
+        if df.empty:
+            return df
+
+        # Identify numeric columns to aggregate (all actual, effective, variance columns)
+        numeric_cols = [
+            col
+            for col in df.columns
+            if any(
+                suffix in col
+                for suffix in [
+                    "_actual",
+                    "_actual_pct",
+                    "_effective",
+                    "_effective_pct",
+                    "_variance",
+                    "_variance_pct",
+                ]
+            )
+        ]
+
+        result_rows = []
+
+        # Get unique groups and categories for aggregation
+        groups = df["group_code"].unique()
+
+        for group in groups:
+            group_df = df[df["group_code"] == group]
+            categories = group_df["category_code"].unique()
+
+            for category in categories:
+                category_df = group_df[group_df["category_code"] == category]
+
+                # Add individual asset class rows
+                for _, row in category_df.iterrows():
+                    result_rows.append(row.to_dict())
+
+                # Add category subtotal if more than 1 asset class in category
+                if len(category_df) > 1:
+                    category_total = category_df[numeric_cols].sum()
+                    category_row = {
+                        "asset_class_name": f"{category_df.iloc[0]['category_label']} Total",
+                        "asset_class_id": 0,
+                        "group_code": group,
+                        "group_label": category_df.iloc[0]["group_label"],
+                        "category_code": category,
+                        "category_label": category_df.iloc[0]["category_label"],
+                        "is_cash": False,
+                        "row_type": "subtotal",  # Changed from category_total
+                        "group_sort_order": category_df.iloc[0].get("group_sort_order", 0),
+                        "category_sort_order": category_df.iloc[0].get("category_sort_order", 0),
+                    }
+                    # Add aggregated numeric values
+                    for col in numeric_cols:
+                        category_row[col] = category_total[col]
+                    result_rows.append(category_row)
+
+            # Add group subtotal if more than 1 category in group
+            if len(categories) > 1:
+                group_total = group_df[numeric_cols].sum()
+                group_row = {
+                    "asset_class_name": f"{group_df.iloc[0]['group_label']} Total",
+                    "asset_class_id": 0,
+                    "group_code": group,
+                    "group_label": group_df.iloc[0]["group_label"],
+                    "category_code": "",
+                    "category_label": "",
+                    "is_cash": False,
+                    "row_type": "group_total",
+                    "group_sort_order": group_df.iloc[0].get("group_sort_order", 0),
+                    "category_sort_order": 999,  # Sort at end of group
+                }
+                # Add aggregated numeric values
+                for col in numeric_cols:
+                    group_row[col] = group_total[col]
+                result_rows.append(group_row)
+
+        # Add grand total row
+        grand_total = df[numeric_cols].sum()
+        grand_row = {
+            "asset_class_name": "Total",
+            "asset_class_id": 0,
+            "group_code": "",
+            "group_label": "",
+            "category_code": "",
+            "category_label": "",
+            "is_cash": False,
+            "row_type": "grand_total",
+            "group_sort_order": 999,
+            "category_sort_order": 999,
+        }
+        # Add aggregated numeric values
+        for col in numeric_cols:
+            grand_row[col] = grand_total[col]
+        result_rows.append(grand_row)
+
+        return pd.DataFrame(result_rows)
 
     def _add_portfolio_calculations_presentation(
         self,
