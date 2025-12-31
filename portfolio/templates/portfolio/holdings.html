@@ -32,10 +32,31 @@
     <div id="main-content-column" class="col-md-10">
         <div class="row">
             <div class="col-md-12">
-                <h1>{% if account %}Holdings for {{ account.name }}{% else %}Holdings{% endif %}</h1>
-                <p class="lead">Detailed view of all your holdings.</p>
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h1 class="mb-0">{% if account %}Holdings for {{ account.name }}{% else %}Holdings{% endif %}</h1>
+                        <p class="lead mb-0 text-muted">Detailed view of all your holdings.</p>
+                    </div>
+                    <div class="d-flex align-items-center gap-3">
+                         {% if not account and is_aggregated %}
+                        <!-- Target Mode Toggle (only for aggregated) -->
+                        <div class="btn-group" role="group" aria-label="Variance display mode">
+                            <a href="?view=aggregated&target=effective"
+                               class="btn btn-outline-primary {% if target_mode == 'effective' %}active{% endif %}"
+                               title="Show variance from weighted average target">
+                                <i class="bi bi-graph-up"></i> Effective Variance
+                            </a>
+                            <a href="?view=aggregated&target=policy"
+                               class="btn btn-outline-primary {% if target_mode == 'policy' %}active{% endif %}"
+                               title="Show variance from stated strategy">
+                                <i class="bi bi-clipboard-check"></i> Policy Variance
+                            </a>
+                        </div>
+                        {% endif %}
 
-                <a href="{% url 'portfolio:dashboard' %}" class="btn btn-secondary mb-3">← Back to Dashboard</a>
+                        <a href="{% url 'portfolio:dashboard' %}" class="btn btn-secondary">← Back to Dashboard</a>
+                    </div>
+                </div>
 
 
                 <div class="card mt-4">
@@ -48,19 +69,7 @@
                         </div>
                         <div class="btn-toolbar" role="toolbar">
                             {% if not account %}
-                            <!-- Toggle removed -->
-
-                            {% if is_aggregated %}
-                            <!-- Target Mode Toggle (only for aggregated) -->
-                            <div class="btn-group btn-group-sm me-2" role="group">
-                                <a href="?view=aggregated&target=effective"
-                                   class="btn btn-outline-secondary {% if target_mode == 'effective' %}active{% endif %}"
-                                   title="Weighted average of account targets">Effective</a>
-                                <a href="?view=aggregated&target=policy"
-                                   class="btn btn-outline-secondary {% if target_mode == 'policy' %}active{% endif %}"
-                                   title="Portfolio-level policy strategy">Policy</a>
-                            </div>
-                            {% endif %}
+                            <!-- Toggle moved to page header -->
                             {% endif %}
 
                             {% if account %}
