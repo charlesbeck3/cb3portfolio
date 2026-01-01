@@ -637,6 +637,25 @@ class TestGoldenReferenceMultiAccount:
             },
         }
 
+    # ========================================================================
+    # Multi-Account Display Tests
+    # ========================================================================
+
+    def test_multi_account_no_nan_values(
+        self,
+        authenticated_page: Page,
+        live_server_url: str,
+        golden_portfolio_multi_account: dict[str, Any],
+    ) -> None:
+        """
+        Multi-account portfolio should never show NaN.
+
+        This is critical for aggregation across accounts.
+        """
+        authenticated_page.goto(f"{live_server_url}/")
+
+        self.validator.assert_no_invalid_values(authenticated_page)
+
     def test_multi_account_portfolio_total(
         self,
         authenticated_page: Page,

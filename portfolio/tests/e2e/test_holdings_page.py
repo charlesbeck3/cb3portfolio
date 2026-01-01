@@ -86,11 +86,26 @@ class TestHoldingsDisplayValidation:
 
     @pytest.fixture
     def holdings_with_data(self, test_user: Any, base_system_data: Any) -> dict[str, Any]:
-        """Create holdings for display testing."""
+        """
+        Create holdings for display testing.
+
+        Creates a portfolio with 3 different securities to test
+        individual security display formatting.
+
+        Holdings:
+        - VTI: $50,000 (500 shares @ $100)
+        - VXUS: $30,000 (600 shares @ $50)
+        - BND: $20,000 (250 shares @ $80)
+        Total: $100,000
+        """
         from .helpers import create_test_portfolio_with_values
 
         return create_test_portfolio_with_values(
-            test_user, base_system_data, us_equities_value=50000.0, bonds_value=30000.0
+            test_user,
+            base_system_data,
+            us_equities_value=50000.0,
+            intl_equities_value=30000.0,
+            bonds_value=20000.0,
         )
 
     def test_holdings_page_has_no_nan_values(
@@ -105,6 +120,21 @@ class TestHoldingsDisplayValidation:
 
         table = authenticated_page.locator("[data-testid='holdings-table']")
         expect(table).to_be_visible()
+
+    def test_all_securities_display(
+        self, authenticated_page: Page, live_server_url: str, holdings_with_data: dict[str, Any]
+    ) -> None:
+        """
+        Holdings page should display all securities with correct formatting.
+
+        Verifies all 3 securities from fixture appear.
+        """
+        authenticated_page.goto(f"{live_server_url}/holdings/")
+
+        # Verify each security appears
+        for ticker in ["VTI", "VXUS", "BND"]:
+            row = authenticated_page.locator(f"[data-testid='holding-row-{ticker}']")
+            expect(row).to_be_visible()
 
     def test_holding_values_formatted_as_money(
         self, authenticated_page: Page, live_server_url: str, holdings_with_data: dict[str, Any]
@@ -162,18 +192,21 @@ class TestHoldingsDisplayValidation:
         self, authenticated_page: Page, live_server_url: str, holdings_with_data: dict[str, Any]
     ) -> None:
         """
-        Grand total row should display correctly.
+        Grand total row should display correctly with $100,000 total.
         """
         authenticated_page.goto(f"{live_server_url}/holdings/")
+
+        expected_total = holdings_with_data["total_value"]
 
         # Find grand total row
         grand_total = authenticated_page.locator("[data-testid='grand-total-row']")
         expect(grand_total).to_be_visible()
 
-        # Value should be formatted
+        # Value should be formatted and match expected
         value_cell = authenticated_page.locator("[data-testid='grand-total-value']")
-        if value_cell.is_visible():
-            text = value_cell.text_content()
-            assert text is not None
-            assert "$" in text, f"Grand total missing $: {text}"
-            assert "NaN" not in text, "Grand total showing NaN"
+        expect(value_cell).to_be_visible()
+
+        actual_total = self.validator.get_money_value(value_cell)
+        assert abs(actual_total - expected_total) < 0.01, (
+            f"Grand total should be ${expected_total:,.2f}, got ${actual_total:,.2f}"
+        )
