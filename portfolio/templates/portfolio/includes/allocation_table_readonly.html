@@ -1,7 +1,7 @@
 {% load allocation_tags portfolio_filters %}
 {% if rows %}
     {% with account_types=rows.0.account_types %}
-    <table class="table table-bordered table-striped table-hover mb-0 align-middle" id="{{ table_id }}" style="font-size: 0.8rem; table-layout: fixed;">
+    <table class="table table-bordered table-striped table-hover mb-0 align-middle" id="{{ table_id }}" data-testid="allocation-table-{{ mode }}" style="font-size: 0.8rem; table-layout: fixed;">
         <thead class="table-light">
             <tr>
                 <th scope="col" class="ps-4" style="width: 250px; min-width: 250px; white-space: nowrap;">Asset Class</th>
@@ -26,24 +26,24 @@
         </thead>
         <tbody>
             {% for row in rows %}
-            <tr data-hierarchy-level="{{ row.hierarchy_level }}">
-                <td class="ps-4">{{ row.asset_class_name }}</td>
+            <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="allocation-row-{{ row.asset_class_id|default:row.hierarchy_level }}">
+                <td class="ps-4" data-testid="asset-class-name-{{ row.asset_class_id|default:row.hierarchy_level }}">{{ row.asset_class_name }}</td>
                 {% for at_col in row.account_types %}
-                    <td class="text-end pe-1 small">
+                    <td class="text-end pe-1 small" data-testid="at-{{ at_col.id }}-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ at_col.actual_pct|percent }}</span>
                         {% else %}
                             <span class="money">{{ at_col.actual|money }}</span>
                         {% endif %}
                     </td>
-                    <td class="text-end pe-1 small col-mode-policy d-none">
+                    <td class="text-end pe-1 small col-mode-policy d-none" data-testid="at-{{ at_col.id }}-policy-{{ row.asset_class_id|default:row.hierarchy_level }}">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ at_col.policy_pct|percent }}</span>
                         {% else %}
                             <span class="money">{{ at_col.policy|money }}</span>
                         {% endif %}
                     </td>
-                    <td class="text-end pe-1 small col-mode-effective">
+                    <td class="text-end pe-1 small col-mode-effective" data-testid="at-{{ at_col.id }}-effective-{{ row.asset_class_id|default:row.hierarchy_level }}">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ at_col.effective_pct|percent }}</span>
                         {% else %}
@@ -51,6 +51,7 @@
                         {% endif %}
                     </td>
                     <td class="text-end pe-1 small fw-bold variance-col {% if mode == 'percent' %}{{ at_col.effective_variance_pct|variance_css_class }}{% else %}{{ at_col.effective_variance|variance_css_class }}{% endif %}"
+                        data-testid="at-{{ at_col.id }}-variance-{{ row.asset_class_id|default:row.hierarchy_level }}"
                         data-effective-variance="{% if mode == 'percent' %}{{ at_col.effective_variance_pct|percent }}{% else %}{{ at_col.effective_variance|money }}{% endif %}"
                         data-policy-variance="{% if mode == 'percent' %}{{ at_col.policy_variance_pct|percent }}{% else %}{{ at_col.policy_variance|money }}{% endif %}">
                         <span class="variance-value">
@@ -62,21 +63,21 @@
                         </span>
                     </td>
                 {% endfor %}
-                <td class="text-end pe-2 table-active">
+                <td class="text-end pe-2 table-active" data-testid="portfolio-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ row.portfolio.actual_pct|percent }}</span>
                     {% else %}
                         <span class="money">{{ row.portfolio.actual|money }}</span>
                     {% endif %}
                 </td>
-                <td class="text-end pe-2 table-active col-mode-policy d-none">
+                <td class="text-end pe-2 table-active col-mode-policy d-none" data-testid="portfolio-policy-{{ row.asset_class_id|default:row.hierarchy_level }}">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ row.portfolio.explicit_target_pct|percent }}</span>
                     {% else %}
                         <span class="money">{{ row.portfolio.explicit_target|money }}</span>
                     {% endif %}
                 </td>
-                <td class="text-end pe-2 table-active col-mode-effective">
+                <td class="text-end pe-2 table-active col-mode-effective" data-testid="portfolio-effective-{{ row.asset_class_id|default:row.hierarchy_level }}">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ row.portfolio.effective_pct|percent }}</span>
                     {% else %}
@@ -84,6 +85,7 @@
                     {% endif %}
                 </td>
                 <td class="text-end pe-2 table-active fw-bold variance-col {% if mode == 'percent' %}{{ row.portfolio.effective_variance_pct|variance_css_class }}{% else %}{{ row.portfolio.effective_variance|variance_css_class }}{% endif %}"
+                    data-testid="portfolio-variance-{{ row.asset_class_id|default:row.hierarchy_level }}"
                     data-effective-variance="{% if mode == 'percent' %}{{ row.portfolio.effective_variance_pct|percent }}{% else %}{{ row.portfolio.effective_variance|money }}{% endif %}"
                     data-policy-variance="{% if mode == 'percent' %}{{ row.portfolio.policy_variance_pct|percent }}{% else %}{{ row.portfolio.policy_variance|money }}{% endif %}">
                     <span class="variance-value">

@@ -1,11 +1,11 @@
 {% load humanize %}
 {% load portfolio_filters %}
 
-<div class="sidebar">
+<div class="sidebar" data-testid="sidebar">
     <div class="sidebar-header mb-3 d-flex justify-content-between align-items-center">
-        <div>
-            <h5 class="fw-bold mb-0">Net Worth</h5>
-            <h3 class="fw-bold mb-0">${{ sidebar_data.grand_total|floatformat:0|intcomma }}</h3>
+        <div data-testid="sidebar-portfolio-total">
+            <h5 class="fw-bold mb-0" data-testid="sidebar-total-label">Net Worth</h5>
+            <h3 class="fw-bold mb-0" data-testid="sidebar-total-value">${{ sidebar_data.grand_total|floatformat:0|intcomma }}</h3>
         </div>
         <button class="btn btn-sm btn-outline-secondary d-none d-md-block" onclick="document.getElementById('sidebar-toggle').click()" title="Collapse Sidebar">
             <i class="bi bi-chevron-left"></i>
@@ -14,15 +14,16 @@
 
     <div class="accordion" id="sidebarAccordion">
         {% for group_name, group in sidebar_data.groups.items %}
-        <div class="accordion-item border-0 mb-2">
+        <div class="accordion-item border-0 mb-2" data-testid="sidebar-group-{{ group_name }}">
             <h2 class="accordion-header" id="heading{{ forloop.counter }}">
                 <button
                     class="accordion-button d-flex justify-content-between align-items-center bg-light rounded"
                     type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ forloop.counter }}"
+                    data-testid="sidebar-group-toggle-{{ group_name }}"
                     aria-expanded="true"
                     aria-controls="collapse{{ forloop.counter }}">
                     <span class="fw-bold me-auto">{{ group.label }}</span>
-                    <span class="fw-bold text-success">${{ group.total|floatformat:0|intcomma }}</span>
+                    <span class="fw-bold text-success" data-testid="sidebar-group-value-{{ group_name }}">${{ group.total|floatformat:0|intcomma }}</span>
                 </button>
             </h2>
             <div id="collapse{{ forloop.counter }}"
@@ -31,17 +32,17 @@
                 <div class="accordion-body p-0">
                     <ul class="list-group list-group-flush">
                         {% for account in group.accounts %}
-                        <a href="{% url 'portfolio:account_holdings' account.id %}" class="text-decoration-none text-dark">
-                        <li class="list-group-item border-0 d-flex justify-content-between align-items-center ps-4">
+                        <a href="{% url 'portfolio:account_holdings' account.id %}" class="text-decoration-none text-dark" data-testid="sidebar-account-link-{{ account.id }}">
+                        <li class="list-group-item border-0 d-flex justify-content-between align-items-center ps-4" data-testid="sidebar-account-{{ account.id }}">
                             <div>
-                                <div class="fw-bold">{{ account.name }}</div>
+                                <div class="fw-bold" data-testid="sidebar-account-name-{{ account.id }}">{{ account.name }}</div>
                                 <div class="text-muted small">{{ account.institution }}</div>
                             </div>
                             <div class="text-end">
-                                <div class="text-success small fw-bold">
+                                <div class="text-success small fw-bold" data-testid="sidebar-account-value-{{ account.id }}">
                                     ${{ account.total|floatformat:0|intcomma }}
                                 </div>
-                                <div class="text-muted small" style="font-size: 0.75em;" title="Absolute Deviation vs Target">
+                                <div class="text-muted small" style="font-size: 0.75em;" title="Absolute Deviation vs Target" data-testid="sidebar-account-drift-{{ account.id }}">
                                     drift: {{ account.absolute_deviation_pct|percent:1 }}
                                 </div>
                             </div>

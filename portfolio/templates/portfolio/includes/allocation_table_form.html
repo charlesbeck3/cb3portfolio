@@ -1,7 +1,7 @@
 {% load allocation_tags %}
 {% load portfolio_filters %}
 {% with account_types=rows.0.account_types %}
-<table class="table table-bordered table-striped table-hover mb-0 align-middle target-allocation-table" id="{{ table_id }}">
+<table class="table table-bordered table-striped table-hover mb-0 align-middle target-allocation-table" id="{{ table_id }}" data-testid="allocation-table-{{ mode }}">
     <thead class="table-light">
         <tr>
             <th scope="col" class="ps-4" rowspan="2" style="width: 250px; min-width: 250px; white-space: nowrap;">Asset Class</th>
@@ -10,7 +10,7 @@
                     <div>{{ group.label }}</div>
                     <div class="fw-normal mt-1">
                         {% if mode == 'percent' %}
-                        <select name="strategy_at_{{ group.id }}" class="form-select form-select-sm d-inline-block w-auto py-0 px-2" style="font-size: 0.75rem;">
+                        <select name="strategy_at_{{ group.id }}" data-testid="strategy-select-at-{{ group.id }}" class="form-select form-select-sm d-inline-block w-auto py-0 px-2" style="font-size: 0.75rem;">
                             <option value="">-- Unassigned --</option>
                             {% for s in strategies %}
                                 <option value="{{ s.id }}" {% if s.id == group.active_strategy_id %}selected{% endif %}>{{ s.name }}</option>
@@ -36,7 +36,7 @@
                         <div><small>{{ acc.name }}</small></div>
                         <div class="fw-normal mt-1">
                             {% if mode == 'percent' %}
-                            <select name="strategy_acc_{{ acc.id }}" class="form-select form-select-sm d-inline-block w-auto py-0 px-2" style="font-size: 0.75rem;">
+                            <select name="strategy_acc_{{ acc.id }}" data-testid="strategy-select-acc-{{ acc.id }}" class="form-select form-select-sm d-inline-block w-auto py-0 px-2" style="font-size: 0.75rem;">
                                 <option value="">-- Use Default (Type Strategy) --</option>
                                 <option value="">-- Use Default (Type Strategy) --</option>
                                 {% for s in strategies %}
@@ -80,11 +80,11 @@
     </thead>
     <tbody>
         {% for row in rows %}
-        <tr data-hierarchy-level="{{ row.hierarchy_level }}">
-            <td class="ps-4">{{ row.asset_class_name }}</td>
+        <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="allocation-row-{{ row.asset_class_id|default:row.hierarchy_level }}">
+            <td class="ps-4" data-testid="asset-class-name-{{ row.asset_class_id|default:row.hierarchy_level }}">{{ row.asset_class_name }}</td>
 
             {% for group in row.account_types %}
-                <td class="text-end pe-1 small">
+                <td class="text-end pe-1 small" data-testid="at-{{ group.id }}-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ group.actual_pct|percent }}</span>
                     {% else %}
@@ -92,7 +92,7 @@
                     {% endif %}
                 </td>
 
-                <td class="text-end pe-1 small col-mode-policy d-none">
+                <td class="text-end pe-1 small col-mode-policy d-none" data-testid="at-{{ group.id }}-policy-{{ row.asset_class_id|default:row.hierarchy_level }}">
                      {% if mode == 'percent' %}
                         <span class="percent">{{ group.policy_pct|default:0|percent }}</span>
                      {% else %}
@@ -100,7 +100,7 @@
                      {% endif %}
                 </td>
 
-                <td class="text-end pe-1 small fw-bold col-mode-effective">
+                <td class="text-end pe-1 small fw-bold col-mode-effective" data-testid="at-{{ group.id }}-effective-{{ row.asset_class_id|default:row.hierarchy_level }}">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ group.effective_pct|percent }}</span>
                     {% else %}
@@ -108,6 +108,7 @@
                     {% endif %}
                 </td>
                 <td class="text-end pe-1 small fw-bold variance-col {{ group.effective_variance|variance_css_class }}"
+                    data-testid="at-{{ group.id }}-variance-{{ row.asset_class_id|default:row.hierarchy_level }}"
                     data-effective-variance="{% if mode == 'percent' %}{{ group.effective_variance_pct|percent }}{% else %}{{ group.effective_variance|money }}{% endif %}"
                     data-policy-variance="{% if mode == 'percent' %}{{ group.policy_variance_pct|percent }}{% else %}{{ group.policy_variance|money }}{% endif %}"
                     data-effective-variance-pct="{{ group.effective_variance_pct }}"
@@ -122,21 +123,21 @@
                 </td>
 
                 {% for acc in group.accounts %}
-                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">
+                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}" data-testid="acc-{{ acc.id }}-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ acc.actual_pct|percent }}</span>
                         {% else %}
                             <span class="money">{{ acc.actual|money }}</span>
                         {% endif %}
                     </td>
-                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}">
+                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}" data-testid="acc-{{ acc.id }}-policy-{{ row.asset_class_id|default:row.hierarchy_level }}">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ acc.policy_pct|percent }}</span>
                         {% else %}
                             <span class="money">{{ acc.policy|money }}</span>
                         {% endif %}
                     </td>
-                    <td class="text-end pe-2 small table-warning d-none col-acc-{{ group.id }}">
+                    <td class="text-end pe-2 small table-warning d-none col-acc-{{ group.id }}" data-testid="acc-{{ acc.id }}-variance-{{ row.asset_class_id|default:row.hierarchy_level }}">
                          <!-- Individual accounts only have policy variance -->
                          <span class="variance-value">
                             {% if mode == 'percent' %}
@@ -149,7 +150,7 @@
                 {% endfor %}
             {% endfor %}
 
-            <td class="text-end pe-2 table-active">
+            <td class="text-end pe-2 table-active" data-testid="portfolio-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
                 {% if mode == 'percent' %}
                     <span class="percent">{{ row.portfolio.actual_pct|percent }}</span>
                 {% else %}
@@ -157,6 +158,7 @@
                 {% endif %}
             </td>
             <td class="text-end pe-1 table-active small col-mode-policy d-none"
+                data-testid="portfolio-policy-{{ row.asset_class_id|default:row.hierarchy_level }}"
                 {% if row.is_cash %}id="cash-exp-target"
                 {% elif row.hierarchy_level == 1 %}id="sub-total-exp-target-{{ row.category_code }}"
                 {% elif row.hierarchy_level == 999 %}id="row-exp-target-{{ row.asset_class_id }}"{% endif %}
@@ -168,6 +170,7 @@
                 {% endif %}
             </td>
             <td class="text-end pe-1 table-active small col-mode-effective"
+                data-testid="portfolio-effective-{{ row.asset_class_id|default:row.hierarchy_level }}"
                 data-category-code="{{ row.category_code }}"
                 {% if row.is_cash %}id="cash-total"
                 {% elif row.hierarchy_level == 1 %}id="sub-total-target-{{ row.category_code }}"
@@ -180,6 +183,7 @@
                 {% endif %}
             </td>
             <td class="text-end pe-2 table-active fw-bold variance-col {{ row.portfolio.effective_variance|variance_css_class }}"
+                data-testid="portfolio-variance-{{ row.asset_class_id|default:row.hierarchy_level }}"
                 data-effective-variance="{% if mode == 'percent' %}{{ row.portfolio.effective_variance_pct|percent }}{% else %}{{ row.portfolio.effective_variance|money }}{% endif %}"
                 data-policy-variance="{% if mode == 'percent' %}{{ row.portfolio.policy_variance_pct|percent }}{% else %}{{ row.portfolio.policy_variance|money }}{% endif %}"
                 data-effective-variance-pct="{{ row.portfolio.effective_variance_pct }}"
