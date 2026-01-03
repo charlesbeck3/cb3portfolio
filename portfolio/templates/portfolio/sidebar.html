@@ -5,7 +5,8 @@
     <div class="sidebar-header mb-3 d-flex justify-content-between align-items-center">
         <div data-testid="sidebar-portfolio-total">
             <h5 class="fw-bold mb-0" data-testid="sidebar-total-label">Net Worth</h5>
-            <h3 class="fw-bold mb-0" data-testid="sidebar-total-value">${{ sidebar_data.grand_total|floatformat:0|intcomma }}</h3>
+            <h3 class="fw-bold mb-0" data-testid="sidebar-total-value">{{ sidebar_data.grand_total|money:0 }}</h3>
+
         </div>
         <button class="btn btn-sm btn-outline-secondary d-none d-md-block" onclick="document.getElementById('sidebar-toggle').click()" title="Collapse Sidebar">
             <i class="bi bi-chevron-left"></i>
@@ -23,7 +24,7 @@
                     aria-expanded="true"
                     aria-controls="collapse{{ forloop.counter }}">
                     <span class="fw-bold me-auto">{{ group.label }}</span>
-                    <span class="fw-bold text-success" data-testid="sidebar-group-value-{{ group_name }}">${{ group.total|floatformat:0|intcomma }}</span>
+                    <span class="fw-bold text-success" data-testid="sidebar-group-value-{{ group_name }}">{{ group.total|money:0 }}</span>
                 </button>
             </h2>
             <div id="collapse{{ forloop.counter }}"
@@ -40,7 +41,7 @@
                             </div>
                             <div class="text-end">
                                 <div class="text-success small fw-bold" data-testid="sidebar-account-value-{{ account.id }}">
-                                    ${{ account.total|floatformat:0|intcomma }}
+                                    {{ account.total|money:0 }}
                                 </div>
                                 <div class="text-muted small" style="font-size: 0.75em;" title="Absolute Deviation vs Target" data-testid="sidebar-account-drift-{{ account.id }}">
                                     drift: {{ account.absolute_deviation_pct|percent:1 }}

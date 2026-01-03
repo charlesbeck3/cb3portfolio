@@ -146,6 +146,7 @@ class FinancialDisplayValidator:
         """
         text = locator.text_content()
         assert text is not None, "Locator has no text content"
+        text = text.strip()
 
         # Check if negative (wrapped in parentheses)
         is_negative = text.startswith("(") and text.endswith(")")
@@ -174,6 +175,7 @@ class FinancialDisplayValidator:
         """
         text = locator.text_content()
         assert text is not None, "Locator has no text content"
+        text = text.strip()
 
         # Check if negative (wrapped in parentheses)
         is_negative = text.startswith("(") and text.endswith(")")
