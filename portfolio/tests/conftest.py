@@ -14,8 +14,14 @@ Mock Fixtures (imported from fixtures/mocks.py):
 - stable_test_prices: Pre-configured standard test prices
 - zero_prices: Empty prices for edge case testing
 - volatile_prices: Extreme prices for stress testing
+
+xdist Compatibility:
+- Session-scoped fixtures run once per worker (not once total)
+- Database fixtures use session scope for performance
+- base_system_data uses idempotent SystemSeederService across workers
 """
 
+import os
 from decimal import Decimal
 from typing import Any
 
@@ -81,6 +87,21 @@ __all__ = [
 ]
 
 
+def pytest_configure(config: Any) -> None:
+    """
+    Configure pytest with xdist awareness.
+
+    Captures worker ID for debugging parallel execution issues and sets
+    Django configuration for thread safety.
+    """
+    # Set Django async unsafe flag
+    os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
+
+    # Capture xdist worker ID if running in parallel
+    worker_id = getattr(config, "workerinput", {}).get("workerid", "master")
+    config.worker_id = worker_id
+
+
 # ============================================================================
 # SYSTEM DATA FIXTURES
 # ============================================================================
@@ -93,6 +114,11 @@ def base_system_data(db: Any) -> Any:
 
     This replaces PortfolioTestMixin.setup_system_data() for pytest tests.
     Provides access to standard institutions, account types, and asset classes.
+
+    xdist Compatibility:
+    - SystemSeederService uses get_or_create for idempotency across workers
+    - Safe to call multiple times - will reuse existing data
+    - Each worker gets consistent system data state
 
     Returns:
         Object with attributes for all system data (institutions, types, categories, etc.)

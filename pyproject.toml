@@ -105,6 +105,7 @@ dev = [
     "safety>=3.7.0",                 # Security scanning - update monthly
     "factory-boy>=3.3.3",
     "types-pytz>=2025.2.0.20251108",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -205,7 +206,7 @@ settings-module = "config.settings"
 DJANGO_SETTINGS_MODULE = "config.settings.testing"
 python_files = ["test_*.py", "*_test.py"]
 testpaths = ["portfolio/tests"]
-addopts = "--cov=portfolio --cov-report=term-missing --cov-report=html:coverage_html"
+addopts = "-n auto --dist loadscope --cov=portfolio --cov-report=term-missing:skip-covered --cov-report=html:coverage_html"
 
 [tool.coverage.run]
 # Coverage configuration

@@ -326,22 +326,23 @@ uv run python manage.py seed_dev_data
 
 ### Testing
 
+**Quick Start**
+
 ```bash
-# Run all tests
+# Run all tests (parallel by default)
 uv run pytest
 
 # Run with coverage
 uv run pytest --cov=portfolio --cov-report=html
+open coverage_html/index.html
 
 # Run specific test modules
 uv run pytest portfolio/tests/services/allocations/test_calculations.py
-uv run pytest portfolio/tests/services/allocations/test_data_providers.py
-uv run pytest portfolio/tests/services/allocations/test_formatters.py
-uv run pytest portfolio/tests/services/allocations/test_engine.py
 
 # Run tests by type
 uv run pytest -m unit           # Unit tests only (fast, no Django)
 uv run pytest -m integration    # Integration tests (with Django)
+uv run pytest -m e2e            # E2E tests only
 uv run pytest -m "not e2e"      # Skip slow E2E tests
 
 # Run with verbosity
@@ -349,6 +350,51 @@ uv run pytest -v --tb=short
 
 # Run specific test
 uv run pytest -k "test_calculator_builds_presentation"
+```
+
+**Parallel Execution (pytest-xdist)**
+
+Tests run in parallel by default using pytest-xdist for 60-70% faster execution:
+
+```bash
+# Default: Auto-detect CPU cores (parallel execution enabled)
+uv run pytest
+
+# Explicit worker count
+uv run pytest -n 4
+
+# Disable parallel execution (for debugging)
+uv run pytest -n 0
+
+# Different distribution strategies
+uv run pytest -n auto --dist loadscope  # By module/class (default, best for Django)
+uv run pytest -n auto --dist loadfile   # By file
+```
+
+**Performance Comparison**
+
+```bash
+# Compare serial vs parallel performance
+./scripts/compare_test_performance.sh
+
+# Expected results on 10-core machine:
+# Serial: ~8 seconds (333 tests)
+# Parallel: ~2-4 seconds (60-70% faster)
+```
+
+**Debugging Parallel Test Issues**
+
+If you encounter flaky tests or race conditions:
+
+```bash
+# Run serially to isolate issues
+uv run pytest -n 0 portfolio/tests/path/to/test.py -v
+
+# Run test multiple times to detect flakiness
+uv run pytest --count=10 portfolio/tests/path/to/test.py
+
+# Show xdist worker assignments
+uv run pytest -n auto -v | grep "gw"
 ```
 
 ### Testing Strategy

@@ -50,16 +50,16 @@ repos:
         pass_filenames: false
 
       - id: pytest-fast
-        name: Fast Unit Tests
-        entry: uv run pytest -m unit
+        name: Fast Unit Tests (Parallel)
+        entry: uv run pytest -m unit -n auto --dist loadscope -q
         language: system
         types: [python]
         pass_filenames: false
-        # Run on commit by default (fast)
+        # Run on commit by default (fast with parallel execution)
 
       - id: pytest-integration
-        name: Integration Tests
-        entry: uv run pytest -m integration
+        name: Integration Tests (Parallel)
+        entry: uv run pytest -m integration -n auto --dist loadscope -q
         language: system
         types: [python]
         pass_filenames: false
