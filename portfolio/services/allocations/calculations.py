@@ -1014,7 +1014,7 @@ class AllocationCalculator:
 class AllocationAggregator:
     """
     Helper class to calculate aggregated subtotals and totals from a DataFrame.
-    
+
     Used primarily by the rebalancing engine to compute current and pro forma
     aggregated stats efficiently.
     """
@@ -1022,7 +1022,7 @@ class AllocationAggregator:
     def __init__(self, df: pd.DataFrame):
         """
         Initialize with a DataFrame containing asset/holding data.
-        
+
         Args:
             df: DataFrame containing at least:
                 - value (Decimal or float)
@@ -1035,7 +1035,7 @@ class AllocationAggregator:
     def calculate_aggregations(self) -> None:
         """Calculate totals by asset class and portfolio."""
         from decimal import Decimal
-        
+
         if self.df.empty:
             self.aggregated_context = {
                 "asset_class": {},
@@ -1046,13 +1046,15 @@ class AllocationAggregator:
         # Ensure value is float for calculation
         # The input df usually has 'value' as Decimal from database
         self.df = self.df.copy()
-        
+
         # Handle potential empty or mixed types in value
         if "value" in self.df.columns:
-            self.df["value_float"] = self.df["value"].apply(lambda x: float(x) if x is not None else 0.0)
+            self.df["value_float"] = self.df["value"].apply(
+                lambda x: float(x) if x is not None else 0.0
+            )
         else:
             self.df["value_float"] = 0.0
-            
+
         total_value = self.df["value_float"].sum()
 
         # 1. Asset Class Aggregation
