@@ -153,6 +153,17 @@ def base_system_data(db: Any) -> Any:
 
 
 # ============================================================================
+# ASSET CLASS FIXTURES
+# ============================================================================
+
+
+@pytest.fixture
+def international_stocks(base_system_data: Any) -> Any:
+    """International Stocks asset class."""
+    return base_system_data.asset_class_intl_developed
+
+
+# ============================================================================
 # USER FIXTURES
 # ============================================================================
 
