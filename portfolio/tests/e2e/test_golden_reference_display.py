@@ -177,8 +177,9 @@ class TestGoldenReferenceDisplay:
         expected = golden_portfolio_simple["expected"]["us_equities"]
         us_eq_id = golden_portfolio_simple["us_equities_id"]
 
-        # Find US Equities actual value
-        us_actual = authenticated_page.locator(f"[data-testid='portfolio-actual-{us_eq_id}']")
+        # Scope to dollar table to avoid duplicate test IDs
+        dollar_table = authenticated_page.locator("[data-testid='allocation-table-dollar']")
+        us_actual = dollar_table.locator(f"[data-testid='portfolio-actual-{us_eq_id}']")
         expect(us_actual).to_be_visible()
 
         actual_value = self.validator.get_money_value(us_actual)
@@ -200,8 +201,9 @@ class TestGoldenReferenceDisplay:
         expected = golden_portfolio_simple["expected"]["us_equities"]
         us_eq_id = golden_portfolio_simple["us_equities_id"]
 
-        # Find US Equities percentage
-        us_pct = authenticated_page.locator(f"[data-testid='portfolio-actual-pct-{us_eq_id}']")
+        # Scope to percent table to avoid duplicate test IDs
+        percent_table = authenticated_page.locator("[data-testid='allocation-table-percent']")
+        us_pct = percent_table.locator(f"[data-testid='portfolio-actual-{us_eq_id}']")
         expect(us_pct).to_be_visible()
 
         actual_pct = self.validator.get_percent_value(us_pct)
@@ -247,8 +249,9 @@ class TestGoldenReferenceDisplay:
         expected = golden_portfolio_simple["expected"]["us_equities"]
         us_eq_id = golden_portfolio_simple["us_equities_id"]
 
-        # Find variance percentage
-        us_variance = authenticated_page.locator(f"[data-testid='portfolio-variance-{us_eq_id}']")
+        # Scope to percent table to avoid duplicate test IDs
+        percent_table = authenticated_page.locator("[data-testid='allocation-table-percent']")
+        us_variance = percent_table.locator(f"[data-testid='portfolio-variance-{us_eq_id}']")
 
         if us_variance.is_visible():
             actual_variance = self.validator.get_percent_value(us_variance)
@@ -284,8 +287,9 @@ class TestGoldenReferenceDisplay:
         expected = golden_portfolio_simple["expected"]["treasuries"]
         treasuries_id = golden_portfolio_simple["treasuries_id"]
 
-        # Check actual value
-        treasuries_actual = authenticated_page.locator(
+        # Check actual value (dollar table)
+        dollar_table = authenticated_page.locator("[data-testid='allocation-table-dollar']")
+        treasuries_actual = dollar_table.locator(
             f"[data-testid='portfolio-actual-{treasuries_id}']"
         )
         if treasuries_actual.is_visible():
@@ -294,10 +298,10 @@ class TestGoldenReferenceDisplay:
                 f"Treasuries value should be ${expected['value']:,.2f}"
             )
 
-        # Check percentage
-        treasuries_pct = authenticated_page.locator(
-            f"[data-testid='portfolio-actual-pct-{treasuries_id}']"
-        )
+        # Check percentage and variance (percent table)
+        percent_table = authenticated_page.locator("[data-testid='allocation-table-percent']")
+
+        treasuries_pct = percent_table.locator(f"[data-testid='portfolio-actual-{treasuries_id}']")
         if treasuries_pct.is_visible():
             actual_pct = self.validator.get_percent_value(treasuries_pct)
             assert abs(actual_pct - expected["percent"]) < 0.1, (
@@ -305,7 +309,7 @@ class TestGoldenReferenceDisplay:
             )
 
         # Check variance (should be negative/red)
-        treasuries_variance = authenticated_page.locator(
+        treasuries_variance = percent_table.locator(
             f"[data-testid='portfolio-variance-{treasuries_id}']"
         )
         if treasuries_variance.is_visible():
@@ -696,8 +700,11 @@ class TestGoldenReferenceMultiAccount:
         us_eq_id = golden_portfolio_multi_account["us_equities_id"]
         treasuries_id = golden_portfolio_multi_account["treasuries_id"]
 
+        # Scope to percent table to avoid duplicate test IDs
+        percent_table = authenticated_page.locator("[data-testid='allocation-table-percent']")
+
         # Check US Equities
-        us_pct = authenticated_page.locator(f"[data-testid='portfolio-actual-pct-{us_eq_id}']")
+        us_pct = percent_table.locator(f"[data-testid='portfolio-actual-{us_eq_id}']")
         if us_pct.is_visible():
             actual_pct = self.validator.get_percent_value(us_pct)
             assert abs(actual_pct - expected_us["percent"]) < 0.1, (
@@ -705,9 +712,7 @@ class TestGoldenReferenceMultiAccount:
             )
 
         # Check Treasuries
-        treasuries_pct = authenticated_page.locator(
-            f"[data-testid='portfolio-actual-pct-{treasuries_id}']"
-        )
+        treasuries_pct = percent_table.locator(f"[data-testid='portfolio-actual-{treasuries_id}']")
         if treasuries_pct.is_visible():
             actual_pct = self.validator.get_percent_value(treasuries_pct)
             assert abs(actual_pct - expected_treasuries["percent"]) < 0.1, (
@@ -731,8 +736,11 @@ class TestGoldenReferenceMultiAccount:
         us_eq_id = golden_portfolio_multi_account["us_equities_id"]
         treasuries_id = golden_portfolio_multi_account["treasuries_id"]
 
+        # Scope to percent table to avoid duplicate test IDs
+        percent_table = authenticated_page.locator("[data-testid='allocation-table-percent']")
+
         # Check US Equities variance
-        us_variance = authenticated_page.locator(f"[data-testid='portfolio-variance-{us_eq_id}']")
+        us_variance = percent_table.locator(f"[data-testid='portfolio-variance-{us_eq_id}']")
         if us_variance.is_visible():
             actual_variance = self.validator.get_percent_value(us_variance)
             assert abs(actual_variance - expected_us["variance_percent"]) < 0.1, (
@@ -744,7 +752,7 @@ class TestGoldenReferenceMultiAccount:
             assert classes is not None and "variance-positive" in classes
 
         # Check Treasuries variance
-        treasuries_variance = authenticated_page.locator(
+        treasuries_variance = percent_table.locator(
             f"[data-testid='portfolio-variance-{treasuries_id}']"
         )
         if treasuries_variance.is_visible():
