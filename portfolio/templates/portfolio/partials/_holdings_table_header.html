@@ -1,0 +1,37 @@
+{% comment %}
+Holdings table header partial - reusable across all holdings views.
+
+Usage:
+    {% #holdings_header show_checkbox=False show_allocation=True show_actions=False account=None %}
+
+Parameters:
+    - show_checkbox: Show selection checkboxes (for bulk actions)
+    - show_allocation: Show % of Account column
+    - show_actions: Show Actions column (edit/delete buttons)
+    - account: Account object (affects column display)
+{% endcomment %}
+
+<thead>
+    <tr>
+        {% if show_checkbox %}
+        <th style="width: 3%;"></th>
+        {% endif %}
+
+        <th style="width: 8%;">Ticker</th>
+
+        <th style="width: {% if account %}20{% else %}20{% endif %}%;">Security Name</th>
+
+        <th style="width: 15%;">Asset Class</th>
+        <th class="text-end" style="width: 10%;">Shares</th>
+        <th class="text-end" style="width: 10%;">Price</th>
+        <th class="text-end" style="width: 12%;">Market Value</th>
+
+        {% if show_allocation %}
+        <th class="text-end" style="width: 8%;">% of Account</th>
+        {% endif %}
+
+        {% if show_actions %}
+        <th class="text-center" style="width: 5%;">X</th>
+        {% endif %}
+    </tr>
+</thead>

@@ -1,0 +1,154 @@
+{% comment %}
+Holdings table row partial - individual holding display.
+
+Usage:
+    {% holdings_row holding=row show_checkbox=False show_allocation=True show_actions=False account=None is_aggregated=False %}
+
+Parameters:
+    - holding: Holding dict (row from AllocationEngine)
+    - show_checkbox: Show selection checkbox
+    - show_allocation: Show allocation percentage
+    - show_actions: Show edit/delete actions
+    - account: Account object (affects column display)
+    - is_aggregated: Boolean, enables detail view click
+{% endcomment %}
+
+{% load portfolio_filters %}
+
+<tr data-testid="holding-row-{{ holding.ticker }}"
+    id="{{ holding.row_id }}"
+    {% if holding.is_zero_holding %}class="table-light text-muted fst-italic"{% endif %}
+    {% if is_aggregated and not holding.is_zero_holding %}
+    class="cursor-pointer ticker-row"
+    hx-get="{% url 'portfolio:ticker_details' holding.ticker %}"
+    hx-target="#ticker-details-{{ holding.ticker }}"
+    hx-swap="outerHTML"
+    hx-trigger="click"
+    data-ticker="{{ holding.ticker }}"
+    data-details-url="{% url 'portfolio:ticker_details' holding.ticker %}"
+    {% endif %}>
+
+    {% if show_checkbox %}
+    <td>
+        {% if not holding.is_zero_holding %}
+        <input type="checkbox"
+               class="form-check-input holding-checkbox"
+               name="selected_holdings"
+               value="{{ holding.holding_id }}"
+               aria-label="Select {{ holding.ticker }}">
+        {% endif %}
+    </td>
+    {% endif %}
+
+    <td data-testid="ticker-{{ holding.ticker }}">
+        <div class="d-flex justify-content-between align-items-center">
+            <strong>{{ holding.ticker }}</strong>
+            {% if holding.is_zero_holding %}
+                <span class="badge bg-secondary ms-1" style="font-size: 0.6rem;">No Position</span>
+            {% endif %}
+        </div>
+    </td>
+
+    <td data-testid="name-{{ holding.ticker }}">{{ holding.security_name }}</td>
+
+    {% if not account %}
+    {# Aggregated view logic if needed, but holding dict usually has keys #}
+    {# If we needed account name here, it would be in the dict #}
+    {% endif %}
+
+    <td data-testid="asset-class-{{ holding.ticker }}">{{ holding.asset_class }}</td>
+
+    {# Shares column - comes BEFORE price to match header order #}
+    <td class="text-end" data-testid="shares-{{ holding.ticker }}" style="min-width: 100px;">
+        {% if holding.is_zero_holding %}
+            <span class="text-muted">&mdash;</span>
+        {% elif show_actions %}
+            {# Editable input field #}
+            <div class="input-group input-group-sm">
+                <input type="number"
+                       class="form-control form-control-sm text-end p-1"
+                       name="shares_{{ holding.holding_id }}"
+                       value="{{ holding.shares_input|default:holding.shares }}"
+                       step="0.0001"
+                       min="0"
+                       style="font-size: 0.8rem;"
+                       data-testid="edit-shares-{{ holding.holding_id }}"
+                       aria-label="Shares for {{ holding.ticker }}">
+                <input type="hidden" name="holding_ids" value="{{ holding.holding_id }}">
+            </div>
+        {% else %}
+            {# Read-only display #}
+            <span class="number">{{ holding.shares|number:4 }}</span>
+        {% endif %}
+    </td>
+
+    {# Price column - comes AFTER shares to match header order #}
+    <td class="text-end" data-testid="price-{{ holding.ticker }}">
+        <span class="money">{{ holding.price|money:2 }}</span>
+    </td>
+
+    {# Target/Variance Shares - kept for consistency if needed, but partial focuses on basic row #}
+    {# Wait, existing holdings.html has Target Shares and Variance columns #}
+    {# The partial in Step 2.3 only had Shares. #}
+    {# I should probably match the columns in existing holdings.html IF I am replacing it #}
+    {# BUT the user's partial plan had fewer columns. #}
+    {# Assuming the user wants to SIMPLIFY the columns too? #}
+    {# No, "holdings table code appears in... holdings.html". usage of partial should match view. #}
+    {# I will stick to the columns in the PARTIAL provided by the user, but adapt data keys. #}
+    {# Actually, if I remove columns, I break text alignment with the Header. #}
+    {# The Header partial from Step 2.2 has: Ticker, Name, [Account], Asset Class, Shares, Price, Market Value, [% Allocation], [Actions]. #}
+    {# Existing holdings.html has: Ticker, Name, Asset Class, Price, Shares (Current, Target, Variance), Value (Current, Target, Variance), Alloc (Current, Target, Variance) #}
+    {# This is a MASSIVE difference. #}
+    {# The Header partial provided implements a SIMPLE table (like in Account Detail). #}
+    {# The existing holdings.html implements a COMPLEX table (rebalancing view style). #}
+    {# Use of the SIMPLE partial in the COMPLEX view will break the layout. #}
+
+    {# Decision: The user's plan seems to want to standardize on the SIMPLE view for "holdings tables". #}
+    {# But holdings.html is the main view. #}
+    {# If I replace the complex table with the simple partial, I lose Target/Variance columns. #}
+    {# Is this intended? "Django 6 Modernization... eliminate duplication". #}
+    {# Maybe `holdings.html` should retain its complex table and NOT use this partial? #}
+    {# But Step 2.5 explicitly says "Update holdings.html to Use Partials". #}
+
+    {# Compelling theory: The user wants `holdings.html` to LOOK like the simple table now? #}
+    {# Or the user wants me to ENABLE partials, and potentially I should have created a `_holdings_table_complex_row.html`? #}
+    {# But the plan provided the code for `_holdings_table_row.html`. #}
+
+    {# I will ignore the "Usage" in Step 2.5 and instead INTEGRATE the partial concept into holdings.html #}
+    {# BUT `holdings.html` needs the complex columns. #}
+    {# I cannot use the simple `_holdings_table_row.html` (which has 1 shares col) in a table that expects 3 shares cols. #}
+
+    {# I will modify `_holdings_table_row.html` to be FLEXIBLE or match the simpler view provided in the plan. #}
+    {# If I change `holdings.html` to use the partial, I implicitly change the table structure to the simple version. #}
+    {# I will follow the user's code for `holdings.html` in Step 2.5 which uses `{% holdings_header ... %}`. #}
+    {# This header has fewer columns. So the user INTENDS to simplify the table in `holdings.html`. #}
+
+    <td class="text-end">
+        {% if holding.is_zero_holding %}
+            <span class="text-muted">$0</span>
+        {% else %}
+            <span class="money">{{ holding.value|money:0 }}</span>
+        {% endif %}
+    </td>
+
+    {% if show_allocation %}
+    <td class="text-end">
+        <span class="percent">{{ holding.allocation|percent:1 }}</span>
+    </td>
+    {% endif %}
+
+    {# Actions column handled in ticker column in existing, but proper column in partial #}
+    {% if show_actions and not holding.is_zero_holding %}
+    <td class="text-center">
+         {# Delete button used to be in ticker col #}
+         {# The partial puts it in a separate col #}
+         {# I will respect the partial's design #}
+        <button type="button"
+                class="btn btn-sm btn-link text-danger p-0"
+                data-holding-id="{{ holding.holding_id }}"
+                aria-label="Delete {{ holding.ticker }}">
+            <i class="bi bi-trash"></i>
+        </button>
+    </td>
+    {% endif %}
+</tr>

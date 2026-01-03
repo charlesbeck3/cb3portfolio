@@ -375,3 +375,158 @@ class TestSecurityPrice:
         assert securities[0].id not in prices  # No price
         assert prices[securities[1].id] == Decimal("10.00")
         assert prices[securities[2].id] == Decimal("20.00")
+
+
+@pytest.mark.models
+@pytest.mark.integration
+class TestSecurityPriceConstraints:
+    """
+    Test Django 6 database-level constraints on SecurityPrice.
+
+    These tests verify that invalid data is rejected at the database level,
+    providing defense-in-depth beyond application validation.
+    """
+
+    def test_price_must_be_positive(self, base_system_data: Any) -> None:
+        """Test that negative prices are rejected at database level."""
+        from django.core.exceptions import ValidationError
+        from django.db import IntegrityError
+        from django.utils import timezone
+
+        from portfolio.models import AssetClass, Security, SecurityPrice
+
+        system = base_system_data
+        asset_class = AssetClass.objects.create(name="Test Asset Neg", category=system.cat_us_eq)
+        security = Security.objects.create(
+            ticker="TEST_NEG", name="Test Security Negative", asset_class=asset_class
+        )
+
+        # Attempt to create with negative price
+        price = SecurityPrice(
+            security=security,
+            price=Decimal("-10.00"),
+            price_datetime=timezone.now(),
+            source=SecurityPrice.MANUAL,
+        )
+
+        # Should fail at validation or database level
+        with pytest.raises((ValidationError, IntegrityError)) as exc_info:
+            price.full_clean()  # Application-level validation
+            price.save()  # Database-level constraint
+
+        # Verify appropriate error message
+        error_str = str(exc_info.value)
+        # Note: SQLite constraint error messages vary, but usually contain CHECK constraint failed
+        assert (
+            "price" in error_str.lower()
+            or "positive" in error_str.lower()
+            or "check constraint" in error_str.lower()
+        )
+
+    def test_price_cannot_be_zero(self, base_system_data: Any) -> None:
+        """Test that zero prices are rejected (price must be > 0, not >= 0)."""
+        from django.core.exceptions import ValidationError
+        from django.db import IntegrityError
+        from django.utils import timezone
+
+        from portfolio.models import AssetClass, Security, SecurityPrice
+
+        system = base_system_data
+        asset_class = AssetClass.objects.create(name="Test Asset Zero", category=system.cat_us_eq)
+        security = Security.objects.create(
+            ticker="TEST_ZERO", name="Test Security Zero", asset_class=asset_class
+        )
+
+        price = SecurityPrice(
+            security=security,
+            price=Decimal("0.00"),
+            price_datetime=timezone.now(),
+            source=SecurityPrice.MANUAL,
+        )
+
+        with pytest.raises((ValidationError, IntegrityError)) as exc_info:
+            price.full_clean()
+            price.save()
+
+        error_str = str(exc_info.value)
+        assert (
+            "price" in error_str.lower()
+            or "greater" in error_str.lower()
+            or "check constraint" in error_str.lower()
+        )
+
+    # NOTE: Future constraint test skipped because constraint is disabled on SQLite
+    # def test_price_datetime_cannot_be_future(self, base_system_data: Any) -> None:
+    #     ...
+
+    def test_duplicate_security_datetime_rejected(self, base_system_data: Any) -> None:
+        """
+        Test unique constraint on (security, price_datetime).
+
+        Verifies that Django 6 UniqueConstraint provides clear error message.
+        """
+        from django.db import IntegrityError
+        from django.utils import timezone
+
+        from portfolio.models import AssetClass, Security, SecurityPrice
+
+        system = base_system_data
+        asset_class = AssetClass.objects.create(
+            name="Test Asset Duplicate", category=system.cat_us_eq
+        )
+        security = Security.objects.create(
+            ticker="TEST_DUP", name="Test Security Duplicate", asset_class=asset_class
+        )
+
+        now = timezone.now()
+
+        # Create first price - should succeed
+        SecurityPrice.objects.create(
+            security=security,
+            price=Decimal("100.00"),
+            price_datetime=now,
+            source=SecurityPrice.MANUAL,
+        )
+
+        # Attempt to create duplicate at same datetime - should fail
+        with pytest.raises(IntegrityError) as exc_info:
+            SecurityPrice.objects.create(
+                security=security,
+                price=Decimal("105.00"),  # Different price
+                price_datetime=now,  # Same datetime
+                source=SecurityPrice.MANUAL,
+            )
+
+        # Verify error message mentions uniqueness
+        error_str = str(exc_info.value)
+        assert "unique" in error_str.lower() or "duplicate" in error_str.lower()
+
+    def test_valid_price_accepted(self, base_system_data: Any) -> None:
+        """Test that valid prices are accepted without constraint violations."""
+        from django.utils import timezone
+
+        from portfolio.models import AssetClass, Security, SecurityPrice
+
+        system = base_system_data
+        asset_class = AssetClass.objects.create(name="Test Asset Valid", category=system.cat_us_eq)
+        security = Security.objects.create(
+            ticker="TEST_VALID", name="Test Security Valid", asset_class=asset_class
+        )
+
+        # Create valid price - should succeed
+        now = timezone.now()
+        price = SecurityPrice.objects.create(
+            security=security,
+            price=Decimal("150.50"),
+            price_datetime=now,
+            source=SecurityPrice.YFINANCE,
+        )
+
+        # Verify creation succeeded
+        assert price.pk is not None
+        assert price.price == Decimal("150.50")
+        assert price.security == security
+
+        # Verify can query it back
+        retrieved = SecurityPrice.objects.get(pk=price.pk)
+        assert retrieved.price == Decimal("150.50")

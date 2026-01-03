@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models import Q
 
 from portfolio.managers import HoldingManager
 
@@ -75,26 +76,57 @@ class SecurityPrice(models.Model):
     fetched_at = models.DateTimeField(
         auto_now_add=True, help_text="When we fetched this price from data source (audit trail)"
     )
+    # Source tracking
+    YFINANCE = "yfinance"
+    MANUAL = "manual"
+    CALCULATED = "calculated"
+
+    SOURCE_CHOICES = [
+        (YFINANCE, "Yahoo Finance"),
+        (MANUAL, "Manual Entry"),
+        (CALCULATED, "Calculated"),
+    ]
+
     source = models.CharField(
         max_length=20,
-        choices=[
-            ("yfinance", "Yahoo Finance"),
-            ("manual", "Manual Entry"),
-            ("calculated", "Calculated"),
-        ],
-        default="yfinance",
+        choices=SOURCE_CHOICES,
+        default=YFINANCE,
         help_text="Source of this price",
     )
 
     class Meta:
-        unique_together = ["security", "price_datetime"]
-        ordering = ["-price_datetime"]
-        indexes = [
-            models.Index(fields=["security", "-price_datetime"]),
-            models.Index(fields=["price_datetime"]),  # For time range queries
-        ]
         verbose_name = "Security Price"
         verbose_name_plural = "Security Prices"
+        ordering = ["-price_datetime"]
+
+        indexes = [
+            models.Index(fields=["security", "-price_datetime"]),
+            models.Index(fields=["price_datetime"]),
+        ]
+
+        # Django 6 constraints with custom error messages
+        constraints = [
+            # Price must be positive
+            models.CheckConstraint(
+                condition=Q(price__gt=0),
+                name="securityprice_price_positive",
+                violation_error_message="Price must be greater than zero",
+            ),
+            # Price datetime cannot be in future
+            # NOTE: Commented out because SQLite does not support non-deterministic functions (Now()) in CHECK constraints.
+            # This should be enabled when moving to PostgreSQL.
+            # models.CheckConstraint(
+            #    condition=Q(price_datetime__lte=Now()),
+            #    name='securityprice_datetime_not_future',
+            #    violation_error_message='Price datetime cannot be in the future'
+            # ),
+            # Unique per security and datetime with custom message
+            models.UniqueConstraint(
+                fields=["security", "price_datetime"],
+                name="unique_security_price_per_datetime",
+                violation_error_message="A price already exists for this security at this datetime",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.security.ticker} @ ${self.price} on {self.price_datetime}"
