@@ -76,7 +76,8 @@ class RebalancingCalculator:
         """Prepare holdings data as DataFrame for calculations.
 
         Includes asset classes with target allocations but no current holdings,
-        using the primary security for that asset class.
+        using the primary security for that asset class (from the prices dict,
+        which already includes primary securities).
 
         Returns:
             DataFrame with columns: security, asset_class, shares, price, value
@@ -100,11 +101,20 @@ class RebalancingCalculator:
             )
             existing_asset_class_ids.add(holding.security.asset_class.id)
 
+        # Build map of securities by asset class from prices dict
+        # This ensures we use the same Security instances that are in prices
+        securities_by_asset_class: dict[int, Security] = {}
+        for security in prices:
+            ac_id = security.asset_class_id
+            # Only track the first (primary) security per asset class
+            if ac_id not in securities_by_asset_class:
+                securities_by_asset_class[ac_id] = security
+
         # Add asset classes with targets but no holdings
         for asset_class, target_pct in target_allocations.items():
             if target_pct > 0 and asset_class.id not in existing_asset_class_ids:
-                # Get primary security for this asset class
-                primary_security = self._get_primary_security_for_asset_class(asset_class)
+                # Get security from prices dict (already includes primary securities)
+                primary_security = securities_by_asset_class.get(asset_class.id)
                 if primary_security:
                     price = prices.get(primary_security, Decimal("0"))
                     if price > 0:

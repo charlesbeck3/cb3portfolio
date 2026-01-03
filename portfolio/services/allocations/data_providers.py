@@ -1,12 +1,17 @@
 """Data access layer for allocation calculations."""
 
+from __future__ import annotations
+
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.db.models import F
 
 import pandas as pd
 import structlog
+
+if TYPE_CHECKING:
+    from portfolio.models import AssetClass, Holding, Security
 
 logger = structlog.get_logger(__name__)
 
@@ -489,3 +494,230 @@ class DjangoDataProvider:
         """
         policy_targets = self.get_policy_targets(user)
         return {0: policy_targets} if policy_targets else {0: {}}
+
+    # ========================================================================
+    # Shared DataFrame Building Helpers
+    # ========================================================================
+
+    def holdings_to_dataframe(
+        self,
+        holdings: list[Holding],
+        prices: dict[Security, Decimal] | None = None,
+        account_id: int | None = None,
+    ) -> pd.DataFrame:
+        """
+        Convert Django Holding objects to DataFrame format.
+
+        Shared helper used by both allocation views and rebalancing engine.
+        Produces a DataFrame with the same schema as get_holdings_df_detailed().
+
+        Args:
+            holdings: List of Holding model objects
+            prices: Optional dict mapping Security to price. If not provided,
+                    uses the latest price from security.prices
+            account_id: Optional account ID override (for rebalancing where
+                       all holdings are from the same account)
+
+        Returns:
+            DataFrame with columns: Account_ID, Account_Name, Account_Type,
+            Ticker, Security_Name, Asset_Class, Asset_Class_ID, Asset_Category,
+            Asset_Group, Group_Code, Group_Sort_Order, Category_Code,
+            Category_Sort_Order, Shares, Price, Value
+        """
+        if not holdings:
+            return pd.DataFrame()
+
+        holdings_data = []
+        for h in holdings:
+            # Get price from provided dict or from security's latest price
+            if prices is not None:
+                price = prices.get(h.security, Decimal("0"))
+            else:
+                price = h.security.latest_price or Decimal("0")
+
+            value = h.shares * price
+            asset_class = h.security.asset_class
+            category = asset_class.category
+
+            holdings_data.append(
+                {
+                    "Account_ID": account_id if account_id is not None else h.account_id,
+                    "Account_Name": h.account.name if hasattr(h, "account") else "",
+                    "Account_Type": (
+                        h.account.account_type.label
+                        if hasattr(h, "account") and h.account.account_type
+                        else ""
+                    ),
+                    "Ticker": h.security.ticker,
+                    "Security_Name": h.security.name,
+                    "Asset_Class": asset_class.name,
+                    "Asset_Class_ID": asset_class.id,
+                    "Asset_Category": category.label,
+                    "Asset_Group": (category.parent.label if category.parent else category.label),
+                    "Group_Code": (category.parent.code if category.parent else category.code),
+                    "Group_Sort_Order": (
+                        category.parent.sort_order if category.parent else category.sort_order
+                    ),
+                    "Category_Code": category.code,
+                    "Category_Sort_Order": category.sort_order,
+                    "Shares": float(h.shares),
+                    "Price": float(price),
+                    "Value": float(value),
+                }
+            )
+
+        return pd.DataFrame(holdings_data)
+
+    def securities_to_dataframe(
+        self,
+        positions: dict[Security, Decimal],
+        prices: dict[Security, Decimal],
+        account_id: int,
+    ) -> pd.DataFrame:
+        """
+        Convert a positions dict (security -> shares) to DataFrame format.
+
+        Used for pro forma calculations where we don't have Holding objects
+        but rather a dict of security to share counts.
+
+        Args:
+            positions: Dict mapping Security to share count (positive only)
+            prices: Dict mapping Security to current price
+            account_id: Account ID to use for all rows
+
+        Returns:
+            DataFrame with same schema as holdings_to_dataframe()
+        """
+        if not positions:
+            return pd.DataFrame()
+
+        holdings_data = []
+        for security, shares in positions.items():
+            if shares <= 0:
+                continue
+
+            price = prices.get(security, Decimal("0"))
+            value = shares * price
+            asset_class = security.asset_class
+            category = asset_class.category
+
+            holdings_data.append(
+                {
+                    "Account_ID": account_id,
+                    "Account_Name": "",
+                    "Account_Type": "",
+                    "Ticker": security.ticker,
+                    "Security_Name": security.name,
+                    "Asset_Class": asset_class.name,
+                    "Asset_Class_ID": asset_class.id,
+                    "Asset_Category": category.label,
+                    "Asset_Group": (category.parent.label if category.parent else category.label),
+                    "Group_Code": (category.parent.code if category.parent else category.code),
+                    "Group_Sort_Order": (
+                        category.parent.sort_order if category.parent else category.sort_order
+                    ),
+                    "Category_Code": category.code,
+                    "Category_Sort_Order": category.sort_order,
+                    "Shares": float(shares),
+                    "Price": float(price),
+                    "Value": float(value),
+                }
+            )
+
+        return pd.DataFrame(holdings_data)
+
+    def get_security_prices(
+        self,
+        securities: set[Security],
+        include_primary_for_asset_classes: set[AssetClass] | None = None,
+    ) -> dict[Security, Decimal]:
+        """
+        Fetch latest prices for securities.
+
+        Optionally includes primary securities for asset classes even if not
+        currently held (useful for rebalancing where we may buy into new classes).
+
+        Args:
+            securities: Set of Security objects to get prices for
+            include_primary_for_asset_classes: Optional set of AssetClass objects
+                for which to include the primary security even if not in securities
+
+        Returns:
+            Dict mapping Security to latest price (Decimal("0") if no price found)
+        """
+        from portfolio.models import Security as SecurityModel
+        from portfolio.models import SecurityPrice
+
+        all_securities = set(securities)
+
+        # Add primary securities for asset classes if requested
+        if include_primary_for_asset_classes:
+            existing_ac_ids = {s.asset_class_id for s in securities}
+
+            for asset_class in include_primary_for_asset_classes:
+                if asset_class.id not in existing_ac_ids:
+                    primary = self._get_primary_security_for_asset_class(asset_class)
+                    if primary:
+                        all_securities.add(primary)
+
+        if not all_securities:
+            return {}
+
+        # Fetch prices - use subquery approach that works on all databases
+        from django.db.models import OuterRef, Subquery
+
+        security_ids = [s.id for s in all_securities]
+
+        # Subquery to get latest price for each security
+        latest_price_subquery = Subquery(
+            SecurityPrice.objects.filter(security_id=OuterRef("pk"))
+            .order_by("-price_datetime")
+            .values("price")[:1]
+        )
+
+        # Fetch securities with their latest prices annotated
+
+        securities_with_prices = SecurityModel.objects.filter(id__in=security_ids).annotate(
+            latest_price_value=latest_price_subquery
+        )
+
+        # Build price map
+        price_map = {s.id: s.latest_price_value for s in securities_with_prices}
+
+        # Build result dict
+        prices: dict[Security, Decimal] = {}
+        for security in all_securities:
+            price = price_map.get(security.id)
+            prices[security] = price if price is not None else Decimal("0")
+
+        return prices
+
+    def _get_primary_security_for_asset_class(
+        self,
+        asset_class: AssetClass,
+    ) -> Security | None:
+        """
+        Get primary security for an asset class with fallback.
+
+        Uses the is_primary flag if available, otherwise returns the first security
+        in the asset class ordered by ticker (matching original engine.py behavior).
+
+        Args:
+            asset_class: AssetClass to get primary security for
+
+        Returns:
+            Security object or None if no securities exist for this class
+        """
+        from portfolio.models import Security as SecurityModel
+
+        # Try is_primary flag first
+        primary = SecurityModel.objects.filter(
+            asset_class=asset_class,
+            is_primary=True,
+        ).first()
+
+        if primary:
+            return primary
+
+        # Fallback to first security by ticker
+        return SecurityModel.objects.filter(asset_class=asset_class).order_by("ticker").first()
