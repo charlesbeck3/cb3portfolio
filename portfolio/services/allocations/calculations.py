@@ -1009,3 +1009,78 @@ class AllocationCalculator:
         df_aggregated["Account_Type"] = ""
 
         return df_aggregated
+
+
+class AllocationAggregator:
+    """
+    Helper class to calculate aggregated subtotals and totals from a DataFrame.
+    
+    Used primarily by the rebalancing engine to compute current and pro forma
+    aggregated stats efficiently.
+    """
+
+    def __init__(self, df: pd.DataFrame):
+        """
+        Initialize with a DataFrame containing asset/holding data.
+        
+        Args:
+            df: DataFrame containing at least:
+                - value (Decimal or float)
+                - asset_class (AssetClass object)
+                - asset_class_id (int)
+        """
+        self.df = df
+        self.aggregated_context: dict[str, Any] = {}
+
+    def calculate_aggregations(self) -> None:
+        """Calculate totals by asset class and portfolio."""
+        from decimal import Decimal
+        
+        if self.df.empty:
+            self.aggregated_context = {
+                "asset_class": {},
+                "grand_total": {"total_value": Decimal("0"), "allocation_percent": Decimal("0")},
+            }
+            return
+
+        # Ensure value is float for calculation
+        # The input df usually has 'value' as Decimal from database
+        self.df = self.df.copy()
+        
+        # Handle potential empty or mixed types in value
+        if "value" in self.df.columns:
+            self.df["value_float"] = self.df["value"].apply(lambda x: float(x) if x is not None else 0.0)
+        else:
+            self.df["value_float"] = 0.0
+            
+        total_value = self.df["value_float"].sum()
+
+        # 1. Asset Class Aggregation
+        # Group by asset_class_id
+        if "asset_class_id" in self.df.columns:
+            ac_grouped = self.df.groupby("asset_class_id")
+            ac_data = {}
+            for ac_id, group in ac_grouped:
+                ac_total = group["value_float"].sum()
+                ac_pct = (ac_total / total_value * 100) if total_value > 0 else 0
+                ac_data[ac_id] = {
+                    "total_value": Decimal(str(ac_total)),
+                    "allocation_percent": Decimal(str(ac_pct)),
+                }
+        else:
+            ac_data = {}
+
+        # 2. Grand Total
+        grand_total_data = {
+            "total_value": Decimal(str(total_value)),
+            "allocation_percent": Decimal("100.0"),
+        }
+
+        self.aggregated_context = {
+            "asset_class": ac_data,
+            "grand_total": grand_total_data,
+        }
+
+    def build_context(self) -> dict[str, Any]:
+        """Return the aggregated context."""
+        return self.aggregated_context

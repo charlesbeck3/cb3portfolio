@@ -21,6 +21,10 @@ class Security(models.Model):
     asset_class = models.ForeignKey(
         "AssetClass", on_delete=models.PROTECT, related_name="securities"
     )
+    is_primary = models.BooleanField(
+        default=False,
+        help_text="Primary security to use when opening new positions in this asset class",
+    )
 
     class Meta:
         ordering = ["ticker"]

@@ -15,6 +15,7 @@ dependencies = [
     "whitenoise[brotli]>=6.11.0",    # Static files - update with Django
     "yfinance>=0.2.66",               # Market data - update monthly
     "psycopg[binary]>=3.2.0",         # PostgreSQL adapter (v3 for async support)
+    "cvxpy>=1.6.0",                   # Portfolio optimization - update as needed
 ]
 
 [tool.mypy]

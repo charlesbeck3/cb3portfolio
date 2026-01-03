@@ -74,6 +74,9 @@
 
                             {% if account %}
                             <div class="float-end">
+                                 <a href="{% url 'portfolio:rebalancing' account.id %}" class="btn btn-sm btn-outline-info me-2">
+                                     <i class="bi bi-sliders"></i> Rebalance
+                                 </a>
                                  <button type="button" class="btn btn-sm btn-success me-2" data-bs-toggle="modal" data-bs-target="#addHoldingModal">
                                      Add New Position
                                  </button>
