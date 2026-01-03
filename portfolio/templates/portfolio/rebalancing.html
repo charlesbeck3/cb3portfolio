@@ -1,0 +1,312 @@
+{% extends "portfolio/base.html" %}
+{% load portfolio_filters %}
+
+{% block title %}Rebalancing | {{ account.name }} | CB3 Portfolio{% endblock %}
+
+{% block content %}
+<div class="dashboard-content">
+<div class="row">
+    <!-- Sidebar Column -->
+    <div id="sidebar-column" class="col-md-2 d-none d-md-block px-0">
+        {% include "portfolio/sidebar.html" %}
+    </div>
+
+    <!-- Main Content Column -->
+    <div id="main-content-column" class="col-md-10">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h1 class="mb-0">Rebalancing Plan</h1>
+                        <p class="lead mb-0 text-muted">{{ account.name }}</p>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        {% if plan.orders %}
+                        <a href="{% url 'portfolio:rebalancing_export' account.id %}" class="btn btn-outline-success">
+                            <i class="bi bi-download"></i> Export CSV
+                        </a>
+                        {% endif %}
+                        <a href="{% url 'portfolio:account_holdings' account.id %}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Holdings
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Summary Card -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-info-circle"></i> Plan Summary
+                        <span class="badge bg-{% if plan.method_used == 'optimization' %}success{% else %}warning{% endif %} ms-2">
+                            {{ plan.method_used|title }}
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="text-muted small">Total Buy Amount</div>
+                                <div class="h5 text-success" data-testid="total-buy">{{ plan.total_buy_amount|money:2 }}</div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-muted small">Total Sell Amount</div>
+                                <div class="h5 text-danger" data-testid="total-sell">{{ plan.total_sell_amount|money:2 }}</div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-muted small">Net Cash Impact</div>
+                                <div class="h5" data-testid="net-cash">{{ plan.net_cash_impact|money:2 }}</div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="text-muted small">Orders</div>
+                                <div class="h5" data-testid="order-count">{{ plan.orders|length }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Drift Analysis -->
+                {% if plan.drift_analysis_rows %}
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-bar-chart"></i> Drift Analysis
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm" data-testid="drift-table">
+                                <thead>
+                                    <tr>
+                                        <th>Asset Class</th>
+                                        <th class="text-end">Target %</th>
+                                        <th class="text-end">Pre-Rebalance Drift</th>
+                                        <th class="text-end">Post-Rebalance Drift</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in plan.drift_analysis_rows %}
+                                        {% if row.hierarchy_level == 999 %}
+                                        {# Individual asset class #}
+                                        <tr data-testid="drift-row-{{ row.name|slugify }}">
+                                            <td>{{ row.name }}</td>
+                                            <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.pre_drift|percent:2 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.post_drift|percent:2 }}</span></td>
+                                        </tr>
+
+                                        {% elif row.hierarchy_level == 1 %}
+                                        {# Category subtotal #}
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="drift-category-{{ row.category_code }}">
+                                            <td>{{ row.name }}</td>
+                                            <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.pre_drift|percent:2 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.post_drift|percent:2 }}</span></td>
+                                        </tr>
+
+                                        {% elif row.hierarchy_level == -1 %}
+                                        {# Grand total #}
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="drift-grand-total">
+                                            <td>{{ row.name }}</td>
+                                            <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.pre_drift|percent:2 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.post_drift|percent:2 }}</span></td>
+                                        </tr>
+                                        {% endif %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Orders Table -->
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-list-task"></i> Recommended Orders</span>
+                    </div>
+                    <div class="card-body">
+                        {% if plan.orders %}
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover table-sm" data-testid="orders-table" style="font-size: 0.9rem;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 8%;">Action</th>
+                                        <th style="width: 8%;">Ticker</th>
+                                        <th style="width: 24%;">Security Name</th>
+                                        <th style="width: 15%;">Asset Class</th>
+                                        <th class="text-end" style="width: 10%;">Shares</th>
+                                        <th class="text-end" style="width: 12%;">Price</th>
+                                        <th class="text-end" style="width: 15%;">Est. Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for order in plan.orders %}
+                                    <tr data-testid="order-row-{{ order.security.ticker }}">
+                                        <td>
+                                            <span class="badge bg-{% if order.action == 'BUY' %}success{% else %}danger{% endif %}">
+                                                {{ order.action }}
+                                            </span>
+                                        </td>
+                                        <td><strong>{{ order.security.ticker }}</strong></td>
+                                        <td>{{ order.security.name }}</td>
+                                        <td>{{ order.asset_class.name }}</td>
+                                        <td class="text-end">{{ order.shares|number:0 }}</td>
+                                        <td class="text-end">{{ order.price_per_share|money:2 }}</td>
+                                        <td class="text-end">{{ order.estimated_amount|money:2 }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                                <tfoot>
+                                    <tr class="table-light fw-bold">
+                                        <td colspan="6" class="text-end">Total Buy:</td>
+                                        <td class="text-end text-success">{{ plan.total_buy_amount|money:2 }}</td>
+                                    </tr>
+                                    <tr class="table-light fw-bold">
+                                        <td colspan="6" class="text-end">Total Sell:</td>
+                                        <td class="text-end text-danger">{{ plan.total_sell_amount|money:2 }}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="text-center py-4 text-muted">
+                            <i class="bi bi-check-circle display-4"></i>
+                            <p class="mt-3">
+                                {% if plan.optimization_status == 'no_holdings' %}
+                                No holdings in this account to rebalance.
+                                {% elif plan.optimization_status == 'no_targets' %}
+                                No target allocations defined for this account.
+                                {% else %}
+                                Your portfolio is already balanced. No trades needed.
+                                {% endif %}
+                            </p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Pro Forma Holdings Analysis -->
+                {% if plan.proforma_holdings_rows %}\n                <div class="card mt-4">
+                    <div class="card-header">
+                        <i class="bi bi-table"></i> Pro Forma Holdings Analysis
+                        <small class="text-muted ms-2">Before/after comparison showing impact of rebalancing</small>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover" data-testid="proforma-table">
+                                <thead>
+                                    <tr>
+                                        <th rowspan="2">Ticker</th>
+                                        <th rowspan="2">Name</th>
+                                        <th rowspan="2">Asset Class</th>
+                                        <th rowspan="2" class="text-end">Price</th>
+                                        <th colspan="3" class="text-center">Shares</th>
+                                        <th colspan="3" class="text-center">Value</th>
+                                        <th colspan="4" class="text-center">Allocation</th>
+                                    </tr>
+                                    <tr>
+                                        <!-- Shares subheaders -->
+                                        <th class="text-end">Current</th>
+                                        <th class="text-end">Change</th>
+                                        <th class="text-end">Pro Forma</th>
+                                        <!-- Value subheaders -->
+                                        <th class="text-end">Current</th>
+                                        <th class="text-end">Change</th>
+                                        <th class="text-end">Pro Forma</th>
+                                        <!-- Allocation subheaders -->
+                                        <th class="text-end">Current</th>
+                                        <th class="text-end">Pro Forma</th>
+                                        <th class="text-end">Target</th>
+                                        <th class="text-end">Variance</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in plan.proforma_holdings_rows %}
+                                        {% if row.hierarchy_level == 999 %}
+                                        {# Individual holding #}
+                                        <tr data-testid="proforma-row-{{ row.ticker }}" class="collapse show {{ row.collapse_class }}">
+                                            <td><strong>{{ row.ticker }}</strong></td>
+                                            <td>{{ row.security_name }}</td>
+                                            <td>{{ row.asset_class }}</td>
+                                            <td class="text-end"><span class="money">{{ row.price|money:2 }}</span></td>
+                                            <!-- Shares -->
+                                            <td class="text-end"><span class="number">{{ row.shares|number:2 }}</span></td>
+                                            <td class="text-end"><span class="number">{{ row.shares_variance|number:2 }}</span></td>
+                                            <td class="text-end"><span class="number"><strong>{{ row.target_shares|number:2 }}</strong></span></td>
+                                            <!-- Value -->
+                                            <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
+                                            <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
+                                            <td class="text-end"><span class="money"><strong>{{ row.target_value|money:0 }}</strong></span></td>
+                                            <!-- Allocation -->
+                                            <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent"><strong>{{ row.target_allocation|percent:1 }}</strong></span></td>
+                                            <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
+                                        </tr>
+
+                                        {% elif row.hierarchy_level == 1 %}
+                                        {# Category subtotal #}
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="category-row-{{ row.row_id }}">
+                                            <td colspan="4">{{ row.name }}</td>
+                                            <td colspan="3"></td>
+                                            <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
+                                            <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
+                                            <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                                            <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
+                                        </tr>
+
+                                        {% elif row.hierarchy_level == 0 %}
+                                        {# Group total #}
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="group-total-row-{{ row.row_id }}">
+                                            <td colspan="4">{{ row.name }}</td>
+                                            <td colspan="3"></td>
+                                            <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
+                                            <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
+                                            <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                                            <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
+                                        </tr>
+
+                                        {% elif row.hierarchy_level == -1 %}
+                                        {# Grand total #}
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="grand-total-row">
+                                            <td colspan="4">{{ row.name }}</td>
+                                            <td colspan="3"></td>
+                                            <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
+                                            <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
+                                            <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                                            <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                                            <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
+                                        </tr>
+                                        {% endif %}
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="14" class="text-center">No holdings found.</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Disclaimer -->
+                <div class="alert alert-secondary mt-4" role="alert">
+                    <small>
+                        <i class="bi bi-exclamation-triangle"></i>
+                        <strong>Disclaimer:</strong> This rebalancing plan is for informational purposes only.
+                        Actual trade execution prices may differ from estimates. Review all orders carefully
+                        before executing trades. Generated {{ plan.generated_at|date:"M d, Y H:i" }}.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+{% endblock %}
