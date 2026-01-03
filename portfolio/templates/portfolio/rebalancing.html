@@ -1,5 +1,5 @@
 {% extends "portfolio/base.html" %}
-{% load portfolio_filters %}
+{% load portfolio_filters allocation_tags %}
 
 {% block title %}Rebalancing | {{ account.name }} | CB3 Portfolio{% endblock %}
 
@@ -83,11 +83,11 @@
                                     {% for row in plan.drift_analysis_rows %}
                                         {% if row.hierarchy_level == 999 %}
                                         {# Individual asset class #}
-                                        <tr data-testid="drift-row-{{ row.name|slugify }}">
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="drift-row-{{ row.name|slugify }}">
                                             <td>{{ row.name }}</td>
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
-                                            <td class="text-end"><span class="percent">{{ row.pre_drift|percent:2 }}</span></td>
-                                            <td class="text-end"><span class="percent">{{ row.post_drift|percent:2 }}</span></td>
+                                            <td class="text-end {{ row.pre_drift|variance_css_class }}"><span class="percent">{{ row.pre_drift|percent:2 }}</span></td>
+                                            <td class="text-end {{ row.post_drift|variance_css_class }}"><span class="percent">{{ row.post_drift|percent:2 }}</span></td>
                                         </tr>
 
                                         {% elif row.hierarchy_level == 1 %}
@@ -95,8 +95,8 @@
                                         <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="drift-category-{{ row.category_code }}">
                                             <td>{{ row.name }}</td>
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
-                                            <td class="text-end"><span class="percent">{{ row.pre_drift|percent:2 }}</span></td>
-                                            <td class="text-end"><span class="percent">{{ row.post_drift|percent:2 }}</span></td>
+                                            <td class="text-end {{ row.pre_drift|variance_css_class }}"><span class="percent">{{ row.pre_drift|percent:2 }}</span></td>
+                                            <td class="text-end {{ row.post_drift|variance_css_class }}"><span class="percent">{{ row.post_drift|percent:2 }}</span></td>
                                         </tr>
 
                                         {% elif row.hierarchy_level == -1 %}
@@ -104,8 +104,8 @@
                                         <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="drift-grand-total">
                                             <td>{{ row.name }}</td>
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
-                                            <td class="text-end"><span class="percent">{{ row.pre_drift|percent:2 }}</span></td>
-                                            <td class="text-end"><span class="percent">{{ row.post_drift|percent:2 }}</span></td>
+                                            <td class="text-end {{ row.pre_drift|variance_css_class }}"><span class="percent">{{ row.pre_drift|percent:2 }}</span></td>
+                                            <td class="text-end {{ row.post_drift|variance_css_class }}"><span class="percent">{{ row.post_drift|percent:2 }}</span></td>
                                         </tr>
                                         {% endif %}
                                     {% endfor %}
@@ -221,7 +221,7 @@
                                     {% for row in plan.proforma_holdings_rows %}
                                         {% if row.hierarchy_level == 999 %}
                                         {# Individual holding #}
-                                        <tr data-testid="proforma-row-{{ row.ticker }}" class="collapse show {{ row.collapse_class }}">
+                                        <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="proforma-row-{{ row.ticker }}" class="collapse show {{ row.collapse_class }}">
                                             <td><strong>{{ row.ticker }}</strong></td>
                                             <td>{{ row.security_name }}</td>
                                             <td>{{ row.asset_class }}</td>
@@ -232,13 +232,13 @@
                                             <td class="text-end"><span class="number"><strong>{{ row.target_shares|number:2 }}</strong></span></td>
                                             <!-- Value -->
                                             <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
-                                            <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
+                                            <td class="text-end {{ row.value_variance|variance_css_class }}"><span class="money">{{ row.value_variance|money:0 }}</span></td>
                                             <td class="text-end"><span class="money"><strong>{{ row.target_value|money:0 }}</strong></span></td>
                                             <!-- Allocation -->
                                             <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent"><strong>{{ row.target_allocation|percent:1 }}</strong></span></td>
                                             <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
-                                            <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
+                                            <td class="text-end {{ row.allocation_variance|variance_css_class }}"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
                                         </tr>
 
                                         {% elif row.hierarchy_level == 1 %}
@@ -247,12 +247,12 @@
                                             <td colspan="4">{{ row.name }}</td>
                                             <td colspan="3"></td>
                                             <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
-                                            <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
+                                            <td class="text-end {{ row.value_variance|variance_css_class }}"><span class="money">{{ row.value_variance|money:0 }}</span></td>
                                             <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
                                             <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
-                                            <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
+                                            <td class="text-end {{ row.allocation_variance|variance_css_class }}"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
                                         </tr>
 
                                         {% elif row.hierarchy_level == 0 %}
@@ -261,12 +261,12 @@
                                             <td colspan="4">{{ row.name }}</td>
                                             <td colspan="3"></td>
                                             <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
-                                            <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
+                                            <td class="text-end {{ row.value_variance|variance_css_class }}"><span class="money">{{ row.value_variance|money:0 }}</span></td>
                                             <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
                                             <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
-                                            <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
+                                            <td class="text-end {{ row.allocation_variance|variance_css_class }}"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
                                         </tr>
 
                                         {% elif row.hierarchy_level == -1 %}
@@ -275,12 +275,12 @@
                                             <td colspan="4">{{ row.name }}</td>
                                             <td colspan="3"></td>
                                             <td class="text-end"><span class="money">{{ row.value|money:0 }}</span></td>
-                                            <td class="text-end"><span class="money">{{ row.value_variance|money:0 }}</span></td>
+                                            <td class="text-end {{ row.value_variance|variance_css_class }}"><span class="money">{{ row.value_variance|money:0 }}</span></td>
                                             <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
                                             <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
                                             <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
-                                            <td class="text-end"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
+                                            <td class="text-end {{ row.allocation_variance|variance_css_class }}"><span class="percent">{{ row.allocation_variance|percent:2 }}</span></td>
                                         </tr>
                                         {% endif %}
                                     {% empty %}

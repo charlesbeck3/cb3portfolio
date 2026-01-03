@@ -467,3 +467,113 @@ class AllocationFormatter:
         result.extend(grand_row)
 
         return result
+
+    # ========================================================================
+    # Drift Analysis Formatting
+    # ========================================================================
+
+    def format_drift_analysis_rows(
+        self,
+        pre_drift: dict[Any, Any],
+        post_drift: dict[Any, Any],
+        target_allocations: dict[Any, Any],
+    ) -> list[dict[str, Any]]:
+        """
+        Format drift data with category subtotals for template display.
+
+        Groups asset classes by category and calculates category-level drift averages.
+        Uses consistent hierarchy levels with other allocation formatting.
+
+        Args:
+            pre_drift: Dict mapping AssetClass to pre-rebalance drift (Decimal)
+            post_drift: Dict mapping AssetClass to post-rebalance drift (Decimal)
+            target_allocations: Dict mapping AssetClass to target percentage (Decimal)
+
+        Returns:
+            List of row dicts with hierarchy levels for template rendering:
+            - hierarchy_level 999: Individual asset class
+            - hierarchy_level 1: Category subtotal
+            - hierarchy_level -1: Grand total
+        """
+        from collections import defaultdict
+        from decimal import Decimal
+
+        if not pre_drift:
+            return []
+
+        # Group asset classes by category
+        categories: dict[Any, list[Any]] = defaultdict(list)
+        for asset_class in pre_drift:
+            category = asset_class.category
+            categories[category].append(asset_class)
+
+        rows: list[dict[str, Any]] = []
+
+        # Build rows for each category
+        for category in sorted(
+            categories.keys(),
+            key=lambda c: (
+                (c.parent.sort_order if c.parent else 0, c.sort_order)
+                if hasattr(c, "sort_order")
+                else (0, 0)
+            ),
+        ):
+            asset_classes = categories[category]
+
+            # Add individual asset class rows
+            for asset_class in sorted(asset_classes, key=lambda ac: ac.name):
+                rows.append(
+                    {
+                        "hierarchy_level": 999,  # Asset class level
+                        "name": asset_class.name,
+                        "asset_class_id": asset_class.id,
+                        "category_code": category.code,
+                        "target_allocation": float(
+                            target_allocations.get(asset_class, Decimal("0"))
+                        ),
+                        "pre_drift": float(pre_drift.get(asset_class, Decimal("0"))),
+                        "post_drift": float(post_drift.get(asset_class, Decimal("0"))),
+                    }
+                )
+
+            # Add category subtotal (only if multiple asset classes)
+            if len(asset_classes) > 1:
+                # Calculate average drift for category
+                category_pre_drift = sum(
+                    pre_drift.get(ac, Decimal("0")) for ac in asset_classes
+                ) / len(asset_classes)
+                category_post_drift = sum(
+                    post_drift.get(ac, Decimal("0")) for ac in asset_classes
+                ) / len(asset_classes)
+                category_target = sum(
+                    target_allocations.get(ac, Decimal("0")) for ac in asset_classes
+                )
+
+                rows.append(
+                    {
+                        "hierarchy_level": 1,  # Category subtotal
+                        "name": f"{category.label} Average",
+                        "category_code": category.code,
+                        "target_allocation": float(category_target),
+                        "pre_drift": float(category_pre_drift),
+                        "post_drift": float(category_post_drift),
+                    }
+                )
+
+        # Add grand total (average across all asset classes)
+        if pre_drift:
+            grand_pre_drift = sum(pre_drift.values()) / len(pre_drift)
+            grand_post_drift = sum(post_drift.values()) / len(post_drift)
+            grand_target = sum(target_allocations.values())
+
+            rows.append(
+                {
+                    "hierarchy_level": -1,  # Grand total
+                    "name": "Portfolio Average Drift",
+                    "target_allocation": float(grand_target),
+                    "pre_drift": float(grand_pre_drift),
+                    "post_drift": float(grand_post_drift),
+                }
+            )
+
+        return rows

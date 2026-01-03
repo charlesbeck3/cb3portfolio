@@ -16,6 +16,8 @@ from portfolio.services.rebalancing.dataclasses import (
 )
 
 if TYPE_CHECKING:
+    import pandas as pd
+
     from portfolio.models import Account, AssetClass, Holding, Security
 
 logger = structlog.get_logger(__name__)
@@ -251,7 +253,8 @@ class RebalancingEngine:
         """
         Format drift data with category subtotals.
 
-        Groups asset classes by category and calculates category-level drift averages.
+        Delegates to AllocationFormatter for consistent formatting with other
+        allocation views.
 
         Args:
             pre_drift: Pre-rebalance drift by asset class
@@ -261,85 +264,14 @@ class RebalancingEngine:
         Returns:
             List of row dicts with hierarchy levels for template rendering
         """
-        from collections import defaultdict
+        from portfolio.services.allocations.formatters import AllocationFormatter
 
-        if not pre_drift:
-            return []
-
-        # Group asset classes by category
-        categories = defaultdict(list)
-        for asset_class in pre_drift:
-            category = asset_class.category
-            categories[category].append(asset_class)
-
-        rows = []
-
-        # Build rows for each category
-        for category in sorted(
-            categories.keys(),
-            key=lambda c: (c.parent.sort_order if c.parent else 0, c.sort_order)
-            if hasattr(c, "sort_order")
-            else (0, 0),
-        ):
-            asset_classes = categories[category]
-
-            # Add individual asset class rows
-            for asset_class in sorted(asset_classes, key=lambda ac: ac.name):
-                rows.append(
-                    {
-                        "hierarchy_level": 999,  # Asset class level
-                        "name": asset_class.name,
-                        "asset_class_id": asset_class.id,
-                        "category_code": category.code,
-                        "target_allocation": float(
-                            target_allocations.get(asset_class, Decimal("0"))
-                        ),
-                        "pre_drift": float(pre_drift.get(asset_class, Decimal("0"))),
-                        "post_drift": float(post_drift.get(asset_class, Decimal("0"))),
-                    }
-                )
-
-            # Add category subtotal (only if multiple asset classes)
-            if len(asset_classes) > 1:
-                # Calculate average drift for category
-                category_pre_drift = sum(
-                    pre_drift.get(ac, Decimal("0")) for ac in asset_classes
-                ) / len(asset_classes)
-                category_post_drift = sum(
-                    post_drift.get(ac, Decimal("0")) for ac in asset_classes
-                ) / len(asset_classes)
-                category_target = sum(
-                    target_allocations.get(ac, Decimal("0")) for ac in asset_classes
-                )
-
-                rows.append(
-                    {
-                        "hierarchy_level": 1,  # Category subtotal
-                        "name": f"{category.label} Average",
-                        "category_code": category.code,
-                        "target_allocation": float(category_target),
-                        "pre_drift": float(category_pre_drift),
-                        "post_drift": float(category_post_drift),
-                    }
-                )
-
-        # Add grand total (average across all asset classes)
-        if pre_drift:
-            grand_pre_drift = sum(pre_drift.values()) / len(pre_drift)
-            grand_post_drift = sum(post_drift.values()) / len(post_drift)
-            grand_target = sum(target_allocations.values())
-
-            rows.append(
-                {
-                    "hierarchy_level": -1,  # Grand total
-                    "name": "Portfolio Average Drift",
-                    "target_allocation": float(grand_target),
-                    "pre_drift": float(grand_pre_drift),
-                    "post_drift": float(grand_post_drift),
-                }
-            )
-
-        return rows
+        formatter = AllocationFormatter()
+        return formatter.format_drift_analysis_rows(
+            pre_drift=pre_drift,
+            post_drift=post_drift,
+            target_allocations=target_allocations,
+        )
 
     def _get_current_prices(
         self,
@@ -414,46 +346,177 @@ class RebalancingEngine:
 
         return targets
 
+    def _build_holdings_dataframe(
+        self,
+        holdings: list[Holding],
+        prices: dict[Security, Decimal],
+    ) -> pd.DataFrame:
+        """
+        Build a holdings DataFrame for use with AllocationCalculator.
+
+        This helper method converts Django model objects to the DataFrame format
+        expected by the allocation calculation infrastructure, enabling consistent
+        calculation logic across rebalancing and allocation views.
+
+        Args:
+            holdings: List of Holding model objects
+            prices: Dict mapping Security to current price
+
+        Returns:
+            DataFrame with columns: Ticker, Security_Name, Asset_Class, Asset_Class_ID,
+            Category_Code, Category_Sort_Order, Asset_Category, Group_Code,
+            Group_Sort_Order, Asset_Group, Price, Shares, Value, Account_ID
+        """
+        import pandas as pd
+
+        if not holdings:
+            return pd.DataFrame()
+
+        holdings_data = []
+        for h in holdings:
+            price = prices.get(h.security, Decimal("0"))
+            value = h.shares * price
+            asset_class = h.security.asset_class
+            category = asset_class.category
+
+            holdings_data.append(
+                {
+                    "Ticker": h.security.ticker,
+                    "Security_Name": h.security.name,
+                    "Asset_Class": asset_class.name,
+                    "Asset_Class_ID": asset_class.id,
+                    "Category_Code": category.code,
+                    "Category_Sort_Order": getattr(category, "sort_order", 0),
+                    "Asset_Category": category.label,
+                    "Group_Code": category.parent.code if category.parent else category.code,
+                    "Group_Sort_Order": getattr(category.parent, "sort_order", 0)
+                    if category.parent
+                    else 0,
+                    "Asset_Group": category.parent.label if category.parent else category.label,
+                    "Price": float(price),
+                    "Shares": float(h.shares),
+                    "Value": float(value),
+                    "Account_ID": self.account.id,
+                }
+            )
+
+        return pd.DataFrame(holdings_data)
+
+    def _build_targets_map(
+        self,
+        targets: dict[AssetClass, Decimal],
+    ) -> dict[int, dict[str, float]]:
+        """
+        Build a targets map for use with AllocationCalculator.
+
+        Args:
+            targets: Dict mapping AssetClass to target percentage
+
+        Returns:
+            Dict in format {account_id: {asset_class_name: target_pct}}
+        """
+        return {
+            self.account.id: {
+                asset_class.name: float(target_pct) for asset_class, target_pct in targets.items()
+            }
+        }
+
     def _calculate_drift(
         self,
         holdings: list[Holding],
         prices: dict[Security, Decimal],
         targets: dict[AssetClass, Decimal],
     ) -> dict[AssetClass, Decimal]:
-        """Calculate drift (current % - target %) for each asset class."""
-        # Calculate total value
-        total_value = sum(h.shares * prices.get(h.security, Decimal("0")) for h in holdings)
+        """
+        Calculate drift (current % - target %) for each asset class.
 
+        Uses AllocationCalculator infrastructure for consistent calculation logic
+        with the allocation views, then aggregates to asset-class level.
+
+        Args:
+            holdings: Current holdings
+            prices: Current security prices
+            targets: Target allocation percentages by asset class
+
+        Returns:
+            Dict mapping AssetClass to drift percentage (positive = over target)
+        """
+        from portfolio.services.allocations.calculations import AllocationCalculator
+
+        if not holdings:
+            return {}
+
+        # Build DataFrame using shared helper
+        holdings_df = self._build_holdings_dataframe(holdings, prices)
+
+        if holdings_df.empty:
+            return {}
+
+        # Build targets map using shared helper
+        targets_map = self._build_targets_map(targets)
+
+        # Use AllocationCalculator for consistent calculation logic
+        calculator = AllocationCalculator()
+        holdings_with_targets = calculator.calculate_holdings_with_targets(
+            holdings_df=holdings_df,
+            targets_map=targets_map,
+        )
+
+        # Aggregate to asset-class level
+        # The calculator returns per-security variances; we need asset-class totals
+        total_value = holdings_with_targets["Value"].sum()
         if total_value == 0:
             return {}
 
-        # Calculate current allocation by asset class
-        values_by_class: dict[AssetClass, Decimal] = {}
-        for holding in holdings:
-            value = holding.shares * prices.get(holding.security, Decimal("0"))
-            asset_class = holding.security.asset_class
-            values_by_class[asset_class] = values_by_class.get(asset_class, Decimal("0")) + value
+        # Group by asset class and sum values
+        ac_grouped = (
+            holdings_with_targets.groupby(["Asset_Class_ID", "Asset_Class"])
+            .agg({"Value": "sum", "Target_Value": "sum"})
+            .reset_index()
+        )
 
-        # Calculate drift for each target asset class
+        # Calculate asset-class level allocation percentages
+        ac_grouped["Allocation_Pct"] = (ac_grouped["Value"] / total_value) * 100
+        ac_grouped["Target_Allocation_Pct"] = (ac_grouped["Target_Value"] / total_value) * 100
+        ac_grouped["Variance_Pct"] = (
+            ac_grouped["Allocation_Pct"] - ac_grouped["Target_Allocation_Pct"]
+        )
+
+        # Build drift dict with Decimal precision for financial calculations
         drift: dict[AssetClass, Decimal] = {}
         for asset_class, target_pct in targets.items():
-            current_value = values_by_class.get(asset_class, Decimal("0"))
-            current_pct = (current_value / total_value * 100) if total_value > 0 else Decimal("0")
-            drift[asset_class] = current_pct - target_pct
+            ac_rows = ac_grouped[ac_grouped["Asset_Class_ID"] == asset_class.id]
+            if not ac_rows.empty:
+                variance = ac_rows["Variance_Pct"].iloc[0]
+                drift[asset_class] = Decimal(str(round(variance, 6)))
+            else:
+                # Asset class not in current holdings - drift is -target
+                drift[asset_class] = -target_pct
 
         return drift
 
-    def _estimate_post_drift(
+    def _build_proforma_holdings_dataframe(
         self,
         holdings: list[Holding],
         orders: list[RebalancingOrder],
         prices: dict[Security, Decimal],
-        targets: dict[AssetClass, Decimal],
-    ) -> dict[AssetClass, Decimal]:
-        """Estimate drift after applying orders.
-
-        This is approximate since actual execution prices may differ.
+    ) -> pd.DataFrame:
         """
+        Build a pro forma holdings DataFrame after applying orders.
+
+        Applies buy/sell orders to current holdings to create the expected
+        post-rebalance position for drift calculation.
+
+        Args:
+            holdings: Current holdings
+            orders: Orders to apply
+            prices: Current security prices
+
+        Returns:
+            DataFrame with pro forma positions (same format as _build_holdings_dataframe)
+        """
+        import pandas as pd
+
         # Build position map: security -> shares
         positions: dict[Security, Decimal] = {h.security: h.shares for h in holdings}
 
@@ -465,27 +528,112 @@ class RebalancingEngine:
             else:  # SELL
                 positions[order.security] = current - Decimal(order.shares)
 
-        # Calculate new values by asset class
-        values_by_class: dict[AssetClass, Decimal] = {}
-        total_value = Decimal("0")
-
+        # Build DataFrame from pro forma positions
+        holdings_data = []
         for security, shares in positions.items():
             if shares <= 0:
                 continue
 
             price = prices.get(security, Decimal("0"))
             value = shares * price
-            total_value += value
-
             asset_class = security.asset_class
-            values_by_class[asset_class] = values_by_class.get(asset_class, Decimal("0")) + value
+            category = asset_class.category
 
-        # Calculate new percentages and drift
+            holdings_data.append(
+                {
+                    "Ticker": security.ticker,
+                    "Security_Name": security.name,
+                    "Asset_Class": asset_class.name,
+                    "Asset_Class_ID": asset_class.id,
+                    "Category_Code": category.code,
+                    "Category_Sort_Order": getattr(category, "sort_order", 0),
+                    "Asset_Category": category.label,
+                    "Group_Code": category.parent.code if category.parent else category.code,
+                    "Group_Sort_Order": getattr(category.parent, "sort_order", 0)
+                    if category.parent
+                    else 0,
+                    "Asset_Group": category.parent.label if category.parent else category.label,
+                    "Price": float(price),
+                    "Shares": float(shares),
+                    "Value": float(value),
+                    "Account_ID": self.account.id,
+                }
+            )
+
+        return pd.DataFrame(holdings_data) if holdings_data else pd.DataFrame()
+
+    def _estimate_post_drift(
+        self,
+        holdings: list[Holding],
+        orders: list[RebalancingOrder],
+        prices: dict[Security, Decimal],
+        targets: dict[AssetClass, Decimal],
+    ) -> dict[AssetClass, Decimal]:
+        """
+        Estimate drift after applying orders.
+
+        Uses AllocationCalculator infrastructure for consistent calculation logic.
+        This is approximate since actual execution prices may differ.
+
+        Args:
+            holdings: Current holdings
+            orders: Orders to apply
+            prices: Current security prices
+            targets: Target allocation percentages by asset class
+
+        Returns:
+            Dict mapping AssetClass to expected post-rebalance drift percentage
+        """
+        from portfolio.services.allocations.calculations import AllocationCalculator
+
+        if not holdings and not orders:
+            return {}
+
+        # Build pro forma holdings DataFrame
+        proforma_df = self._build_proforma_holdings_dataframe(holdings, orders, prices)
+
+        if proforma_df.empty:
+            return {}
+
+        # Build targets map using shared helper
+        targets_map = self._build_targets_map(targets)
+
+        # Use AllocationCalculator for consistent calculation logic
+        calculator = AllocationCalculator()
+        holdings_with_targets = calculator.calculate_holdings_with_targets(
+            holdings_df=proforma_df,
+            targets_map=targets_map,
+        )
+
+        # Aggregate to asset-class level
+        total_value = holdings_with_targets["Value"].sum()
+        if total_value == 0:
+            return {}
+
+        # Group by asset class and sum values
+        ac_grouped = (
+            holdings_with_targets.groupby(["Asset_Class_ID", "Asset_Class"])
+            .agg({"Value": "sum", "Target_Value": "sum"})
+            .reset_index()
+        )
+
+        # Calculate asset-class level allocation percentages
+        ac_grouped["Allocation_Pct"] = (ac_grouped["Value"] / total_value) * 100
+        ac_grouped["Target_Allocation_Pct"] = (ac_grouped["Target_Value"] / total_value) * 100
+        ac_grouped["Variance_Pct"] = (
+            ac_grouped["Allocation_Pct"] - ac_grouped["Target_Allocation_Pct"]
+        )
+
+        # Build drift dict with Decimal precision for financial calculations
         drift: dict[AssetClass, Decimal] = {}
         for asset_class, target_pct in targets.items():
-            value = values_by_class.get(asset_class, Decimal("0"))
-            current_pct = (value / total_value * 100) if total_value > 0 else Decimal("0")
-            drift[asset_class] = current_pct - target_pct
+            ac_rows = ac_grouped[ac_grouped["Asset_Class_ID"] == asset_class.id]
+            if not ac_rows.empty:
+                variance = ac_rows["Variance_Pct"].iloc[0]
+                drift[asset_class] = Decimal(str(round(variance, 6)))
+            else:
+                # Asset class not in pro forma holdings - drift is -target
+                drift[asset_class] = -target_pct
 
         return drift
 
@@ -509,7 +657,7 @@ class RebalancingEngine:
         current_positions = {h.security: h.shares for h in holdings}
 
         # Build map of changes from orders: security -> share change
-        changes = {}
+        changes: dict[Security, int] = {}
         for order in orders:
             current_change = changes.get(order.security, 0)
             if order.action == "BUY":

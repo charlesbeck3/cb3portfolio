@@ -1,11 +1,23 @@
+import logging
 from decimal import Decimal
 from typing import Any
 
-from django.http import HttpRequest
+from django.contrib import messages
+from django.http import HttpRequest, HttpResponse
+from django.shortcuts import redirect
 
 import structlog
 
+from portfolio.models import Account
+from portfolio.utils.security import (
+    AccessControlError,
+    InvalidInputError,
+    sanitize_integer_input,
+    validate_user_owns_account,
+)
+
 logger = structlog.get_logger(__name__)
+validation_logger = logging.getLogger(__name__)
 
 
 class PortfolioContextMixin:
@@ -76,3 +88,83 @@ class PortfolioContextMixin:
                 "groups": sidebar_data["accounts_by_group"],
             }
         }
+
+
+class AccountOwnershipMixin:
+    """
+    Mixin that validates account ownership for account-scoped views.
+
+    Provides consistent security validation across views that operate on
+    a specific account (e.g., holdings, rebalancing, exports).
+
+    Usage:
+        class MyAccountView(LoginRequiredMixin, AccountOwnershipMixin, TemplateView):
+            redirect_url = "portfolio:holdings"  # Optional, defaults to "portfolio:holdings"
+
+            def get(self, request, *args, **kwargs):
+                if not self.validate_account_ownership():
+                    return redirect(self.redirect_url)
+                return super().get(request, *args, **kwargs)
+
+    Attributes:
+        account: The validated Account instance (set after successful validation)
+        redirect_url: URL name to redirect to on validation failure
+    """
+
+    request: HttpRequest
+    kwargs: dict[str, Any]
+    account: Account | None = None
+    redirect_url: str = "portfolio:holdings"
+
+    def validate_account_ownership(self) -> bool:
+        """
+        Validate that the current user owns the requested account.
+
+        Extracts account_id from URL kwargs, validates the input, and verifies
+        ownership. On success, sets self.account to the Account instance.
+
+        Returns:
+            True if validation passes, False otherwise (with error message added)
+        """
+        user = self.request.user
+        account_id_raw = self.kwargs.get("account_id")
+
+        try:
+            account_id = sanitize_integer_input(account_id_raw, "account_id", min_val=1)
+            self.account = validate_user_owns_account(user, account_id)
+            return True
+
+        except (InvalidInputError, AccessControlError) as e:
+            validation_logger.warning(
+                "Account validation failed: user=%s, account_id=%s, error=%s",
+                user.id,
+                account_id_raw,
+                str(e),
+            )
+            messages.error(self.request, str(e))
+            return False
+
+    def get_validated_account(self) -> Account:
+        """
+        Get the validated account, raising an error if not validated.
+
+        Call this after validate_account_ownership() has returned True.
+
+        Returns:
+            The validated Account instance
+
+        Raises:
+            ValueError: If called before successful validation
+        """
+        if self.account is None:
+            raise ValueError("Account not validated. Call validate_account_ownership() first.")
+        return self.account
+
+    def get_redirect_response(self) -> HttpResponse:
+        """
+        Get the redirect response for failed validation.
+
+        Returns:
+            HttpResponseRedirect to self.redirect_url
+        """
+        return redirect(self.redirect_url)

@@ -5,48 +5,27 @@ import logging
 from io import StringIO
 from typing import Any
 
-from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
-from portfolio.models import Account
 from portfolio.services.rebalancing import RebalancingEngine
-from portfolio.utils.security import (
-    AccessControlError,
-    InvalidInputError,
-    sanitize_integer_input,
-    validate_user_owns_account,
-)
-from portfolio.views.mixins import PortfolioContextMixin
+from portfolio.views.mixins import AccountOwnershipMixin, PortfolioContextMixin
 
 logger = logging.getLogger(__name__)
 
 
-class RebalancingView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
+class RebalancingView(
+    LoginRequiredMixin, AccountOwnershipMixin, PortfolioContextMixin, TemplateView
+):
     """Display rebalancing recommendations for an account."""
 
     template_name = "portfolio/rebalancing.html"
 
     def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         """Handle GET requests with validation."""
-        user = request.user
-
-        # SECURITY: Validate account_id
-        account_id_raw = kwargs.get("account_id")
-        try:
-            account_id = sanitize_integer_input(account_id_raw, "account_id", min_val=1)
-            validate_user_owns_account(user, account_id)
-        except (InvalidInputError, AccessControlError) as e:
-            logger.warning(
-                "Account validation failed: user=%s, account_id=%s, error=%s",
-                user.id,
-                account_id_raw,
-                str(e),
-            )
-            messages.error(request, str(e))
-            return redirect("portfolio:holdings")
+        if not self.validate_account_ownership():
+            return self.get_redirect_response()
 
         return super().get(request, *args, **kwargs)
 
@@ -54,10 +33,8 @@ class RebalancingView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         """Add rebalancing plan to context."""
         context = super().get_context_data(**kwargs)
 
-        account_id = kwargs.get("account_id")
-        account = Account.objects.select_related(
-            "account_type", "portfolio", "allocation_strategy"
-        ).get(id=account_id)
+        # Account already validated and loaded by mixin
+        account = self.get_validated_account()
 
         # Generate rebalancing plan
         engine = RebalancingEngine(account)
@@ -82,27 +59,16 @@ class RebalancingView(LoginRequiredMixin, PortfolioContextMixin, TemplateView):
         return context
 
 
-class RebalancingExportView(LoginRequiredMixin, TemplateView):
+class RebalancingExportView(LoginRequiredMixin, AccountOwnershipMixin, TemplateView):
     """Export rebalancing orders as CSV."""
 
     def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         """Generate and return CSV file."""
-        user = request.user
-        account_id_raw = kwargs.get("account_id")
+        if not self.validate_account_ownership():
+            return self.get_redirect_response()
 
-        # SECURITY: Validate account_id
-        try:
-            account_id = sanitize_integer_input(account_id_raw, "account_id", min_val=1)
-            account = validate_user_owns_account(user, account_id)
-        except (InvalidInputError, AccessControlError) as e:
-            logger.warning(
-                "Export validation failed: user=%s, account_id=%s, error=%s",
-                user.id,
-                account_id_raw,
-                str(e),
-            )
-            messages.error(request, str(e))
-            return redirect("portfolio:holdings")
+        # Account already validated and loaded by mixin
+        account = self.get_validated_account()
 
         # Generate rebalancing plan
         engine = RebalancingEngine(account)
