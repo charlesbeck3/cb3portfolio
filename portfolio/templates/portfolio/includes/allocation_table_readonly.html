@@ -13,12 +13,12 @@
             <tr>
                 <th></th>
                 {% for at in account_types %}
-                    <th scope="col" class="text-center small text-muted">Actual</th>
+                    <th scope="col" class="text-center small text-muted col-group-start">Actual</th>
                     <th scope="col" class="text-center small text-muted col-mode-policy d-none">Policy</th>
                     <th scope="col" class="text-center small text-muted col-mode-effective">Effective</th>
                     <th scope="col" class="text-center small text-muted">Variance</th>
                 {% endfor %}
-                <th scope="col" class="text-center small table-active text-muted">Actual</th>
+                <th scope="col" class="text-center small table-active text-muted col-group-start">Actual</th>
                 <th scope="col" class="text-center small table-active text-muted col-mode-policy d-none">Policy</th>
                 <th scope="col" class="text-center small table-active text-muted col-mode-effective">Effective</th>
                 <th scope="col" class="text-center small table-active text-muted">Variance</th>
@@ -29,7 +29,7 @@
             <tr data-hierarchy-level="{{ row.hierarchy_level }}" data-testid="allocation-row-{{ row.asset_class_id|default:row.hierarchy_level }}">
                 <td class="ps-4" data-testid="asset-class-name-{{ row.asset_class_id|default:row.hierarchy_level }}">{{ row.asset_class_name }}</td>
                 {% for at_col in row.account_types %}
-                    <td class="text-end pe-1 small" data-testid="at-{{ at_col.id }}-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
+                    <td class="text-end pe-1 small col-group-start" data-testid="at-{{ at_col.id }}-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ at_col.actual_pct|percent }}</span>
                         {% else %}
@@ -63,7 +63,7 @@
                         </span>
                     </td>
                 {% endfor %}
-                <td class="text-end pe-2 table-active" data-testid="portfolio-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
+                <td class="text-end pe-2 table-active col-group-start" data-testid="portfolio-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ row.portfolio.actual_pct|percent }}</span>
                     {% else %}
