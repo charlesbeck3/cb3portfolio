@@ -85,18 +85,17 @@ class AllocationFormatter:
                 type_accounts_data = []
                 for account_meta in accounts:
                     acc_id = account_meta["id"]
-                    acc_prefix = f"{type_code}_{account_meta['name']}"
 
                     acc_data = {
                         "id": acc_id,
                         "name": account_meta["name"],
-                        "actual": float(row.get(f"{acc_prefix}_actual", 0.0)),
-                        "actual_pct": float(row.get(f"{acc_prefix}_actual_pct", 0.0)),
-                        "policy": float(row.get(f"{acc_prefix}_policy", 0.0)),
-                        "policy_pct": float(row.get(f"{acc_prefix}_policy_pct", 0.0)),
-                        "policy_variance": float(row.get(f"{acc_prefix}_policy_variance", 0.0)),
+                        "actual": float(row.get(f"account_{acc_id}_actual", 0.0)),
+                        "actual_pct": float(row.get(f"account_{acc_id}_actual_pct", 0.0)),
+                        "policy": float(row.get(f"account_{acc_id}_policy", 0.0)),
+                        "policy_pct": float(row.get(f"account_{acc_id}_policy_pct", 0.0)),
+                        "policy_variance": float(row.get(f"account_{acc_id}_policy_variance", 0.0)),
                         "policy_variance_pct": float(
-                            row.get(f"{acc_prefix}_policy_variance_pct", 0.0)
+                            row.get(f"account_{acc_id}_policy_variance_pct", 0.0)
                         ),
                         "allocation_strategy_id": acc_strategy_map.get(acc_id),
                     }

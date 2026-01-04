@@ -448,6 +448,9 @@ class AllocationCalculator:
             df, targets_map, account_totals, account_type_map
         )
 
+        # Step 5b: Add account-level policy targets
+        df = self._calculate_account_policy_targets(df, targets_map, account_totals)
+
         # Step 6: Calculate policy targets (portfolio-level stated targets)
         from decimal import Decimal
 
@@ -749,6 +752,50 @@ class AllocationCalculator:
 
         return result
 
+    def _calculate_account_policy_targets(
+        self,
+        df: pd.DataFrame,
+        targets_map: dict[int, dict[str, Any]],
+        account_totals: dict[int, Any],
+    ) -> pd.DataFrame:
+        """
+        Add account-level policy target columns.
+
+        For each account, adds account_{id}_policy and account_{id}_policy_pct
+        columns based on the account's allocation strategy targets.
+
+        Args:
+            df: DataFrame with asset class data
+            targets_map: {account_id: {asset_class_name: target_pct}}
+            account_totals: {account_id: total_value}
+
+        Returns:
+            DataFrame with added account_{id}_policy columns
+        """
+        from decimal import Decimal
+
+        if not targets_map:
+            return df
+
+        for acc_id, allocations in targets_map.items():
+            acc_total = float(account_totals.get(acc_id, Decimal("0")))
+
+            # Create series for this account's targets
+            for asset_class_name, target_pct in allocations.items():
+                # Find matching rows
+                mask = df["asset_class_name"] == asset_class_name
+                if mask.any():
+                    # Set policy percentage
+                    df.loc[mask, f"account_{acc_id}_policy_pct"] = float(target_pct)
+                    # Set policy value
+                    df.loc[mask, f"account_{acc_id}_policy"] = float(target_pct) * acc_total / 100
+
+            # Fill missing values with 0 for this account
+            df[f"account_{acc_id}_policy_pct"] = df[f"account_{acc_id}_policy_pct"].fillna(0.0)
+            df[f"account_{acc_id}_policy"] = df[f"account_{acc_id}_policy"].fillna(0.0)
+
+        return df
+
     def _calculate_policy_targets_presentation(
         self,
         df: pd.DataFrame,
@@ -822,8 +869,8 @@ class AllocationCalculator:
             df = self._calculate_variance_for_columns(
                 df,
                 f"{account_prefix}_actual",
-                f"{account_prefix}_target",
-                f"{account_prefix}_variance",
+                f"{account_prefix}_policy",
+                f"{account_prefix}_policy_variance",
             )
 
         return df
