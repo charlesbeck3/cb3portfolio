@@ -5,6 +5,8 @@ from typing import Any
 import pandas as pd
 import structlog
 
+from portfolio.services.allocations.types import HierarchyLevel
+
 logger = structlog.get_logger(__name__)
 
 
@@ -506,7 +508,7 @@ class AllocationCalculator:
                 # Add individual asset class rows
                 for _, row in category_df.iterrows():
                     row_dict = row.to_dict()
-                    row_dict["hierarchy_level"] = 999  # Asset class level
+                    row_dict["hierarchy_level"] = HierarchyLevel.HOLDING
                     result_rows.append(row_dict)
 
                 # Add category subtotal if more than 1 asset class in category
@@ -520,7 +522,7 @@ class AllocationCalculator:
                         "category_code": category,
                         "category_label": category_df.iloc[0]["category_label"],
                         "is_cash": False,
-                        "hierarchy_level": 1,  # Category subtotal
+                        "hierarchy_level": HierarchyLevel.CATEGORY_SUBTOTAL,
                         "group_sort_order": category_df.iloc[0].get("group_sort_order", 0),
                         "category_sort_order": category_df.iloc[0].get("category_sort_order", 0),
                     }
@@ -540,7 +542,7 @@ class AllocationCalculator:
                     "category_code": "",
                     "category_label": "",
                     "is_cash": False,
-                    "hierarchy_level": 0,  # Group total
+                    "hierarchy_level": HierarchyLevel.GROUP_TOTAL,
                     "group_sort_order": group_df.iloc[0].get("group_sort_order", 0),
                     "category_sort_order": 999,  # Sort at end of group
                 }
@@ -559,7 +561,7 @@ class AllocationCalculator:
             "category_code": "",
             "category_label": "",
             "is_cash": False,
-            "hierarchy_level": -1,  # Grand total
+            "hierarchy_level": HierarchyLevel.GRAND_TOTAL,
             "group_sort_order": 999,
             "category_sort_order": 999,
         }
@@ -1083,7 +1085,7 @@ class AllocationCalculator:
         result = result.reset_index()
 
         # Add metadata columns
-        result["hierarchy_level"] = 1  # Category subtotal level
+        result["hierarchy_level"] = HierarchyLevel.CATEGORY_SUBTOTAL
 
         # Copy sort order from first item in group
         if "Category_Sort_Order" in df.columns:
@@ -1122,7 +1124,7 @@ class AllocationCalculator:
         result = df.groupby(["Asset_Group", "Group_Code"])[agg_cols].sum()
         result = result.reset_index()
 
-        result["hierarchy_level"] = 0  # Group total level
+        result["hierarchy_level"] = HierarchyLevel.GROUP_TOTAL
 
         # Copy sort order
         if "Group_Sort_Order" in df.columns:
@@ -1162,7 +1164,7 @@ class AllocationCalculator:
 
         # Create single-row DataFrame
         result = pd.DataFrame([totals])
-        result["hierarchy_level"] = -1  # Grand total level
+        result["hierarchy_level"] = HierarchyLevel.GRAND_TOTAL
         result["name"] = "Portfolio Total"
 
         return result

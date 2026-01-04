@@ -542,6 +542,8 @@ class DjangoDataProvider:
             Asset_Group, Group_Code, Group_Sort_Order, Category_Code,
             Category_Sort_Order, Shares, Price, Value
         """
+        from portfolio.models import SecurityPrice
+
         if not holdings:
             return pd.DataFrame()
 
@@ -551,7 +553,7 @@ class DjangoDataProvider:
             if prices is not None:
                 price = prices.get(h.security, Decimal("0"))
             else:
-                price = h.security.latest_price or Decimal("0")
+                price = SecurityPrice.get_latest_price(h.security) or Decimal("0")
 
             value = h.shares * price
             asset_class = h.security.asset_class

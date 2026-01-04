@@ -1,8 +1,13 @@
 """Formatting layer for converting DataFrames to template-ready dicts."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
+
+from portfolio.services.allocations.types import HierarchyLevel
+
+if TYPE_CHECKING:
+    from portfolio.services.allocations.calculations import AllocationCalculator
 
 
 class AllocationFormatter:
@@ -47,7 +52,7 @@ class AllocationFormatter:
                 "category_code": row.get("category_code", ""),
                 "category_label": row.get("category_label", ""),
                 "is_cash": bool(row.get("is_cash", False)),
-                "hierarchy_level": int(row.get("hierarchy_level", 999)),
+                "hierarchy_level": int(row.get("hierarchy_level", HierarchyLevel.HOLDING)),
                 # Portfolio metrics (raw numerics only)
                 "portfolio": {
                     "actual": float(row.get("portfolio_actual", 0.0)),
@@ -201,7 +206,11 @@ class AllocationFormatter:
     # Holdings Formatting
     # ========================================================================
 
-    def format_holdings_rows(self, holdings_df: pd.DataFrame) -> list[dict[str, Any]]:
+    def format_holdings_rows(
+        self,
+        holdings_df: pd.DataFrame,
+        calculator: "AllocationCalculator | None" = None,
+    ) -> list[dict[str, Any]]:
         """
         Format holdings DataFrame into display-ready rows with aggregations.
 
@@ -211,23 +220,30 @@ class AllocationFormatter:
                 Group_Code, Category_Code, Shares, Price, Value,
                 Target_Shares, Shares_Variance, Target_Value, Value_Variance,
                 Allocation_Pct, Target_Allocation_Pct, Allocation_Variance_Pct
+            calculator: Optional calculator instance (creates new if not provided)
 
         Returns:
             List of row dicts with holdings, subtotals, group totals, and grand total
             interleaved in display order.
         """
+        from portfolio.services.allocations.calculations import AllocationCalculator
+
         if holdings_df.empty:
             return []
 
         # Step 1: Build individual holding rows
         holding_rows = self._holdings_to_dicts(holdings_df)
 
-        # Step 2: Calculate aggregations
-        subtotal_rows = self._calculate_holdings_subtotals(holdings_df)
-        group_rows = self._calculate_holdings_group_totals(holdings_df)
-        grand_row = self._calculate_holdings_grand_total(holdings_df)
+        # Step 2: Calculate aggregations using Calculator
+        calc = calculator or AllocationCalculator()
+        aggregations = calc.calculate_holdings_aggregations(holdings_df)
 
-        # Step 3: Interleave hierarchically
+        # Step 3: Convert aggregation DataFrames to dicts
+        subtotal_rows = self._aggregation_df_to_dicts(aggregations["subtotals"])
+        group_rows = self._aggregation_df_to_dicts(aggregations["group_totals"])
+        grand_row = self._aggregation_df_to_dicts(aggregations["grand_total"])
+
+        # Step 4: Interleave hierarchically
         result = self._interleave_holdings_hierarchical(
             holding_rows, subtotal_rows, group_rows, grand_row
         )
@@ -246,7 +262,7 @@ class AllocationFormatter:
 
             rows.append(
                 {
-                    "hierarchy_level": 999,  # Holding level
+                    "hierarchy_level": HierarchyLevel.HOLDING,
                     "ticker": row["Ticker"],
                     "security_name": row.get("Security_Name", ""),
                     "name": row.get("Security_Name", row["Ticker"]),
@@ -278,149 +294,60 @@ class AllocationFormatter:
 
         return rows
 
-    def _calculate_holdings_subtotals(self, df: pd.DataFrame) -> list[dict[str, Any]]:
-        """Calculate category subtotals using pandas groupby."""
+    def _aggregation_df_to_dicts(self, df: pd.DataFrame) -> list[dict]:
+        """
+        Convert aggregation DataFrame to list of dicts for display.
+
+        Handles subtotals, group totals, and grand totals from calculator.
+        """
         if df.empty:
             return []
-
-        # Group by asset category
-        grouped = (
-            df.groupby(["Group_Code", "Category_Code", "Asset_Category"], sort=False)
-            .agg(
-                {
-                    "Value": "sum",
-                    "Target_Value": "sum",
-                    "Allocation_Pct": "sum",
-                    "Target_Allocation_Pct": "sum",
-                }
-            )
-            .reset_index()
-        )
-
-        # Filter out single-holding categories (subtotal would be redundant)
-        category_counts = df.groupby(["Group_Code", "Category_Code"]).size()
-        multi_holding_categories = category_counts[category_counts > 1].index
-        grouped = grouped[
-            grouped.set_index(["Group_Code", "Category_Code"]).index.isin(multi_holding_categories)
-        ]
-
-        if grouped.empty:
-            return []
-
-        # Calculate variances
-        grouped["Value_Variance"] = grouped["Value"] - grouped["Target_Value"]
-        grouped["Allocation_Variance"] = (
-            grouped["Allocation_Pct"] - grouped["Target_Allocation_Pct"]
-        )
 
         rows = []
-        for _, row in grouped.iterrows():
-            category_id = f"cat-{row['Category_Code']}"
-            parent_id = f"grp-{row['Group_Code']}"
+        for _, row in df.iterrows():
+            hierarchy_level = int(row.get("hierarchy_level", HierarchyLevel.HOLDING))
 
-            rows.append(
+            # Build row dict based on hierarchy level
+            if hierarchy_level == HierarchyLevel.CATEGORY_SUBTOTAL:
+                row_dict = {
+                    "hierarchy_level": hierarchy_level,
+                    "name": f"{row.get('Asset_Category', '')} Total",
+                    "category_code": row.get("Category_Code", ""),
+                    "group_code": row.get("Group_Code", ""),
+                    "row_id": f"cat-{row.get('Category_Code', '')}",
+                    "parent_id": f"grp-{row.get('Group_Code', '')}",
+                }
+            elif hierarchy_level == HierarchyLevel.GROUP_TOTAL:
+                row_dict = {
+                    "hierarchy_level": hierarchy_level,
+                    "name": f"{row.get('Asset_Group', '')} Total",
+                    "group_code": row.get("Group_Code", ""),
+                    "row_id": f"grp-{row.get('Group_Code', '')}",
+                }
+            elif hierarchy_level == HierarchyLevel.GRAND_TOTAL:
+                row_dict = {
+                    "hierarchy_level": hierarchy_level,
+                    "name": row.get("name", "Grand Total"),
+                    "row_id": "grand-total",
+                }
+            else:
+                continue  # Skip unknown hierarchy levels
+
+            # Add financial values (if they exist)
+            row_dict.update(
                 {
-                    "hierarchy_level": 1,  # Category subtotal
-                    "name": f"{row['Asset_Category']} Total",
-                    "category_code": row["Category_Code"],
-                    "group_code": row["Group_Code"],
-                    # Raw values
-                    "value": float(row["Value"]),
-                    "target_value": float(row["Target_Value"]),
-                    "value_variance": float(row["Value_Variance"]),
-                    "allocation": float(row["Allocation_Pct"]),
-                    "target_allocation": float(row["Target_Allocation_Pct"]),
-                    "allocation_variance": float(row["Allocation_Variance"]),
-                    # UI metadata
-                    "row_id": category_id,
-                    "parent_id": parent_id,
+                    "value": float(row.get("Value", 0.0)),
+                    "target_value": float(row.get("Target_Value", 0.0)),
+                    "value_variance": float(row.get("Value_Variance", 0.0)),
+                    "allocation": float(row.get("Allocation", 0.0)),
+                    "target_allocation": float(row.get("Target_Allocation", 0.0)),
+                    "allocation_variance": float(row.get("Allocation_Variance", 0.0)),
                 }
             )
+
+            rows.append(row_dict)
 
         return rows
-
-    def _calculate_holdings_group_totals(self, df: pd.DataFrame) -> list[dict[str, Any]]:
-        """Calculate asset group totals using pandas groupby."""
-        if df.empty:
-            return []
-
-        # Group by asset group
-        grouped = (
-            df.groupby(["Group_Code", "Asset_Group"], sort=False)
-            .agg(
-                {
-                    "Value": "sum",
-                    "Target_Value": "sum",
-                    "Allocation_Pct": "sum",
-                    "Target_Allocation_Pct": "sum",
-                }
-            )
-            .reset_index()
-        )
-
-        # Filter out single-category groups (total would be redundant)
-        group_counts = df.groupby("Group_Code")["Category_Code"].nunique()
-        multi_category_groups = group_counts[group_counts > 1].index
-        grouped = grouped[grouped["Group_Code"].isin(multi_category_groups)]
-
-        if grouped.empty:
-            return []
-
-        # Calculate variances
-        grouped["Value_Variance"] = grouped["Value"] - grouped["Target_Value"]
-        grouped["Allocation_Variance"] = (
-            grouped["Allocation_Pct"] - grouped["Target_Allocation_Pct"]
-        )
-
-        rows = []
-        for _, row in grouped.iterrows():
-            group_id = f"grp-{row['Group_Code']}"
-
-            rows.append(
-                {
-                    "hierarchy_level": 0,  # Group total
-                    "name": f"{row['Asset_Group']} Total",
-                    "group_code": row["Group_Code"],
-                    # Raw values
-                    "value": float(row["Value"]),
-                    "target_value": float(row["Target_Value"]),
-                    "value_variance": float(row["Value_Variance"]),
-                    "allocation": float(row["Allocation_Pct"]),
-                    "target_allocation": float(row["Target_Allocation_Pct"]),
-                    "allocation_variance": float(row["Allocation_Variance"]),
-                    # UI metadata
-                    "row_id": group_id,
-                }
-            )
-
-        return rows
-
-    def _calculate_holdings_grand_total(self, df: pd.DataFrame) -> list[dict[str, Any]]:
-        """Calculate grand total across all holdings."""
-        if df.empty:
-            return []
-
-        total_value = df["Value"].sum()
-        total_target = df["Target_Value"].sum()
-        total_variance = total_value - total_target
-
-        # Allocations are always 100% for grand total
-        total_alloc = 100.0
-        total_target_alloc = 100.0
-
-        return [
-            {
-                "hierarchy_level": -1,  # Grand total
-                "name": "Grand Total",
-                # Raw values
-                "value": float(total_value),
-                "target_value": float(total_target),
-                "value_variance": float(total_variance),
-                "allocation": float(total_alloc),
-                "target_allocation": float(total_target_alloc),
-                "allocation_variance": 0.0,
-            }
-        ]
 
     def _interleave_holdings_hierarchical(
         self,
@@ -491,9 +418,9 @@ class AllocationFormatter:
 
         Returns:
             List of row dicts with hierarchy levels for template rendering:
-            - hierarchy_level 999: Individual asset class
-            - hierarchy_level 1: Category subtotal
-            - hierarchy_level -1: Grand total
+            - HierarchyLevel.HOLDING: Individual asset class
+            - HierarchyLevel.CATEGORY_SUBTOTAL: Category subtotal
+            - HierarchyLevel.GRAND_TOTAL: Grand total
         """
         from collections import defaultdict
         from decimal import Decimal
@@ -524,7 +451,7 @@ class AllocationFormatter:
             for asset_class in sorted(asset_classes, key=lambda ac: ac.name):
                 rows.append(
                     {
-                        "hierarchy_level": 999,  # Asset class level
+                        "hierarchy_level": HierarchyLevel.HOLDING,
                         "name": asset_class.name,
                         "asset_class_id": asset_class.id,
                         "category_code": category.code,
@@ -551,7 +478,7 @@ class AllocationFormatter:
 
                 rows.append(
                     {
-                        "hierarchy_level": 1,  # Category subtotal
+                        "hierarchy_level": HierarchyLevel.CATEGORY_SUBTOTAL,
                         "name": f"{category.label} Average",
                         "category_code": category.code,
                         "target_allocation": float(category_target),
@@ -568,7 +495,7 @@ class AllocationFormatter:
 
             rows.append(
                 {
-                    "hierarchy_level": -1,  # Grand total
+                    "hierarchy_level": HierarchyLevel.GRAND_TOTAL,
                     "name": "Portfolio Average Drift",
                     "target_allocation": float(grand_target),
                     "pre_drift": float(grand_pre_drift),

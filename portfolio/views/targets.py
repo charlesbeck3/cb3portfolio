@@ -35,7 +35,7 @@ class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateVi
         """Build context using new allocations module."""
         from decimal import Decimal
 
-        from portfolio.services.allocations import get_presentation_rows
+        from portfolio.services.allocations import HierarchyLevel, get_presentation_rows
 
         logger.info("target_allocations_accessed", user_id=cast(Any, self.request.user).id)
         context = super().get_context_data(**kwargs)
@@ -52,9 +52,13 @@ class TargetAllocationView(LoginRequiredMixin, PortfolioContextMixin, TemplateVi
         # Extract portfolio total from grand total row
         portfolio_total = Decimal("0.00")
         if allocation_rows:
-            # hierarchy_level -1 is grand total
             grand_total_row = next(
-                (r for r in allocation_rows if r.get("hierarchy_level") == -1), None
+                (
+                    r
+                    for r in allocation_rows
+                    if r.get("hierarchy_level") == HierarchyLevel.GRAND_TOTAL
+                ),
+                None,
             )
             if grand_total_row and "portfolio" in grand_total_row:
                 portfolio_total = Decimal(str(grand_total_row["portfolio"]["actual"]))

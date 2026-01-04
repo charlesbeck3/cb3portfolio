@@ -1,12 +1,28 @@
 """Type definitions for allocation calculations."""
 
 from decimal import Decimal
+from enum import IntEnum
 from typing import Any, TypedDict
 
 # Type aliases (Python 3.12+ syntax)
 type AllocationDict = dict[str, Decimal]  # {asset_class_name: target_pct}
 type TargetMap = dict[int, AllocationDict]  # {account_id: AllocationDict}
 type AccountMetadata = dict[str, Any]
+
+
+class HierarchyLevel(IntEnum):
+    """Standard hierarchy levels for allocation display.
+
+    Used throughout allocation and rebalancing modules to indicate the level
+    of aggregation for display rows.
+
+    Values are IntEnum so they can be compared and sorted naturally.
+    """
+
+    HOLDING = 999  # Individual security holding
+    CATEGORY_SUBTOTAL = 1  # Asset category subtotal (e.g., "US Equities Total")
+    GROUP_TOTAL = 0  # Asset group total (e.g., "Equities Total")
+    GRAND_TOTAL = -1  # Portfolio-wide total
 
 
 class AccountTypeMetrics(TypedDict):

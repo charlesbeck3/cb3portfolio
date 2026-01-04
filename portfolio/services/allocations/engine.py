@@ -142,8 +142,11 @@ class AllocationEngine:
             if holdings_with_targets.empty:
                 return []
 
-            # Step 5: Format for template
-            rows = self.formatter.format_holdings_rows(holdings_with_targets)
+            # Step 5: Format for template (pass calculator for aggregations)
+            rows = self.formatter.format_holdings_rows(
+                holdings_with_targets,
+                calculator=self.calculator,
+            )
 
             logger.info(
                 "holdings_rows_built",
@@ -219,8 +222,11 @@ class AllocationEngine:
             if holdings_with_targets.empty:
                 return []
 
-            # Step 6: Format for template
-            rows = self.formatter.format_holdings_rows(holdings_with_targets)
+            # Step 6: Format for template (pass calculator for aggregations)
+            rows = self.formatter.format_holdings_rows(
+                holdings_with_targets,
+                calculator=self.calculator,
+            )
 
             logger.info(
                 "aggregated_holdings_rows_built",

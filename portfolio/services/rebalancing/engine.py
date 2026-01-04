@@ -162,10 +162,10 @@ class RebalancingEngine:
         allocation views to ensure consistent calculation logic and display format.
 
         The resulting rows have the standard hierarchy structure:
-        - hierarchy_level 999: Individual holdings
-        - hierarchy_level 1: Category subtotals
-        - hierarchy_level 0: Group totals
-        - hierarchy_level -1: Grand total
+        - HierarchyLevel.HOLDING: Individual holdings
+        - HierarchyLevel.CATEGORY_SUBTOTAL: Category subtotals
+        - HierarchyLevel.GROUP_TOTAL: Group totals
+        - HierarchyLevel.GRAND_TOTAL: Grand total
 
         Args:
             holdings: Current holdings before rebalancing
@@ -204,9 +204,10 @@ class RebalancingEngine:
             targets_map=targets_map,
         )
 
-        # Use AllocationFormatter to format rows with hierarchy
+        # Use AllocationFormatter and Calculator for consistent formatting
         formatter = AllocationFormatter()
-        rows = formatter.format_holdings_rows(holdings_with_targets)
+        calculator = AllocationCalculator()
+        rows = formatter.format_holdings_rows(holdings_with_targets, calculator=calculator)
 
         return rows
 

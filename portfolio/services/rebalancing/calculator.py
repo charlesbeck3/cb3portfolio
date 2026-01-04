@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-import logging
 from decimal import Decimal
 from typing import TYPE_CHECKING, Literal
 
 import cvxpy as cp
 import numpy as np
 import pandas as pd
+import structlog
 
 from portfolio.services.rebalancing.dataclasses import RebalancingOrder
 
 if TYPE_CHECKING:
     from portfolio.models import Account, AssetClass, Holding, Security
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class RebalancingCalculator:

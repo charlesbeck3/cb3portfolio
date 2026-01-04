@@ -13,10 +13,11 @@ Public API:
 from typing import Any
 
 from .engine import AllocationEngine
-from .types import HoldingRow, PresentationRow, SidebarData
+from .types import HierarchyLevel, HoldingRow, PresentationRow, SidebarData
 
 __all__ = [
     "AllocationEngine",
+    "HierarchyLevel",
     "HoldingRow",
     "PresentationRow",
     "SidebarData",
