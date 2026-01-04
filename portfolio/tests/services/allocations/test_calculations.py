@@ -67,13 +67,17 @@ class TestAllocationCalculator:
 
     def test_calculate_by_asset_class_numeric(self, calculator, mock_holdings_df):
         """Verify by_asset_class returns numeric values only."""
-        total = float(mock_holdings_df.sum().sum())
-        result = calculator._calculate_by_asset_class(mock_holdings_df, total)
+        result = calculator.calculate_allocations(mock_holdings_df)
+        by_asset_class = result["by_asset_class"]
 
-        assert "dollars" in result.columns
-        assert "percent" in result.columns
-        assert isinstance(result.loc["Equities", "dollars"], (float, int))
-        assert isinstance(result.loc["Equities", "percent"], (float, int))
+        assert "dollars" in by_asset_class.columns
+        assert "percent" in by_asset_class.columns
+        assert isinstance(by_asset_class.loc["Equities", "dollars"], (float, int))
+        assert isinstance(by_asset_class.loc["Equities", "percent"], (float, int))
+
+        # Verify percentages sum to ~100%
+        total_pct = by_asset_class["percent"].sum()
+        assert abs(total_pct - 100.0) < 0.1
 
     def test_calculate_allocations_empty(self, calculator):
         """Verify empty DataFrame handling."""

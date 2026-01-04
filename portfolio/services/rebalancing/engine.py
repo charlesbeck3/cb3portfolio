@@ -92,8 +92,8 @@ class RebalancingEngine:
             target_allocations=target_allocations,
         )
 
-        # Calculate post-rebalancing state (estimated)
-        post_drift = self._estimate_post_drift(
+        # Calculate post-rebalancing drift (estimated)
+        post_drift = self._calculate_post_rebalance_drift(
             holdings=holdings,
             orders=orders,
             prices=prices,
@@ -488,7 +488,7 @@ class RebalancingEngine:
             account_id=self.account.id,
         )
 
-    def _estimate_post_drift(
+    def _calculate_post_rebalance_drift(
         self,
         holdings: list[Holding],
         orders: list[RebalancingOrder],
@@ -496,10 +496,12 @@ class RebalancingEngine:
         targets: dict[AssetClass, Decimal],
     ) -> dict[AssetClass, Decimal]:
         """
-        Estimate drift after applying orders.
+        Calculate estimated post-rebalance drift.
 
+        Applies orders to current holdings and calculates resulting drift.
         Uses AllocationCalculator infrastructure for consistent calculation logic.
-        This is approximate since actual execution prices may differ.
+
+        Note: This is approximate since actual execution prices may differ.
 
         Args:
             holdings: Current holdings
@@ -511,7 +513,7 @@ class RebalancingEngine:
             Dict mapping AssetClass to expected post-rebalance drift percentage
         """
         if not holdings and not orders:
-            return {}
+            return {ac: -target_pct for ac, target_pct in targets.items()}
 
         # Build pro forma holdings DataFrame
         proforma_df = self._build_proforma_holdings_dataframe(holdings, orders, prices)

@@ -19,6 +19,8 @@ class AllocationCalculator:
         """
         Calculate allocations at all hierarchy levels.
 
+        Uses unified _aggregate_by_level() for all aggregations.
+
         Args:
             holdings_df: MultiIndex DataFrame from Portfolio.to_dataframe()
                 Rows: (Account_Type, Account_Category, Account_Name, Account_ID)
@@ -35,7 +37,21 @@ class AllocationCalculator:
         if holdings_df.empty:
             return self._empty_allocations()
 
-        total_value = float(holdings_df.sum().sum())
+        # Sum across all accounts and securities for asset class level
+        by_asset = holdings_df.T.groupby(level="Asset_Class", observed=True).sum().T
+
+        # Calculate totals across all asset classes
+        asset_totals = by_asset.sum(axis=0)
+        total_value = float(asset_totals.sum())
+
+        # Create by_asset_class DataFrame with dollars and percent columns
+        # to maintain backward compatibility with existing code
+        by_asset_class_df = pd.DataFrame(
+            {
+                "dollars": asset_totals,
+                "percent": (asset_totals / total_value * 100) if total_value > 0 else 0.0,
+            }
+        ).sort_values("dollars", ascending=False)
 
         return {
             "by_account": self._aggregate_by_level(
@@ -44,8 +60,8 @@ class AllocationCalculator:
             "by_account_type": self._aggregate_by_level(
                 holdings_df, level="Account_Type", include_percentages=True
             ),
-            "by_asset_class": self._calculate_by_asset_class(holdings_df, total_value),
-            "portfolio_summary": self._calculate_portfolio_summary(holdings_df, total_value),
+            "by_asset_class": by_asset_class_df,
+            "portfolio_summary": self._calculate_portfolio_summary(holdings_df),
         }
 
     def _aggregate_by_level(
@@ -84,27 +100,18 @@ class AllocationCalculator:
 
         return result.reindex(sorted(result.columns), axis=1)
 
-    def _calculate_by_asset_class(self, df: pd.DataFrame, total_value: float) -> pd.DataFrame:
-        """Calculate portfolio-wide allocation by asset class."""
-        if total_value == 0:
-            return pd.DataFrame(columns=["dollars", "percent"])
-
-        # Sum across all accounts and securities
-        by_asset = df.T.groupby(level="Asset_Class", observed=True).sum().T
-        totals = by_asset.sum(axis=0)
-        percentages = (totals / total_value) * 100
-
-        result = pd.DataFrame(
-            {
-                "dollars": totals,
-                "percent": percentages,
-            }
-        )
-
-        return result.sort_values("dollars", ascending=False)
-
-    def _calculate_portfolio_summary(self, df: pd.DataFrame, total_value: float) -> pd.DataFrame:
+    def _calculate_portfolio_summary(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate overall portfolio summary."""
+        if df.empty:
+            return pd.DataFrame(
+                {
+                    "total_value": [0.0],
+                    "num_accounts": [0],
+                    "num_holdings": [0],
+                }
+            )
+
+        total_value = float(df.sum().sum())
         return pd.DataFrame(
             {
                 "total_value": [total_value],
@@ -1009,6 +1016,156 @@ class AllocationCalculator:
         df_aggregated["Account_Type"] = ""
 
         return df_aggregated
+
+    # ========================================================================
+    # Holdings Aggregation Methods
+    # ========================================================================
+
+    def calculate_holdings_aggregations(
+        self,
+        holdings_df: pd.DataFrame,
+    ) -> dict[str, pd.DataFrame]:
+        """
+        Calculate all aggregation levels for holdings.
+
+        Args:
+            holdings_df: Holdings DataFrame with targets/variances already calculated
+
+        Returns:
+            Dict containing:
+            - 'subtotals': Category-level aggregations
+            - 'group_totals': Group-level aggregations
+            - 'grand_total': Portfolio-wide totals
+        """
+        if holdings_df.empty:
+            return {
+                "subtotals": pd.DataFrame(),
+                "group_totals": pd.DataFrame(),
+                "grand_total": pd.DataFrame(),
+            }
+
+        return {
+            "subtotals": self._aggregate_holdings_by_category(holdings_df),
+            "group_totals": self._aggregate_holdings_by_group(holdings_df),
+            "grand_total": self._aggregate_holdings_grand_total(holdings_df),
+        }
+
+    def _aggregate_holdings_by_category(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Aggregate holdings to category level (subtotals).
+
+        Groups by Asset_Category and sums all numeric columns.
+        """
+        if df.empty:
+            return pd.DataFrame()
+
+        # Columns to aggregate
+        agg_cols = [
+            "Value",
+            "Target_Value",
+            "Value_Variance",
+            "Shares",
+            "Target_Shares",
+            "Shares_Variance",
+            "Allocation",
+            "Target_Allocation",
+            "Allocation_Variance",
+        ]
+
+        # Only include columns that exist
+        agg_cols = [col for col in agg_cols if col in df.columns]
+
+        if not agg_cols:
+            return pd.DataFrame()
+
+        # Group by category
+        result = df.groupby(["Asset_Category", "Category_Code"])[agg_cols].sum()
+        result = result.reset_index()
+
+        # Add metadata columns
+        result["hierarchy_level"] = 1  # Category subtotal level
+
+        # Copy sort order from first item in group
+        if "Category_Sort_Order" in df.columns:
+            category_metadata = df.groupby("Asset_Category")[["Category_Sort_Order"]].first()
+            result = result.merge(category_metadata, on="Asset_Category", how="left")
+
+        return result
+
+    def _aggregate_holdings_by_group(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Aggregate holdings to group level (totals).
+
+        Groups by Asset_Group and sums all numeric columns.
+        """
+        if df.empty:
+            return pd.DataFrame()
+
+        agg_cols = [
+            "Value",
+            "Target_Value",
+            "Value_Variance",
+            "Shares",
+            "Target_Shares",
+            "Shares_Variance",
+            "Allocation",
+            "Target_Allocation",
+            "Allocation_Variance",
+        ]
+
+        agg_cols = [col for col in agg_cols if col in df.columns]
+
+        if not agg_cols:
+            return pd.DataFrame()
+
+        # Group by group code
+        result = df.groupby(["Asset_Group", "Group_Code"])[agg_cols].sum()
+        result = result.reset_index()
+
+        result["hierarchy_level"] = 0  # Group total level
+
+        # Copy sort order
+        if "Group_Sort_Order" in df.columns:
+            group_metadata = df.groupby("Asset_Group")[["Group_Sort_Order"]].first()
+            result = result.merge(group_metadata, on="Asset_Group", how="left")
+
+        return result
+
+    def _aggregate_holdings_grand_total(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate portfolio-wide grand total.
+
+        Sums all numeric columns across entire portfolio.
+        """
+        if df.empty:
+            return pd.DataFrame()
+
+        agg_cols = [
+            "Value",
+            "Target_Value",
+            "Value_Variance",
+            "Shares",
+            "Target_Shares",
+            "Shares_Variance",
+            "Allocation",
+            "Target_Allocation",
+            "Allocation_Variance",
+        ]
+
+        agg_cols = [col for col in agg_cols if col in df.columns]
+
+        if not agg_cols:
+            return pd.DataFrame()
+
+        # Calculate totals
+        totals = df[agg_cols].sum()
+
+        # Create single-row DataFrame
+        result = pd.DataFrame([totals])
+        result["hierarchy_level"] = -1  # Grand total level
+        result["name"] = "Portfolio Total"
+
+        return result
 
     @staticmethod
     def aggregated_df_to_dict(df: pd.DataFrame) -> dict[str, Any]:

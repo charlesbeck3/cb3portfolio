@@ -335,6 +335,52 @@ class DjangoDataProvider:
 
         return df
 
+    def _create_zero_holding_dict(
+        self,
+        asset_class: AssetClass,
+        security: Security,
+        account_id: int = 0,
+    ) -> dict[str, Any]:
+        """
+        Create a zero-holding dictionary for an asset class.
+
+        Args:
+            asset_class: AssetClass with primary security
+            security: Security to use for the holding
+            account_id: Account ID (0 for portfolio-level)
+
+        Returns:
+            Dict with standard holdings schema, Value=0
+        """
+        from portfolio.models import SecurityPrice
+
+        category = asset_class.category
+
+        # Get latest price for the security
+        latest_price = SecurityPrice.get_latest_price(security)
+        price = float(latest_price) if latest_price else 0.0
+
+        return {
+            "Account_ID": account_id,
+            "Account_Name": "Portfolio" if account_id == 0 else "",
+            "Account_Type": "",
+            "Ticker": security.ticker,
+            "Security_Name": security.name,
+            "Asset_Class": asset_class.name,
+            "Asset_Class_ID": asset_class.id,
+            "Asset_Category": category.label,
+            "Asset_Group": (category.parent.label if category.parent else category.label),
+            "Group_Code": (category.parent.code if category.parent else category.code),
+            "Group_Sort_Order": (
+                category.parent.sort_order if category.parent else category.sort_order
+            ),
+            "Category_Code": category.code,
+            "Category_Sort_Order": category.sort_order,
+            "Shares": 0.0,
+            "Price": price,
+            "Value": 0.0,
+        }
+
     def get_zero_holdings_for_targets(
         self,
         existing_df: pd.DataFrame,
@@ -352,7 +398,7 @@ class DjangoDataProvider:
         Returns:
             DataFrame with zero-holding rows for missing asset classes
         """
-        from portfolio.models import AssetClass, SecurityPrice
+        from portfolio.models import AssetClass
 
         account_targets = targets_map.get(account_id, {})
         if not account_targets:
@@ -368,7 +414,7 @@ class DjangoDataProvider:
         if not missing_asset_classes:
             return pd.DataFrame()
 
-        # Build zero holdings using primary securities
+        # Build zero holdings using helper method
         zero_holdings = []
 
         for ac_name in missing_asset_classes:
@@ -386,40 +432,12 @@ class DjangoDataProvider:
                     )
                     continue
 
-                # Get latest price for the primary security
-                latest_price = SecurityPrice.get_latest_price(security)
-                price = float(latest_price) if latest_price else 0.0
-
-                zero_holding = {
-                    "Account_ID": account_id,
-                    "Account_Name": "Portfolio" if account_id == 0 else "",
-                    "Account_Type": "",
-                    "Ticker": security.ticker,
-                    "Security_Name": security.name,
-                    "Asset_Class": ac_name,
-                    "Asset_Class_ID": asset_class.id,
-                    "Asset_Category": asset_class.category.label,
-                    "Asset_Group": (
-                        asset_class.category.parent.label
-                        if asset_class.category.parent
-                        else asset_class.category.label
-                    ),
-                    "Group_Code": (
-                        asset_class.category.parent.code
-                        if asset_class.category.parent
-                        else asset_class.category.code
-                    ),
-                    "Group_Sort_Order": (
-                        asset_class.category.parent.sort_order
-                        if asset_class.category.parent
-                        else asset_class.category.sort_order
-                    ),
-                    "Category_Code": asset_class.category.code,
-                    "Category_Sort_Order": asset_class.category.sort_order,
-                    "Shares": 0.0,
-                    "Price": price,
-                    "Value": 0.0,
-                }
+                # Use helper to create zero holding dict
+                zero_holding = self._create_zero_holding_dict(
+                    asset_class=asset_class,
+                    security=security,
+                    account_id=account_id,
+                )
                 zero_holdings.append(zero_holding)
 
             except AssetClass.DoesNotExist:
