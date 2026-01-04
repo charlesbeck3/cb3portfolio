@@ -254,6 +254,24 @@ body.sidebar-collapsed #main-content-column {
     vertical-align: middle;
 }
 
+/* Individual account columns - subtle styling to differentiate from account type columns */
+.table-account-detail {
+    background-color: #f8f9fa !important; /* Light gray, same as table header */
+}
+
+.table-account-detail.border-bottom-0 {
+    border-bottom: 0 !important;
+}
+
+.table-account-detail.border-top-0 {
+    border-top: 0 !important;
+}
+
+/* Left border for column groups - marks start of account type and individual account sections */
+.col-group-start {
+    border-left: 2px solid #6c757d !important; /* Subtle dark gray */
+}
+
 /* Variance highlighting */
 .variance-positive {
     color: #198754; /* Bootstrap success green */

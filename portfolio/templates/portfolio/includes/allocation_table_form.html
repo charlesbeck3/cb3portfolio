@@ -32,7 +32,7 @@
                     {% endif %}
                 </th>
                 {% for acc in group.active_accounts %}
-                    <th scope="col" class="text-center border-bottom-0 table-warning d-none col-acc-{{ group.id }} pb-3" colspan="3">
+                    <th scope="col" class="text-center border-bottom-0 table-account-detail d-none col-acc-{{ group.id }} pb-3" colspan="3">
                         <div><small>{{ acc.name }}</small></div>
                         <div class="fw-normal mt-1">
                             {% if mode == 'percent' %}
@@ -62,17 +62,17 @@
         </tr>
         <tr>
             {% for group in account_types %}
-                <th scope="col" class="text-center small border-top-0 text-muted" style="width: 60px; min-width: 60px;">Actual</th>
+                <th scope="col" class="text-center small border-top-0 text-muted col-group-start" style="width: 60px; min-width: 60px;">Actual</th>
                 <th scope="col" class="text-center small border-top-0 text-muted col-mode-policy d-none" style="width: 90px; min-width: 90px;">Policy</th>
                 <th scope="col" class="text-center small border-top-0 text-muted col-mode-effective" style="width: 70px; min-width: 70px;">Effective</th>
                 <th scope="col" class="text-center small border-top-0 text-muted variance-col" style="width: 70px; min-width: 70px;">Variance</th>
                 {% for _acc in group.active_accounts %}
-                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 60px; min-width: 60px;">Actual</th>
-                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 90px; min-width: 90px;">Policy</th>
-                    <th scope="col" class="text-center small border-top-0 text-muted table-warning d-none col-acc-{{ group.id }}" style="width: 70px; min-width: 70px;">Variance</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-account-detail col-group-start d-none col-acc-{{ group.id }}" style="width: 60px; min-width: 60px;">Actual</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-account-detail d-none col-acc-{{ group.id }}" style="width: 90px; min-width: 90px;">Policy</th>
+                    <th scope="col" class="text-center small border-top-0 text-muted table-account-detail d-none col-acc-{{ group.id }}" style="width: 70px; min-width: 70px;">Variance</th>
                 {% endfor %}
             {% endfor %}
-            <th scope="col" class="text-center small table-active border-top-0 text-muted" style="width: 60px; min-width: 60px;">Actual</th>
+            <th scope="col" class="text-center small table-active border-top-0 text-muted col-group-start" style="width: 60px; min-width: 60px;">Actual</th>
             <th scope="col" class="text-center small table-active border-top-0 text-muted col-mode-policy d-none" style="width: 70px; min-width: 70px;">Policy</th>
             <th scope="col" class="text-center small table-active border-top-0 text-muted col-mode-effective" style="width: 70px; min-width: 70px;">Effective</th>
             <th scope="col" class="text-center small table-active border-top-0 text-muted variance-col" style="width: 70px; min-width: 70px;">Variance</th>
@@ -84,7 +84,7 @@
             <td class="ps-4" data-testid="asset-class-name-{{ row.asset_class_id|default:row.hierarchy_level }}">{{ row.asset_class_name }}</td>
 
             {% for group in row.account_types %}
-                <td class="text-end pe-1 small" data-testid="at-{{ group.id }}-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
+                <td class="text-end pe-1 small col-group-start" data-testid="at-{{ group.id }}-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
                     {% if mode == 'percent' %}
                         <span class="percent">{{ group.actual_pct|percent }}</span>
                     {% else %}
@@ -123,21 +123,21 @@
                 </td>
 
                 {% for acc in group.accounts %}
-                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}" data-testid="acc-{{ acc.id }}-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
+                    <td class="text-end pe-1 small table-account-detail col-group-start d-none col-acc-{{ group.id }}" data-testid="acc-{{ acc.id }}-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ acc.actual_pct|percent }}</span>
                         {% else %}
                             <span class="money">{{ acc.actual|money }}</span>
                         {% endif %}
                     </td>
-                    <td class="text-end pe-1 small table-warning d-none col-acc-{{ group.id }}" data-testid="acc-{{ acc.id }}-policy-{{ row.asset_class_id|default:row.hierarchy_level }}">
+                    <td class="text-end pe-1 small table-account-detail d-none col-acc-{{ group.id }}" data-testid="acc-{{ acc.id }}-policy-{{ row.asset_class_id|default:row.hierarchy_level }}">
                         {% if mode == 'percent' %}
                             <span class="percent">{{ acc.policy_pct|percent }}</span>
                         {% else %}
                             <span class="money">{{ acc.policy|money }}</span>
                         {% endif %}
                     </td>
-                    <td class="text-end pe-2 small table-warning d-none col-acc-{{ group.id }}" data-testid="acc-{{ acc.id }}-variance-{{ row.asset_class_id|default:row.hierarchy_level }}">
+                    <td class="text-end pe-2 small table-account-detail d-none col-acc-{{ group.id }}" data-testid="acc-{{ acc.id }}-variance-{{ row.asset_class_id|default:row.hierarchy_level }}">
                          <!-- Individual accounts only have policy variance -->
                          <span class="variance-value">
                             {% if mode == 'percent' %}
@@ -150,7 +150,7 @@
                 {% endfor %}
             {% endfor %}
 
-            <td class="text-end pe-2 table-active" data-testid="portfolio-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
+            <td class="text-end pe-2 table-active col-group-start" data-testid="portfolio-actual-{{ row.asset_class_id|default:row.hierarchy_level }}">
                 {% if mode == 'percent' %}
                     <span class="percent">{{ row.portfolio.actual_pct|percent }}</span>
                 {% else %}
