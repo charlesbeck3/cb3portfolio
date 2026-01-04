@@ -13,11 +13,7 @@ Usage:
         print(f"{order.action} {order.shares} {order.security.ticker}")
 """
 
-from portfolio.services.rebalancing.dataclasses import (
-    ProFormaHolding,
-    RebalancingOrder,
-    RebalancingPlan,
-)
+from portfolio.services.rebalancing.dataclasses import RebalancingOrder, RebalancingPlan
 from portfolio.services.rebalancing.engine import RebalancingEngine
 
-__all__ = ["ProFormaHolding", "RebalancingEngine", "RebalancingOrder", "RebalancingPlan"]
+__all__ = ["RebalancingEngine", "RebalancingOrder", "RebalancingPlan"]

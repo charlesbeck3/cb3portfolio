@@ -2,12 +2,13 @@
 Pro forma holdings table for rebalancing view.
 
 Shows before/after comparison with shares, value, and allocation changes.
+Uses standard row format from AllocationFormatter with hierarchy_level.
 
 Usage:
-    {% proforma_table rows=plan.proforma_holdings_rows %}
+    {% include "portfolio/partials/_proforma_table.html" with rows=plan.proforma_holdings_rows %}
 
 Parameters:
-    - rows: List of pro forma row dicts with hierarchy_level field
+    - rows: List of formatted row dicts with hierarchy_level field
 {% endcomment %}
 
 {% load portfolio_filters allocation_tags %}
@@ -17,27 +18,24 @@ Parameters:
         <thead>
             <tr>
                 <th rowspan="2">Ticker</th>
-                <th rowspan="2">Name</th>
+                <th rowspan="2">Security</th>
                 <th rowspan="2">Asset Class</th>
                 <th rowspan="2" class="text-end">Price</th>
-                <th colspan="3" class="text-center border-start">Shares</th>
-                <th colspan="3" class="text-center border-start">Value</th>
-                <th colspan="4" class="text-center border-start">Allocation</th>
+                <th colspan="2" class="text-center border-start">Shares</th>
+                <th colspan="2" class="text-center border-start">Value</th>
+                <th colspan="3" class="text-center border-start">Allocation</th>
             </tr>
             <tr>
                 {# Shares subheaders #}
-                <th class="text-end border-start">Current</th>
-                <th class="text-end">Change</th>
-                <th class="text-end">Pro Forma</th>
+                <th class="text-end border-start">Pro Forma</th>
+                <th class="text-end">Target</th>
 
                 {# Value subheaders #}
-                <th class="text-end border-start">Current</th>
-                <th class="text-end">Change</th>
-                <th class="text-end">Pro Forma</th>
+                <th class="text-end border-start">Pro Forma</th>
+                <th class="text-end">Target</th>
 
                 {# Allocation subheaders #}
-                <th class="text-end border-start">Current</th>
-                <th class="text-end">Pro Forma</th>
+                <th class="text-end border-start">Pro Forma</th>
                 <th class="text-end">Target</th>
                 <th class="text-end">Variance</th>
             </tr>
@@ -46,30 +44,35 @@ Parameters:
             {% for row in rows %}
                 {% if row.hierarchy_level == 999 %}
                 {# Individual holding row #}
-                <tr data-hierarchy-level="{{ row.hierarchy_level }}"
-                    data-testid="proforma-row-{{ row.ticker }}"
-                    class="collapse show {{ row.collapse_class }}">
+                <tr data-hierarchy-level="999" data-testid="proforma-row-{{ row.ticker }}">
                     <td><strong>{{ row.ticker }}</strong></td>
                     <td>{{ row.security_name }}</td>
                     <td>{{ row.asset_class }}</td>
                     <td class="text-end"><span class="money">{{ row.price|money:2 }}</span></td>
 
                     {# Shares columns #}
-                    <td class="text-end border-start"><span class="number">{{ row.shares|number:2 }}</span></td>
-                    <td class="text-end"><span class="number">{{ row.shares_variance|number:2 }}</span></td>
-                    <td class="text-end"><span class="number"><strong>{{ row.target_shares|number:2 }}</strong></span></td>
+                    <td class="text-end border-start">
+                        <span class="number"><strong>{{ row.shares|number:2 }}</strong></span>
+                    </td>
+                    <td class="text-end">
+                        <span class="number text-muted">{{ row.target_shares|number:2 }}</span>
+                    </td>
 
                     {# Value columns #}
-                    <td class="text-end border-start"><span class="money">{{ row.value|money:0 }}</span></td>
-                    <td class="text-end {{ row.value_variance|variance_css_class }}">
-                        <span class="money">{{ row.value_variance|money:0 }}</span>
+                    <td class="text-end border-start">
+                        <span class="money"><strong>{{ row.value|money:0 }}</strong></span>
                     </td>
-                    <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
+                    <td class="text-end">
+                        <span class="money text-muted">{{ row.target_value|money:0 }}</span>
+                    </td>
 
                     {# Allocation columns #}
-                    <td class="text-end border-start"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
-                    <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
-                    <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                    <td class="text-end border-start">
+                        <span class="percent"><strong>{{ row.allocation|percent:1 }}</strong></span>
+                    </td>
+                    <td class="text-end">
+                        <span class="percent text-muted">{{ row.target_allocation|percent:1 }}</span>
+                    </td>
                     <td class="text-end {{ row.allocation_variance|variance_css_class }}">
                         <span class="percent">{{ row.allocation_variance|percent:2 }}</span>
                     </td>
@@ -77,47 +80,55 @@ Parameters:
 
                 {% elif row.hierarchy_level == 1 %}
                 {# Category subtotal row #}
-                <tr data-hierarchy-level="{{ row.hierarchy_level }}"
-                    data-testid="category-subtotal-row-{{ row.row_id }}"
-                    class="table-light fw-semibold">
+                <tr data-hierarchy-level="1" data-testid="proforma-category-{{ row.category_code }}" class="table-light fw-semibold">
                     <td colspan="4">{{ row.name }}</td>
-                    <td colspan="3" class="border-start"></td>
+
+                    {# Shares columns - empty for subtotals #}
+                    <td colspan="2" class="border-start"></td>
 
                     {# Value columns #}
-                    <td class="text-end border-start"><span class="money">{{ row.value|money:0 }}</span></td>
-                    <td class="text-end {{ row.value_variance|variance_css_class }}">
-                        <span class="money">{{ row.value_variance|money:0 }}</span>
+                    <td class="text-end border-start">
+                        <span class="money">{{ row.value|money:0 }}</span>
                     </td>
-                    <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
+                    <td class="text-end">
+                        <span class="money text-muted">{{ row.target_value|money:0 }}</span>
+                    </td>
 
                     {# Allocation columns #}
-                    <td class="text-end border-start"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
-                    <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
-                    <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                    <td class="text-end border-start">
+                        <span class="percent">{{ row.allocation|percent:1 }}</span>
+                    </td>
+                    <td class="text-end">
+                        <span class="percent text-muted">{{ row.target_allocation|percent:1 }}</span>
+                    </td>
                     <td class="text-end {{ row.allocation_variance|variance_css_class }}">
                         <span class="percent">{{ row.allocation_variance|percent:2 }}</span>
                     </td>
                 </tr>
 
                 {% elif row.hierarchy_level == 0 %}
-                {# Asset class group total #}
-                <tr data-hierarchy-level="{{ row.hierarchy_level }}"
-                    data-testid="group-total-row-{{ row.row_id }}"
-                    class="table-secondary fw-bold">
+                {# Group total row #}
+                <tr data-hierarchy-level="0" data-testid="proforma-group-{{ row.group_code }}" class="table-secondary fw-bold">
                     <td colspan="4">{{ row.name }}</td>
-                    <td colspan="3" class="border-start"></td>
+
+                    {# Shares columns - empty for totals #}
+                    <td colspan="2" class="border-start"></td>
 
                     {# Value columns #}
-                    <td class="text-end border-start"><span class="money">{{ row.value|money:0 }}</span></td>
-                    <td class="text-end {{ row.value_variance|variance_css_class }}">
-                        <span class="money">{{ row.value_variance|money:0 }}</span>
+                    <td class="text-end border-start">
+                        <span class="money">{{ row.value|money:0 }}</span>
                     </td>
-                    <td class="text-end"><span class="money">{{ row.target_value|money:0 }}</span></td>
+                    <td class="text-end">
+                        <span class="money text-muted">{{ row.target_value|money:0 }}</span>
+                    </td>
 
                     {# Allocation columns #}
-                    <td class="text-end border-start"><span class="percent">{{ row.allocation|percent:1 }}</span></td>
-                    <td class="text-end"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
-                    <td class="text-end text-muted"><span class="percent">{{ row.target_allocation|percent:1 }}</span></td>
+                    <td class="text-end border-start">
+                        <span class="percent">{{ row.allocation|percent:1 }}</span>
+                    </td>
+                    <td class="text-end">
+                        <span class="percent text-muted">{{ row.target_allocation|percent:1 }}</span>
+                    </td>
                     <td class="text-end {{ row.allocation_variance|variance_css_class }}">
                         <span class="percent">{{ row.allocation_variance|percent:2 }}</span>
                     </td>
@@ -125,23 +136,27 @@ Parameters:
 
                 {% elif row.hierarchy_level == -1 %}
                 {# Grand total row #}
-                <tr data-hierarchy-level="{{ row.hierarchy_level }}"
-                    data-testid="grand-total-row"
-                    class="table-dark fw-bold">
+                <tr data-hierarchy-level="-1" data-testid="proforma-grand-total" class="table-dark fw-bold">
                     <td colspan="4"><strong>{{ row.name }}</strong></td>
-                    <td colspan="3" class="border-start"></td>
+
+                    {# Shares columns - empty for grand total #}
+                    <td colspan="2" class="border-start"></td>
 
                     {# Value columns #}
-                    <td class="text-end border-start"><strong><span class="money">{{ row.value|money:0 }}</span></strong></td>
-                    <td class="text-end {{ row.value_variance|variance_css_class }}">
-                        <strong><span class="money">{{ row.value_variance|money:0 }}</span></strong>
+                    <td class="text-end border-start">
+                        <strong><span class="money">{{ row.value|money:0 }}</span></strong>
                     </td>
-                    <td class="text-end"><strong><span class="money">{{ row.target_value|money:0 }}</span></strong></td>
+                    <td class="text-end">
+                        <strong><span class="money text-muted">{{ row.target_value|money:0 }}</span></strong>
+                    </td>
 
                     {# Allocation columns #}
-                    <td class="text-end border-start"><strong><span class="percent">{{ row.allocation|percent:1 }}</span></strong></td>
-                    <td class="text-end"><strong><span class="percent">{{ row.target_allocation|percent:1 }}</span></strong></td>
-                    <td class="text-end text-muted"><strong><span class="percent">{{ row.target_allocation|percent:1 }}</span></strong></td>
+                    <td class="text-end border-start">
+                        <strong><span class="percent">{{ row.allocation|percent:1 }}</span></strong>
+                    </td>
+                    <td class="text-end">
+                        <strong><span class="percent text-muted">{{ row.target_allocation|percent:1 }}</span></strong>
+                    </td>
                     <td class="text-end {{ row.allocation_variance|variance_css_class }}">
                         <strong><span class="percent">{{ row.allocation_variance|percent:2 }}</span></strong>
                     </td>
@@ -149,7 +164,7 @@ Parameters:
                 {% endif %}
             {% empty %}
                 <tr>
-                    <td colspan="14" class="text-center text-muted">No holdings found.</td>
+                    <td colspan="11" class="text-center text-muted">No holdings found.</td>
                 </tr>
             {% endfor %}
         </tbody>

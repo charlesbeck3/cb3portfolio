@@ -9,11 +9,7 @@ from typing import TYPE_CHECKING
 import structlog
 
 from portfolio.services.rebalancing.calculator import RebalancingCalculator
-from portfolio.services.rebalancing.dataclasses import (
-    ProFormaHolding,
-    RebalancingOrder,
-    RebalancingPlan,
-)
+from portfolio.services.rebalancing.dataclasses import RebalancingOrder, RebalancingPlan
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -55,7 +51,6 @@ class RebalancingEngine:
             return RebalancingPlan(
                 account=self.account,
                 orders=[],
-                proforma_holdings=[],
                 pre_drift={},
                 post_drift={},
                 total_buy_amount=Decimal("0"),
@@ -74,7 +69,6 @@ class RebalancingEngine:
             return RebalancingPlan(
                 account=self.account,
                 orders=[],
-                proforma_holdings=[],
                 pre_drift={},
                 post_drift={},
                 total_buy_amount=Decimal("0"),
@@ -106,20 +100,14 @@ class RebalancingEngine:
             targets=target_allocations,
         )
 
-        # Calculate pro forma holdings
-        proforma_holdings, current_aggregated, proforma_aggregated = (
+        # Calculate pro forma holdings with aggregations
+        proforma_holdings_rows, current_aggregated, proforma_aggregated = (
             self._calculate_proforma_holdings_with_aggregations(
                 holdings=holdings,
                 orders=orders,
                 prices=prices,
                 target_allocations=target_allocations,
             )
-        )
-
-        # Format pro forma holdings for template display
-        proforma_holdings_rows = self.get_proforma_holdings_rows(
-            proforma_holdings=proforma_holdings,
-            target_allocations=target_allocations,
         )
 
         # Format drift analysis with category subtotals
@@ -146,7 +134,6 @@ class RebalancingEngine:
         return RebalancingPlan(
             account=self.account,
             orders=orders,
-            proforma_holdings=proforma_holdings,
             proforma_holdings_rows=proforma_holdings_rows,
             drift_analysis_rows=drift_analysis_rows,
             current_aggregated=current_aggregated,
@@ -163,65 +150,44 @@ class RebalancingEngine:
 
     def get_proforma_holdings_rows(
         self,
-        proforma_holdings: list[ProFormaHolding],
+        holdings: list[Holding],
+        orders: list[RebalancingOrder],
+        prices: dict[Security, Decimal],
         target_allocations: dict[AssetClass, Decimal],
     ) -> list[dict]:
         """
-        Convert pro forma holdings to structured rows with hierarchy.
+        Format pro forma holdings for template display.
 
-        Uses the same AllocationCalculator and AllocationFormatter as the
-        holdings view to ensure consistent grouping and display.
+        Uses the SAME AllocationCalculator and AllocationFormatter as the
+        allocation views to ensure consistent calculation logic and display format.
+
+        The resulting rows have the standard hierarchy structure:
+        - hierarchy_level 999: Individual holdings
+        - hierarchy_level 1: Category subtotals
+        - hierarchy_level 0: Group totals
+        - hierarchy_level -1: Grand total
 
         Args:
-            proforma_holdings: List of ProFormaHolding objects
+            holdings: Current holdings before rebalancing
+            orders: Orders to apply
+            prices: Current security prices
             target_allocations: Target allocations by asset class
 
         Returns:
-            List of row dicts with hierarchy_level field for template rendering
+            List of row dicts with hierarchy_level field for template rendering.
+            Same format as AllocationEngine.get_holdings_rows().
         """
-        import pandas as pd
-
         from portfolio.services.allocations.calculations import AllocationCalculator
         from portfolio.services.allocations.formatters import AllocationFormatter
 
-        if not proforma_holdings:
+        if not holdings and not orders:
             return []
 
-        # Convert ProFormaHolding list to DataFrame format
-        holdings_data = []
-        for pf in proforma_holdings:
-            holdings_data.append(
-                {
-                    "Ticker": pf.security.ticker,
-                    "Security_Name": pf.security.name,
-                    "Asset_Class": pf.asset_class.name,
-                    "Asset_Class_ID": pf.asset_class.id,
-                    "Category_Code": pf.asset_class.category.code,
-                    "Category_Sort_Order": pf.asset_class.category.sort_order
-                    if hasattr(pf.asset_class.category, "sort_order")
-                    else 0,
-                    "Asset_Category": pf.asset_class.category.label,
-                    "Group_Code": pf.asset_class.category.parent.code
-                    if pf.asset_class.category.parent
-                    else pf.asset_class.category.code,
-                    "Group_Sort_Order": pf.asset_class.category.parent.sort_order
-                    if pf.asset_class.category.parent
-                    and hasattr(pf.asset_class.category.parent, "sort_order")
-                    else 0,
-                    "Asset_Group": pf.asset_class.category.parent.label
-                    if pf.asset_class.category.parent
-                    else pf.asset_class.category.label,
-                    "Price": float(pf.price_per_share),
-                    "Shares": float(pf.proforma_shares),
-                    "Value": float(pf.proforma_value),
-                    "Account_ID": self.account.id,
-                    "Account_Name": self.account.name,
-                    "Account_Type": self.account.account_type.code,
-                    "Holding_ID": 0,  # Pro forma holdings don't have IDs
-                }
-            )
+        # Build pro forma holdings DataFrame by applying orders
+        proforma_df = self._build_proforma_holdings_dataframe(holdings, orders, prices)
 
-        holdings_df = pd.DataFrame(holdings_data)
+        if proforma_df.empty:
+            return []
 
         # Build targets map in the format expected by AllocationCalculator
         targets_map = {
@@ -234,7 +200,7 @@ class RebalancingEngine:
         # Use AllocationCalculator to add targets and variances
         calculator = AllocationCalculator()
         holdings_with_targets = calculator.calculate_holdings_with_targets(
-            holdings_df=holdings_df,
+            holdings_df=proforma_df,
             targets_map=targets_map,
         )
 
@@ -559,15 +525,29 @@ class RebalancingEngine:
         orders: list[RebalancingOrder],
         prices: dict[Security, Decimal],
         target_allocations: dict[AssetClass, Decimal],
-    ) -> tuple[list[ProFormaHolding], dict, dict]:
-        """Calculate pro forma holdings with aggregated allocation data.
+    ) -> tuple[list[dict], dict, dict]:
+        """
+        Calculate pro forma holdings with aggregated allocation data.
+
+        Uses AllocationCalculator and AllocationFormatter for all calculations,
+        ensuring consistency with allocation views.
+
+        Args:
+            holdings: Current holdings
+            orders: Orders to apply
+            prices: Current security prices
+            target_allocations: Target allocation percentages by asset class
 
         Returns:
-            Tuple of (proforma_holdings_list, current_aggregated, proforma_aggregated)
+            Tuple of:
+            - proforma_holdings_rows: List of formatted row dicts (with hierarchy)
+            - current_aggregated: Dict with current allocations by asset class
+            - proforma_aggregated: Dict with pro forma allocations by asset class
         """
         import pandas as pd
 
-        from portfolio.services.allocations.calculations import AllocationAggregator
+        from portfolio.models import AssetClass
+        from portfolio.services.allocations.calculations import AllocationCalculator
 
         # Build map of current holdings: security -> shares
         current_positions = {h.security: h.shares for h in holdings}
@@ -581,38 +561,61 @@ class RebalancingEngine:
             else:  # SELL
                 changes[order.security] = current_change - order.shares
 
-        # Get all securities (current holdings + new positions from orders)
+        # Get all securities involved (current holdings + new positions from orders)
         all_securities = set(current_positions.keys()) | set(changes.keys())
 
-        # Calculate current allocations using existing aggregator
-        current_data = []
-        for security in all_securities:
-            shares = current_positions.get(security, Decimal("0"))
-            price = prices.get(security, Decimal("0"))
-            value = shares * price
-
-            current_data.append(
+        # Get asset class metadata for aggregation
+        asset_class_ids = {s.asset_class.id for s in all_securities}
+        asset_classes_df = pd.DataFrame(
+            [
                 {
-                    "security": security,
-                    "security_id": security.id,
-                    "asset_class": security.asset_class,
-                    "asset_class_id": security.asset_class.id,
-                    "category": security.asset_class.category,
-                    "value": value,
-                    "shares": shares,
-                    "price": price,
+                    "asset_class_id": ac.id,
+                    "asset_class_name": ac.name,
                 }
+                for ac in AssetClass.objects.filter(id__in=asset_class_ids)
+            ]
+        )
+
+        calculator = AllocationCalculator()
+
+        # ========================================================================
+        # Calculate CURRENT allocations using existing allocation infrastructure
+        # ========================================================================
+
+        if current_positions:
+            current_data = []
+            for security in all_securities:
+                shares = current_positions.get(security, Decimal("0"))
+                price = prices.get(security, Decimal("0"))
+                value = shares * price
+
+                current_data.append(
+                    {
+                        "security_id": security.id,
+                        "asset_class_id": security.asset_class.id,
+                        "value": float(value),
+                    }
+                )
+
+            current_holdings_df = pd.DataFrame(current_data)
+
+            # Use existing aggregation method from AllocationCalculator
+            current_aggregated_df = calculator._aggregate_actuals_by_level(
+                df=asset_classes_df, holdings_df=current_holdings_df, level="portfolio"
             )
 
-        if not current_data:
-            current_aggregated = {}
+            # Convert to dict format for backward compatibility
+            current_aggregated = calculator.aggregated_df_to_dict(current_aggregated_df)
         else:
-            current_df = pd.DataFrame(current_data)
-            current_aggregator = AllocationAggregator(current_df)
-            current_aggregator.calculate_aggregations()
-            current_aggregated = current_aggregator.build_context()
+            current_aggregated = {
+                "asset_class": {},
+                "grand_total": {"total_value": Decimal("0"), "allocation_percent": Decimal("0")},
+            }
 
-        # Calculate pro forma allocations using existing aggregator
+        # ========================================================================
+        # Calculate PRO FORMA allocations using same infrastructure
+        # ========================================================================
+
         proforma_data = []
         for security in all_securities:
             current_shares = current_positions.get(security, Decimal("0"))
@@ -623,89 +626,37 @@ class RebalancingEngine:
 
             proforma_data.append(
                 {
-                    "security": security,
                     "security_id": security.id,
-                    "asset_class": security.asset_class,
                     "asset_class_id": security.asset_class.id,
-                    "category": security.asset_class.category,
-                    "value": proforma_value,
-                    "shares": proforma_shares,
-                    "price": price,
+                    "value": float(proforma_value),
                 }
             )
 
-        if not proforma_data:
-            proforma_aggregated = {}
-        else:
-            proforma_df = pd.DataFrame(proforma_data)
-            proforma_aggregator = AllocationAggregator(proforma_df)
-            proforma_aggregator.calculate_aggregations()
-            proforma_aggregated = proforma_aggregator.build_context()
+        if proforma_data:
+            proforma_holdings_df = pd.DataFrame(proforma_data)
 
-        # Build pro forma holdings list with aggregated allocation data
-        proforma_list = []
-
-        for security in sorted(
-            all_securities,
-            key=lambda s: (s.asset_class.category.code, s.asset_class.name, s.ticker),
-        ):
-            price = prices.get(security, Decimal("0"))
-
-            # Current state
-            current_shares = current_positions.get(security, Decimal("0"))
-            current_value = current_shares * price
-
-            # Changes
-            change_shares = changes.get(security, 0)
-            change_value = Decimal(change_shares) * price
-
-            # Pro forma state
-            proforma_shares = current_shares + Decimal(change_shares)
-            proforma_value = proforma_shares * price
-
-            # Get asset class level allocations from aggregated data
-            asset_class = security.asset_class
-
-            # Current allocation from aggregated data
-            current_alloc = Decimal("0")
-            if (
-                "asset_class" in current_aggregated
-                and asset_class.id in current_aggregated["asset_class"]
-            ):
-                current_alloc = current_aggregated["asset_class"][asset_class.id].get(
-                    "allocation_percent", Decimal("0")
-                )
-
-            # Pro forma allocation from aggregated data
-            proforma_alloc = Decimal("0")
-            if (
-                "asset_class" in proforma_aggregated
-                and asset_class.id in proforma_aggregated["asset_class"]
-            ):
-                proforma_alloc = proforma_aggregated["asset_class"][asset_class.id].get(
-                    "allocation_percent", Decimal("0")
-                )
-
-            # Target and variance
-            target_alloc = target_allocations.get(asset_class, Decimal("0"))
-            variance = proforma_alloc - target_alloc
-
-            proforma_list.append(
-                ProFormaHolding(
-                    security=security,
-                    asset_class=asset_class,
-                    current_shares=current_shares,
-                    change_shares=change_shares,
-                    proforma_shares=proforma_shares,
-                    current_value=current_value,
-                    change_value=change_value,
-                    proforma_value=proforma_value,
-                    current_allocation=current_alloc,
-                    proforma_allocation=proforma_alloc,
-                    target_allocation=target_alloc,
-                    variance=variance,
-                    price_per_share=price,
-                )
+            # Use existing aggregation method
+            proforma_aggregated_df = calculator._aggregate_actuals_by_level(
+                df=asset_classes_df, holdings_df=proforma_holdings_df, level="portfolio"
             )
 
-        return proforma_list, current_aggregated, proforma_aggregated
+            # Convert to dict format
+            proforma_aggregated = calculator.aggregated_df_to_dict(proforma_aggregated_df)
+        else:
+            proforma_aggregated = {
+                "asset_class": {},
+                "grand_total": {"total_value": Decimal("0"), "allocation_percent": Decimal("0")},
+            }
+
+        # ========================================================================
+        # Build pro forma holdings rows using get_proforma_holdings_rows
+        # ========================================================================
+
+        proforma_holdings_rows = self.get_proforma_holdings_rows(
+            holdings=holdings,
+            orders=orders,
+            prices=prices,
+            target_allocations=target_allocations,
+        )
+
+        return (proforma_holdings_rows, current_aggregated, proforma_aggregated)

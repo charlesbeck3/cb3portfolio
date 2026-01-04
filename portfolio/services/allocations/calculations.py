@@ -1010,79 +1010,65 @@ class AllocationCalculator:
 
         return df_aggregated
 
-
-class AllocationAggregator:
-    """
-    Helper class to calculate aggregated subtotals and totals from a DataFrame.
-
-    Used primarily by the rebalancing engine to compute current and pro forma
-    aggregated stats efficiently.
-    """
-
-    def __init__(self, df: pd.DataFrame):
+    @staticmethod
+    def aggregated_df_to_dict(df: pd.DataFrame) -> dict[str, Any]:
         """
-        Initialize with a DataFrame containing asset/holding data.
+        Convert aggregated DataFrame to simple dict format.
+
+        Used by rebalancing engine when it needs simple asset class aggregations.
+        Bridges DataFrame-based calculations with dict-based rebalancing data structures.
 
         Args:
-            df: DataFrame containing at least:
-                - value (Decimal or float)
-                - asset_class (AssetClass object)
+            df: DataFrame with columns:
                 - asset_class_id (int)
-        """
-        self.df = df
-        self.aggregated_context: dict[str, Any] = {}
+                - portfolio_actual (float): Total value for this asset class
+                - portfolio_actual_pct (float): Percentage of portfolio
 
-    def calculate_aggregations(self) -> None:
-        """Calculate totals by asset class and portfolio."""
+        Returns:
+            {
+                'asset_class': {
+                    ac_id: {
+                        'total_value': Decimal,
+                        'allocation_percent': Decimal
+                    }
+                },
+                'grand_total': {
+                    'total_value': Decimal,
+                    'allocation_percent': Decimal('100.0')
+                }
+            }
+
+        Example:
+            >>> df = pd.DataFrame({
+            ...     'asset_class_id': [1, 2],
+            ...     'portfolio_actual': [50000.0, 30000.0],
+            ...     'portfolio_actual_pct': [62.5, 37.5]
+            ... })
+            >>> result = AllocationCalculator.aggregated_df_to_dict(df)
+            >>> result['grand_total']['total_value']
+            Decimal('80000.0')
+        """
         from decimal import Decimal
 
-        if self.df.empty:
-            self.aggregated_context = {
+        if df.empty:
+            return {
                 "asset_class": {},
                 "grand_total": {"total_value": Decimal("0"), "allocation_percent": Decimal("0")},
             }
-            return
 
-        # Ensure value is float for calculation
-        # The input df usually has 'value' as Decimal from database
-        self.df = self.df.copy()
+        result: dict[str, Any] = {"asset_class": {}}
 
-        # Handle potential empty or mixed types in value
-        if "value" in self.df.columns:
-            self.df["value_float"] = self.df["value"].apply(
-                lambda x: float(x) if x is not None else 0.0
-            )
-        else:
-            self.df["value_float"] = 0.0
+        for _, row in df.iterrows():
+            ac_id = int(row["asset_class_id"])
+            result["asset_class"][ac_id] = {
+                "total_value": Decimal(str(row["portfolio_actual"])),
+                "allocation_percent": Decimal(str(row["portfolio_actual_pct"])),
+            }
 
-        total_value = self.df["value_float"].sum()
-
-        # 1. Asset Class Aggregation
-        # Group by asset_class_id
-        if "asset_class_id" in self.df.columns:
-            ac_grouped = self.df.groupby("asset_class_id")
-            ac_data = {}
-            for ac_id, group in ac_grouped:
-                ac_total = group["value_float"].sum()
-                ac_pct = (ac_total / total_value * 100) if total_value > 0 else 0
-                ac_data[ac_id] = {
-                    "total_value": Decimal(str(ac_total)),
-                    "allocation_percent": Decimal(str(ac_pct)),
-                }
-        else:
-            ac_data = {}
-
-        # 2. Grand Total
-        grand_total_data = {
-            "total_value": Decimal(str(total_value)),
+        grand_total = df["portfolio_actual"].sum()
+        result["grand_total"] = {
+            "total_value": Decimal(str(grand_total)),
             "allocation_percent": Decimal("100.0"),
         }
 
-        self.aggregated_context = {
-            "asset_class": ac_data,
-            "grand_total": grand_total_data,
-        }
-
-    def build_context(self) -> dict[str, Any]:
-        """Return the aggregated context."""
-        return self.aggregated_context
+        return result

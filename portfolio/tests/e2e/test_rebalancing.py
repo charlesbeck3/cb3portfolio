@@ -119,9 +119,9 @@ class TestRebalancingE2E:
         # Verify Pro Forma Holdings Analysis table exists
         expect(authenticated_page.get_by_text("Pro Forma Holdings Analysis")).to_be_visible()
 
-        # Verify table headers
-        expect(authenticated_page.get_by_text("Current", exact=True).first).to_be_visible()
+        # Verify table headers (Pro Forma, Target, Variance)
         expect(authenticated_page.get_by_text("Pro Forma", exact=True).first).to_be_visible()
+        expect(authenticated_page.get_by_text("Target", exact=True).first).to_be_visible()
         expect(authenticated_page.get_by_text("Variance", exact=True).first).to_be_visible()
 
         # Verify securities are listed in pro forma table
@@ -130,7 +130,7 @@ class TestRebalancingE2E:
 
         # Verify columns exist
         expect(proforma_table.get_by_text("Ticker")).to_be_visible()
-        expect(proforma_table.get_by_text("Name")).to_be_visible()
+        expect(proforma_table.get_by_text("Security")).to_be_visible()
         expect(proforma_table.get_by_text("Asset Class")).to_be_visible()
 
         # Verify securities present
@@ -138,7 +138,7 @@ class TestRebalancingE2E:
         expect(proforma_table.get_by_text("BND", exact=True)).to_be_visible()
 
         # Verify grand total row exists
-        expect(authenticated_page.get_by_test_id("grand-total-row")).to_be_visible()
+        expect(authenticated_page.get_by_test_id("proforma-grand-total")).to_be_visible()
 
         # Verify drift analysis
         drift_table = authenticated_page.get_by_test_id("drift-table")

@@ -10,41 +10,6 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class ProFormaHolding:
-    """Represents a holding before and after rebalancing.
-
-    Attributes:
-        security: The security
-        asset_class: Asset class for grouping
-        current_shares: Current number of shares
-        change_shares: Change in shares (positive = buy, negative = sell)
-        proforma_shares: Shares after rebalancing
-        current_value: Current dollar value
-        change_value: Change in dollar value
-        proforma_value: Dollar value after rebalancing
-        current_allocation: Current allocation percentage
-        proforma_allocation: Allocation percentage after rebalancing
-        target_allocation: Target allocation percentage
-        variance: Difference between proforma and target (% points)
-        price_per_share: Current price used for calculations
-    """
-
-    security: "Security"
-    asset_class: "AssetClass"
-    current_shares: Decimal
-    change_shares: int
-    proforma_shares: Decimal
-    current_value: Decimal
-    change_value: Decimal
-    proforma_value: Decimal
-    current_allocation: Decimal
-    proforma_allocation: Decimal
-    target_allocation: Decimal
-    variance: Decimal
-    price_per_share: Decimal
-
-
-@dataclass(frozen=True)
 class RebalancingOrder:
     """Represents a single buy or sell order.
 
@@ -79,7 +44,6 @@ class RebalancingPlan:
     Attributes:
         account: The account being rebalanced
         orders: List of buy/sell orders
-        proforma_holdings: List of all holdings before/after comparison
         proforma_holdings_rows: Formatted rows for template display (with hierarchy)
         drift_analysis_rows: Formatted drift rows with category subtotals
         current_aggregated: Aggregated allocation data for current state
@@ -96,7 +60,6 @@ class RebalancingPlan:
 
     account: "Account"
     orders: list[RebalancingOrder] = field(default_factory=list)
-    proforma_holdings: list[ProFormaHolding] = field(default_factory=list)
     proforma_holdings_rows: list[dict] = field(default_factory=list)
     drift_analysis_rows: list[dict] = field(default_factory=list)
     current_aggregated: dict = field(default_factory=dict)
